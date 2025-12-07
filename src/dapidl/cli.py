@@ -275,6 +275,114 @@ def annotate(
         console.print("  3. Select the generated CSV file(s)")
 
 
+@main.command(name="create-dataset")
+@click.option(
+    "--xenium-path",
+    "-x",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Path to source Xenium output directory",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output path for new hardlinked dataset",
+)
+@click.option(
+    "--csv",
+    "-c",
+    "csv_files",
+    multiple=True,
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="CSV file(s) to include in dataset. Repeat for multiple files.",
+)
+@click.option(
+    "--replace",
+    "-r",
+    "replace_files",
+    multiple=True,
+    nargs=2,
+    type=(str, click.Path(exists=True, path_type=Path)),
+    help="Replace a file: --replace <relative_path> <new_file_path>",
+)
+def create_dataset(
+    xenium_path: Path,
+    output: Path,
+    csv_files: Tuple[Path, ...],
+    replace_files: Tuple[Tuple[str, Path], ...],
+) -> None:
+    """Create a hardlinked Xenium dataset with custom CSV files.
+
+    Creates a space-efficient copy of a Xenium dataset using hardlinks for
+    all unchanged files, and adds the specified CSV file(s) for Xenium Explorer.
+
+    This is useful when you have pre-computed cell annotations in CSV format
+    and want to create a viewable dataset without duplicating the large files.
+
+    Examples:
+        # Add a single CSV file
+        dapidl create-dataset -x /path/to/xenium -o /output -c annotations.csv
+
+        # Add multiple CSV files
+        dapidl create-dataset -x /path/to/xenium -o /output \\
+            -c celltypes.csv -c clusters.csv
+
+        # Replace cells.parquet with a modified version
+        dapidl create-dataset -x /path/to/xenium -o /output \\
+            -c annotations.csv --replace cells.parquet /path/to/new_cells.parquet
+    """
+    from dapidl.data.xenium_export import create_hardlink_dataset
+    import shutil
+
+    console.print("[bold blue]DAPIDL Create Hardlinked Dataset[/bold blue]")
+    console.print(f"Source Xenium: {xenium_path}")
+    console.print(f"Output path: {output}")
+    console.print(f"CSV files: {', '.join(str(f) for f in csv_files)}")
+    if replace_files:
+        console.print(f"Files to replace: {len(replace_files)}")
+
+    # Find the outs directory
+    if (xenium_path / "outs").exists():
+        xenium_outs = xenium_path / "outs"
+        output_outs = output / "outs"
+    elif (xenium_path / "cells.parquet").exists():
+        xenium_outs = xenium_path
+        output_outs = output
+    else:
+        console.print("[red]Error: Cannot find Xenium output files[/red]")
+        raise click.Abort()
+
+    # Build modified files dict from --replace options
+    modified_files: dict[str, Path] = {}
+    for rel_path, new_file in replace_files:
+        modified_files[rel_path] = Path(new_file)
+        console.print(f"  Will replace: {rel_path} -> {new_file}")
+
+    # Create hardlinked dataset
+    console.print("\n[yellow]Creating hardlinked dataset...[/yellow]")
+    create_hardlink_dataset(
+        source_dir=xenium_outs,
+        output_dir=output_outs,
+        modified_files=modified_files,
+    )
+
+    # Copy CSV files to output
+    console.print("[yellow]Copying CSV files...[/yellow]")
+    for csv_file in csv_files:
+        dest = output_outs / csv_file.name
+        shutil.copy2(csv_file, dest)
+        console.print(f"  Copied: {csv_file.name}")
+
+    console.print(f"\n[bold green]Dataset created at {output}[/bold green]")
+    console.print("\n[cyan]To view in Xenium Explorer:[/cyan]")
+    console.print(f"  1. Open {output_outs} in Xenium Explorer")
+    console.print("  2. Go to: Cells -> Cell Groups -> Upload")
+    console.print("  3. Select the CSV file(s) to import")
+
+
 @main.command()
 @click.option(
     "--config",
