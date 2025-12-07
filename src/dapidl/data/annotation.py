@@ -6,11 +6,47 @@ from typing import Any
 import anndata as ad
 import celltypist
 import numpy as np
+import pandas as pd
 import polars as pl
 from celltypist import models
 from loguru import logger
 
 from dapidl.data.xenium import XeniumDataReader
+
+
+# Default model for breast tissue
+DEFAULT_MODEL = "Cells_Adult_Breast.pkl"
+
+
+def list_available_models(force_update: bool = False) -> pd.DataFrame:
+    """List all available CellTypist models.
+
+    Args:
+        force_update: Whether to fetch the latest model list from the server
+
+    Returns:
+        DataFrame with model names and descriptions
+    """
+    return models.models_description(on_the_fly=False)
+
+
+def get_downloaded_models() -> list[str]:
+    """Get list of locally downloaded CellTypist models.
+
+    Returns:
+        List of model filenames that are available locally
+    """
+    return models.get_all_models()
+
+
+def download_model(model_name: str, force_update: bool = False) -> None:
+    """Download a specific CellTypist model.
+
+    Args:
+        model_name: Name of the model to download (e.g., 'Cells_Adult_Breast.pkl')
+        force_update: Whether to re-download even if exists
+    """
+    models.download_models(model=model_name, force_update=force_update)
 
 
 # Mapping from CellTypist cell types to broad categories
@@ -113,31 +149,59 @@ class CellTypeAnnotator:
 
     Uses CellTypist to predict cell types from gene expression data,
     then maps to broad categories for classification.
+
+    Supports running multiple models for ensemble annotation.
     """
 
     def __init__(
         self,
-        model_name: str = "Cells_Adult_Breast.pkl",
+        model_names: str | list[str] = DEFAULT_MODEL,
         confidence_threshold: float = 0.5,
+        majority_voting: bool = True,
     ) -> None:
         """Initialize annotator.
 
         Args:
-            model_name: Name of CellTypist model to use
+            model_names: Name(s) of CellTypist model(s) to use. Can be a single
+                string or a list of model names for multi-model annotation.
             confidence_threshold: Minimum confidence score to accept prediction
+            majority_voting: Whether to use majority voting for predictions
         """
-        self.model_name = model_name
-        self.confidence_threshold = confidence_threshold
-        self._model: Any = None
+        # Normalize to list
+        if isinstance(model_names, str):
+            self.model_names = [model_names]
+        else:
+            self.model_names = list(model_names)
 
-    def _load_model(self) -> Any:
-        """Download and load CellTypist model."""
-        if self._model is None:
-            logger.info(f"Loading CellTypist model: {self.model_name}")
-            models.download_models(model=self.model_name, force_update=False)
-            self._model = models.Model.load(model=self.model_name)
-            logger.info(f"Model loaded with {len(self._model.cell_types)} cell types")
-        return self._model
+        self.confidence_threshold = confidence_threshold
+        self.majority_voting = majority_voting
+        self._models: dict[str, Any] = {}
+
+    def _load_model(self, model_name: str) -> Any:
+        """Download and load a CellTypist model.
+
+        Args:
+            model_name: Name of the model to load
+
+        Returns:
+            Loaded CellTypist model
+        """
+        if model_name not in self._models:
+            logger.info(f"Loading CellTypist model: {model_name}")
+            models.download_models(model=model_name, force_update=False)
+            self._models[model_name] = models.Model.load(model=model_name)
+            logger.info(f"Model loaded with {len(self._models[model_name].cell_types)} cell types")
+        return self._models[model_name]
+
+    def _load_all_models(self) -> dict[str, Any]:
+        """Load all configured models.
+
+        Returns:
+            Dictionary mapping model names to loaded models
+        """
+        for model_name in self.model_names:
+            self._load_model(model_name)
+        return self._models
 
     def create_anndata(self, reader: XeniumDataReader) -> ad.AnnData:
         """Create AnnData object from Xenium data.
@@ -163,18 +227,47 @@ class CellTypeAnnotator:
         logger.info(f"Created AnnData: {adata.shape[0]} cells x {adata.shape[1]} genes")
         return adata
 
+    def _run_single_model(
+        self, adata_norm: ad.AnnData, model_name: str
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Run annotation with a single model.
+
+        Args:
+            adata_norm: Normalized AnnData object
+            model_name: Name of the model to use
+
+        Returns:
+            Tuple of (cell_types, confidence_scores)
+        """
+        model = self._load_model(model_name)
+
+        logger.info(f"Running CellTypist prediction with {model_name}...")
+        predictions = celltypist.annotate(
+            adata_norm,
+            model=model,
+            majority_voting=self.majority_voting,
+        )
+
+        # Extract results
+        pred_labels = predictions.predicted_labels
+        label_col = "majority_voting" if self.majority_voting and "majority_voting" in pred_labels else "predicted_labels"
+        cell_types = pred_labels[label_col].astype(str).values
+        conf_scores = predictions.probability_matrix.max(axis=1).values
+
+        return cell_types, conf_scores
+
     def annotate(self, adata: ad.AnnData) -> pl.DataFrame:
-        """Run cell type annotation.
+        """Run cell type annotation with all configured models.
 
         Args:
             adata: AnnData object with gene expression
 
         Returns:
-            DataFrame with cell_id, predicted_type, broad_category, confidence
+            DataFrame with cell_id and prediction columns for each model.
+            For single model: predicted_type, broad_category, confidence
+            For multiple models: predicted_type_1, confidence_1, predicted_type_2, ...
         """
         import scanpy as sc
-
-        model = self._load_model()
 
         # Normalize data (CellTypist expects log1p normalized data)
         logger.info("Normalizing expression data...")
@@ -182,43 +275,47 @@ class CellTypeAnnotator:
         sc.pp.normalize_total(adata_norm, target_sum=1e4)
         sc.pp.log1p(adata_norm)
 
-        # Run CellTypist prediction
-        logger.info("Running CellTypist prediction...")
-        predictions = celltypist.annotate(
-            adata_norm,
-            model=model,
-            majority_voting=True,
-        )
+        # Run predictions for each model
+        results_data: dict[str, Any] = {"cell_id": adata.obs["cell_id"].values}
 
-        # Extract results
-        pred_labels = predictions.predicted_labels
-        cell_types = pred_labels["majority_voting"].astype(str).values
-        conf_scores = predictions.probability_matrix.max(axis=1).values
+        for i, model_name in enumerate(self.model_names, start=1):
+            cell_types, conf_scores = self._run_single_model(adata_norm, model_name)
 
-        # Map to broad categories
-        broad_categories = [map_to_broad_category(ct) for ct in cell_types]
+            # Map to broad categories
+            broad_categories = [map_to_broad_category(ct) for ct in cell_types]
+
+            # Add columns with suffix if multiple models
+            if len(self.model_names) == 1:
+                results_data["predicted_type"] = cell_types
+                results_data["broad_category"] = broad_categories
+                results_data["confidence"] = conf_scores
+            else:
+                results_data[f"predicted_type_{i}"] = cell_types
+                results_data[f"broad_category_{i}"] = broad_categories
+                results_data[f"confidence_{i}"] = conf_scores
+                results_data[f"model_{i}"] = model_name
 
         # Create results DataFrame
-        results = pl.DataFrame(
-            {
-                "cell_id": adata.obs["cell_id"].values,
-                "predicted_type": cell_types,
-                "broad_category": broad_categories,
-                "confidence": conf_scores,
-            }
-        )
+        results = pl.DataFrame(results_data)
 
         # Log statistics
-        logger.info(f"Annotation complete for {len(results)} cells")
-        logger.info(
-            f"Confidence > {self.confidence_threshold}: "
-            f"{(results['confidence'] > self.confidence_threshold).sum()} cells"
-        )
-        logger.info("Broad category distribution:")
-        for cat in results["broad_category"].unique().sort():
-            count = (results["broad_category"] == cat).sum()
-            pct = count / len(results) * 100
-            logger.info(f"  {cat}: {count} ({pct:.1f}%)")
+        logger.info(f"Annotation complete for {len(results)} cells with {len(self.model_names)} model(s)")
+
+        # Log per-model stats
+        for i, model_name in enumerate(self.model_names, start=1):
+            suffix = "" if len(self.model_names) == 1 else f"_{i}"
+            conf_col = f"confidence{suffix}"
+            broad_col = f"broad_category{suffix}"
+
+            high_conf = (results[conf_col] > self.confidence_threshold).sum()
+            logger.info(
+                f"[{model_name}] Confidence > {self.confidence_threshold}: {high_conf} cells"
+            )
+            logger.info(f"[{model_name}] Broad category distribution:")
+            for cat in results[broad_col].unique().sort():
+                count = (results[broad_col] == cat).sum()
+                pct = count / len(results) * 100
+                logger.info(f"  {cat}: {count} ({pct:.1f}%)")
 
         return results
 
