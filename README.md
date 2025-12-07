@@ -15,6 +15,7 @@ Deployment: Any DAPI Image → Trained Model → Predicted Cell Types
 
 - **Automated labeling**: CellTypist annotation from Xenium expression data
 - **Multi-model support**: Use multiple CellTypist models for different tissue types
+- **Advanced annotation strategies**: Consensus voting, hierarchical annotation, and popV ensemble
 - **Efficient data pipeline**: Memory-efficient batch Zarr writing for 166K+ patches
 - **EfficientNetV2-S backbone**: Pretrained ImageNet weights with single-channel adapter
 - **Class imbalance handling**: Weighted loss and weighted random sampling
@@ -235,6 +236,68 @@ The 58 fine-grained cell types are mapped to 3 broad categories:
 - **Epithelial**: Luminal cells, basal cells, etc.
 - **Immune**: T cells, B cells, macrophages, etc.
 - **Stromal**: Fibroblasts, endothelial cells, etc.
+
+## Annotation Strategies
+
+DAPIDL supports multiple annotation strategies for improved cell type prediction. Use `--strategy` to select:
+
+### Consensus (Default)
+
+Aggregates predictions from multiple CellTypist models using voting:
+
+```bash
+dapidl prepare -x /path/to/xenium -o ./dataset \
+    -m Cells_Adult_Breast.pkl \
+    -m Immune_All_High.pkl \
+    --strategy consensus
+```
+
+- Each model predicts cell types independently
+- Models vote on the broad category (Epithelial/Immune/Stromal)
+- Confidence adjusted by agreement level (unanimous = higher confidence)
+- Best for combining tissue-specific and specialized models
+
+### Hierarchical
+
+Uses a primary tissue-specific model with specialized refinement:
+
+```bash
+dapidl prepare -x /path/to/xenium -o ./dataset \
+    -m Cells_Adult_Breast.pkl \
+    -m Immune_All_High.pkl \
+    --strategy hierarchical
+```
+
+- First model provides base annotation
+- Additional models refine specific categories (e.g., immune subtypes)
+- Useful when you have a general tissue model + specialized models
+
+### popV
+
+Ensemble prediction using the popV package (if installed):
+
+```bash
+dapidl prepare -x /path/to/xenium -o ./dataset \
+    --strategy popv
+```
+
+- Uses popV's ensemble of 8 prediction methods
+- Includes Random Forest, SVM, CellTypist, OnClass, scANVI, kNN
+- Ontology-aware voting for consistent predictions
+- Falls back to consensus if popV not installed
+
+### Single (Legacy)
+
+Traditional single-model annotation:
+
+```bash
+dapidl prepare -x /path/to/xenium -o ./dataset \
+    -m Cells_Adult_Breast.pkl \
+    --strategy single
+```
+
+- Uses only the first specified model
+- Equivalent to legacy behavior
 
 ## Project Structure
 

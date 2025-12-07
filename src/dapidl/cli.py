@@ -113,6 +113,14 @@ def list_models(downloaded_only: bool, update: bool) -> None:
     default=True,
     help="Use majority voting for predictions (default: True)",
 )
+@click.option(
+    "--strategy",
+    "-s",
+    type=click.Choice(["consensus", "hierarchical", "popv", "single"], case_sensitive=False),
+    default="consensus",
+    show_default=True,
+    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy)",
+)
 def prepare(
     xenium_path: Path,
     output: Path,
@@ -120,11 +128,18 @@ def prepare(
     patch_size: int,
     confidence_threshold: float,
     majority_voting: bool,
+    strategy: str,
 ) -> None:
     """Prepare dataset from Xenium output.
 
     Extracts nucleus patches, generates cell type labels using CellTypist,
     and saves the prepared dataset in Zarr format.
+
+    Annotation strategies:
+        - consensus: Voting across multiple models (default, recommended)
+        - hierarchical: Tissue-specific model + specialized refinement
+        - popv: popV ensemble prediction (requires popv package)
+        - single: Legacy single-model mode
 
     For multiple models, use --model multiple times:
         dapidl prepare -x /path -o /out -m Model1.pkl -m Model2.pkl
@@ -137,6 +152,7 @@ def prepare(
     console.print(f"Xenium path: {xenium_path}")
     console.print(f"Output path: {output}")
     console.print(f"Model(s): {', '.join(models)}")
+    console.print(f"Strategy: {strategy}")
     console.print(f"Patch size: {patch_size}")
     console.print(f"Confidence threshold: {confidence_threshold}")
     console.print(f"Majority voting: {majority_voting}")
@@ -145,11 +161,12 @@ def prepare(
     console.print("\n[yellow]Loading Xenium data...[/yellow]")
     reader = XeniumDataReader(xenium_path)
 
-    # Create annotator with specified models
+    # Create annotator with specified models and strategy
     annotator = CellTypeAnnotator(
         model_names=list(models),
         confidence_threshold=confidence_threshold,
         majority_voting=majority_voting,
+        strategy=strategy,
     )
 
     # Extract patches
@@ -206,6 +223,14 @@ def prepare(
     default=True,
     help="Add auto-generated HEX colors to CSV exports (default: True)",
 )
+@click.option(
+    "--strategy",
+    "-s",
+    type=click.Choice(["consensus", "hierarchical", "popv", "single"], case_sensitive=False),
+    default="consensus",
+    show_default=True,
+    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy)",
+)
 def annotate(
     xenium_path: Path,
     output: Path,
@@ -213,6 +238,7 @@ def annotate(
     output_format: str,
     majority_voting: bool,
     add_colors: bool,
+    strategy: str,
 ) -> None:
     """Annotate Xenium dataset and create copy for Xenium Explorer.
 
@@ -222,11 +248,17 @@ def annotate(
     The CSV format (default) is recommended for Xenium Explorer - import the
     generated CSV files via Cells -> Cell Groups -> Upload.
 
+    Annotation strategies:
+        - consensus: Voting across multiple models (default, recommended)
+        - hierarchical: Tissue-specific model + specialized refinement
+        - popv: popV ensemble prediction (requires popv package)
+        - single: Legacy single-model mode
+
     Examples:
         # Annotate with default breast model
         dapidl annotate -x /path/to/xenium -o /path/to/output
 
-        # Use multiple models
+        # Use multiple models with consensus voting
         dapidl annotate -x /path/to/xenium -o /path/to/output \\
             -m Cells_Adult_Breast.pkl -m Immune_All_High.pkl
     """
@@ -238,6 +270,7 @@ def annotate(
     console.print(f"Xenium path: {xenium_path}")
     console.print(f"Output path: {output}")
     console.print(f"Model(s): {', '.join(models)}")
+    console.print(f"Strategy: {strategy}")
     console.print(f"Output format: {output_format}")
     console.print(f"Majority voting: {majority_voting}")
     console.print(f"Add colors: {add_colors}")
@@ -252,6 +285,7 @@ def annotate(
         model_names=list(models),
         confidence_threshold=0.0,  # Keep all cells for visualization
         majority_voting=majority_voting,
+        strategy=strategy,
     )
     annotations = annotator.annotate_from_reader(reader)
 
@@ -631,6 +665,14 @@ def predict(
     default=False,
     help="Skip training (prepare dataset only)",
 )
+@click.option(
+    "--strategy",
+    "-s",
+    type=click.Choice(["consensus", "hierarchical", "popv", "single"], case_sensitive=False),
+    default="consensus",
+    show_default=True,
+    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy)",
+)
 def pipeline(
     xenium_path: Path,
     output: Path,
@@ -644,6 +686,7 @@ def pipeline(
     wandb: bool,
     skip_prepare: bool,
     skip_train: bool,
+    strategy: str,
 ) -> None:
     """Run the complete DAPIDL pipeline: prepare + train.
 
@@ -660,6 +703,12 @@ def pipeline(
         └── training/         # Model outputs
             ├── checkpoints/
             └── logs/
+
+    Annotation strategies:
+        - consensus: Voting across multiple models (default, recommended)
+        - hierarchical: Tissue-specific model + specialized refinement
+        - popv: popV ensemble prediction (requires popv package)
+        - single: Legacy single-model mode
 
     Examples:
         # Run full pipeline with defaults
@@ -696,6 +745,7 @@ def pipeline(
     console.print(f"  Dataset dir:    {dataset_path}")
     console.print(f"  Training dir:   {training_path}")
     console.print(f"  Model(s):       {', '.join(models)}")
+    console.print(f"  Strategy:       {strategy}")
     console.print(f"  Patch size:     {patch_size}")
     console.print(f"  Confidence:     {confidence_threshold}")
     console.print(f"  Majority vote:  {majority_voting}")
@@ -720,6 +770,7 @@ def pipeline(
             model_names=list(models),
             confidence_threshold=confidence_threshold,
             majority_voting=majority_voting,
+            strategy=strategy,
         )
 
         console.print("[yellow]Extracting patches and generating labels...[/yellow]")

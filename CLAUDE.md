@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Always begin every message with "Aye, Captain!"
 
+## Web Fetching
+
+Always use Firefox client ID when fetching web content (WebFetch tool).
+
 ## Environment
 
 Always use `uv` for Python package management and running commands. Prefer `uv run` over activating virtualenvs manually.

@@ -153,9 +153,15 @@ class PatchExtractor:
         cell_ids = annotated_cells["cell_id"].to_numpy()
         centroids_x = annotated_cells["x_centroid_px"].to_numpy()
         centroids_y = annotated_cells["y_centroid_px"].to_numpy()
-        predicted_types = annotated_cells["predicted_type"].to_list()
-        broad_categories = annotated_cells["broad_category"].to_list()
-        confidences = annotated_cells["confidence"].to_numpy()
+
+        # Determine column names (handles single and multi-model cases)
+        pred_col = "predicted_type" if "predicted_type" in annotated_cells.columns else "predicted_type_1"
+        broad_col = "broad_category" if "broad_category" in annotated_cells.columns else "broad_category_1"
+        conf_col = "confidence" if "confidence" in annotated_cells.columns else "confidence_1"
+
+        predicted_types = annotated_cells[pred_col].to_list()
+        broad_categories = annotated_cells[broad_col].to_list()
+        confidences = annotated_cells[conf_col].to_numpy()
 
         # First pass: collect only labels and metadata
         logger.info("First pass: extracting labels and metadata...")
@@ -238,6 +244,7 @@ class PatchExtractor:
         logger.info(f"Saved patches: shape={zarr_store.shape}, dtype={zarr_store.dtype}")
 
         # Save dataset info
+        # Use correct column name for class distribution (metadata always uses "broad_category")
         dataset_info = {
             "n_samples": n_extracted,
             "n_classes": len(class_mapping),
