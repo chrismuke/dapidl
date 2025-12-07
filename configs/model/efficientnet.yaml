@@ -1,0 +1,16 @@
+# EfficientNetB2 model configuration
+backbone: efficientnetv2_rw_s  # timm model name
+pretrained: true
+in_channels: 1  # Single DAPI channel
+num_classes: 5  # 5 broad categories for MVP
+
+# Input adaptation
+input_adapter: replicate  # replicate single channel to 3
+
+# Classification head
+head:
+  dropout: 0.3
+  hidden_dim: null  # Use backbone output directly if null
+
+# Model checkpoint
+checkpoint: null

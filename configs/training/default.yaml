@@ -1,0 +1,47 @@
+# Training configuration
+epochs: 100
+batch_size: 64
+num_workers: 4
+
+# Optimizer
+optimizer:
+  name: AdamW
+  lr: 1e-4
+  weight_decay: 1e-5
+  betas: [0.9, 0.999]
+
+# Learning rate scheduler
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  T_0: 10
+  T_mult: 2
+  eta_min: 1e-6
+
+# Warmup
+warmup_epochs: 5
+warmup_lr: 1e-6
+
+# Loss function
+loss:
+  name: CrossEntropyLoss
+  label_smoothing: 0.1
+  class_weights: true  # Use inverse frequency weights
+
+# Early stopping
+early_stopping:
+  patience: 15
+  min_delta: 0.001
+  monitor: val_macro_f1
+  mode: max
+
+# Regularization
+mixup_alpha: 0.2
+cutmix_alpha: 0.0
+dropout: 0.3
+
+# Gradient clipping
+gradient_clip_val: 1.0
+
+# Checkpointing
+save_top_k: 3
+checkpoint_metric: val_macro_f1

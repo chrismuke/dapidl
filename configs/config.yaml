@@ -1,0 +1,21 @@
+# DAPIDL Main Configuration
+defaults:
+  - data: default
+  - model: efficientnet
+  - training: default
+  - _self_
+
+# Project settings
+project_name: dapidl
+seed: 42
+
+# Paths (override via CLI or environment)
+data_path: null
+output_path: outputs
+
+# Weights & Biases
+wandb:
+  enabled: true
+  project: dapidl
+  entity: null
+  tags: []

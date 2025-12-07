@@ -1,0 +1,38 @@
+# Data configuration
+patch_size: 128
+pixel_size: 0.2125  # µm/pixel for Xenium
+
+# Cell type annotation
+celltypist_model: Cells_Adult_Breast.pkl
+confidence_threshold: 0.5
+
+# Dataset splits
+train_ratio: 0.70
+val_ratio: 0.15
+test_ratio: 0.15
+
+# Class mapping (5 broad categories for MVP)
+class_hierarchy:
+  Epithelial:
+    - Luminal epithelial cell
+    - Myoepithelial cell
+    - Basal cell
+  Immune:
+    - T cell
+    - B cell
+    - Macrophage
+    - Dendritic cell
+    - NK cell
+    - Mast cell
+    - Neutrophil
+    - Monocyte
+    - Plasma cell
+  Stromal:
+    - Fibroblast
+    - Smooth muscle cell
+    - Adipocyte
+  Endothelial:
+    - Endothelial cell
+  Tumor:
+    - Cancer cell
+    - Malignant cell
