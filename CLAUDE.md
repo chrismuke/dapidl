@@ -20,11 +20,25 @@ DAPIDL predicts cell types from DAPI nuclear staining using Xenium spatial trans
 # Install/sync dependencies
 uv sync
 
+# Run complete pipeline (prepare + train)
+uv run dapidl pipeline -x /path/to/xenium -o ./experiment --epochs 50
+
+# Or run steps separately:
+
 # Prepare dataset from Xenium output
-uv run dapidl prepare --xenium-path /path/to/xenium --output ./dataset
+uv run dapidl prepare -x /path/to/xenium -o ./dataset
 
 # Train model
-uv run dapidl train --data ./dataset --epochs 50 --batch-size 64
+uv run dapidl train -d ./dataset --epochs 50 --batch-size 64
+
+# List available CellTypist models
+uv run dapidl list-models
+
+# Annotate Xenium dataset for Xenium Explorer
+uv run dapidl annotate -x /path/to/xenium -o ./annotated -m Cells_Adult_Breast.pkl
+
+# Create hardlinked dataset with custom CSV
+uv run dapidl create-dataset -x /path/to/xenium -o ./output -c annotations.csv
 
 # Lint
 uv run ruff check src/
@@ -61,12 +75,14 @@ DAPIDLDataset → transforms (ToFloat → augment → Normalize → ToTensor)
 ```
 
 ### Key Modules
+- `cli.py`: Click CLI with `pipeline`, `prepare`, `train`, `annotate`, `create-dataset`, `list-models` commands
 - `data/xenium.py`: XeniumDataReader loads DAPI images and cell data from Xenium output
-- `data/annotation.py`: CellTypeAnnotator wraps CellTypist, maps 58 cell types → 3 broad categories (Epithelial, Immune, Stromal)
+- `data/annotation.py`: CellTypeAnnotator wraps CellTypist with multi-model support, maps 58 cell types → 3 broad categories (Epithelial, Immune, Stromal)
 - `data/patches.py`: PatchExtractor uses two-pass approach for memory-efficient Zarr writing
 - `data/dataset.py`: PyTorch Dataset with stratified splits and weighted sampling for class imbalance
+- `data/xenium_export.py`: Create hardlinked Xenium datasets for Xenium Explorer, export cell groups CSV
 - `models/classifier.py`: CellTypeClassifier combines SingleChannelAdapter + timm backbone + classification head
-- `training/trainer.py`: Training loop with W&B logging, early stopping, checkpointing
+- `training/trainer.py`: Training loop with W&B logging (including artifacts), early stopping, checkpointing
 
 ### Critical Implementation Details
 
@@ -75,3 +91,7 @@ DAPIDLDataset → transforms (ToFloat → augment → Normalize → ToTensor)
 **Transform order**: Must convert uint16 to float BEFORE applying augmentations (GaussNoise fails on uint16).
 
 **Class imbalance**: Dataset is ~87% Epithelial, 13% Immune, 0.2% Stromal. Uses weighted loss + WeightedRandomSampler.
+
+**Hardlink exports**: Use `create_hardlink_dataset()` for space-efficient Xenium dataset copies. Hardlinks share inodes, saving ~10GB per dataset.
+
+**Multi-model support**: CellTypeAnnotator accepts list of model names. When using multiple models, columns are suffixed (_1, _2, etc.).

@@ -551,5 +551,230 @@ def predict(
     console.print("\n[yellow]Prediction not yet implemented[/yellow]")
 
 
+@main.command()
+@click.option(
+    "--xenium-path",
+    "-x",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Path to Xenium output directory",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output directory for dataset and model",
+)
+@click.option(
+    "--model",
+    "-m",
+    "models",
+    multiple=True,
+    default=("Cells_Adult_Breast.pkl",),
+    show_default=True,
+    help="CellTypist model(s) to use. Repeat for multiple models.",
+)
+@click.option(
+    "--patch-size",
+    "-p",
+    type=int,
+    default=128,
+    help="Size of extracted patches (default: 128)",
+)
+@click.option(
+    "--confidence-threshold",
+    "-c",
+    type=float,
+    default=0.5,
+    help="Minimum confidence for cell type predictions (default: 0.5)",
+)
+@click.option(
+    "--majority-voting/--no-majority-voting",
+    default=True,
+    help="Use majority voting for predictions (default: True)",
+)
+@click.option(
+    "--epochs",
+    "-e",
+    type=int,
+    default=50,
+    help="Number of training epochs (default: 50)",
+)
+@click.option(
+    "--batch-size",
+    "-b",
+    type=int,
+    default=64,
+    help="Batch size (default: 64)",
+)
+@click.option(
+    "--lr",
+    type=float,
+    default=1e-4,
+    help="Learning rate (default: 1e-4)",
+)
+@click.option(
+    "--wandb/--no-wandb",
+    default=True,
+    help="Enable Weights & Biases logging",
+)
+@click.option(
+    "--skip-prepare",
+    is_flag=True,
+    default=False,
+    help="Skip dataset preparation (use existing dataset)",
+)
+@click.option(
+    "--skip-train",
+    is_flag=True,
+    default=False,
+    help="Skip training (prepare dataset only)",
+)
+def pipeline(
+    xenium_path: Path,
+    output: Path,
+    models: Tuple[str, ...],
+    patch_size: int,
+    confidence_threshold: float,
+    majority_voting: bool,
+    epochs: int,
+    batch_size: int,
+    lr: float,
+    wandb: bool,
+    skip_prepare: bool,
+    skip_train: bool,
+) -> None:
+    """Run the complete DAPIDL pipeline: prepare + train.
+
+    This supercommand executes the full workflow:
+    1. Prepare dataset from Xenium output (extract patches, annotate with CellTypist)
+    2. Train the CNN classifier on the prepared dataset
+
+    Output structure:
+        <output>/
+        ├── dataset/          # Prepared training data
+        │   ├── patches.zarr/ # DAPI patches
+        │   ├── labels.npy
+        │   └── metadata.parquet
+        └── training/         # Model outputs
+            ├── checkpoints/
+            └── logs/
+
+    Examples:
+        # Run full pipeline with defaults
+        dapidl pipeline -x /path/to/xenium -o ./experiment
+
+        # Use custom model and more epochs
+        dapidl pipeline -x /path/to/xenium -o ./experiment \\
+            -m Immune_All_High.pkl --epochs 100
+
+        # Only prepare dataset, skip training
+        dapidl pipeline -x /path/to/xenium -o ./experiment --skip-train
+
+        # Only train, using existing dataset
+        dapidl pipeline -x /path/to/xenium -o ./experiment --skip-prepare
+    """
+    from dapidl.data.xenium import XeniumDataReader
+    from dapidl.data.patches import PatchExtractor
+    from dapidl.data.annotation import CellTypeAnnotator
+    from dapidl.training.trainer import Trainer
+
+    console.print("[bold magenta]═══════════════════════════════════════════════════════════════[/bold magenta]")
+    console.print("[bold magenta]                    DAPIDL PIPELINE                           [/bold magenta]")
+    console.print("[bold magenta]═══════════════════════════════════════════════════════════════[/bold magenta]")
+    console.print()
+
+    # Define paths
+    dataset_path = output / "dataset"
+    training_path = output / "training"
+
+    # Display configuration
+    console.print("[bold cyan]Configuration:[/bold cyan]")
+    console.print(f"  Xenium input:   {xenium_path}")
+    console.print(f"  Output dir:     {output}")
+    console.print(f"  Dataset dir:    {dataset_path}")
+    console.print(f"  Training dir:   {training_path}")
+    console.print(f"  Model(s):       {', '.join(models)}")
+    console.print(f"  Patch size:     {patch_size}")
+    console.print(f"  Confidence:     {confidence_threshold}")
+    console.print(f"  Majority vote:  {majority_voting}")
+    console.print(f"  Epochs:         {epochs}")
+    console.print(f"  Batch size:     {batch_size}")
+    console.print(f"  Learning rate:  {lr}")
+    console.print(f"  W&B logging:    {wandb}")
+    console.print()
+
+    # Step 1: Prepare dataset
+    if not skip_prepare:
+        console.print("[bold blue]═══════════════════════════════════════════════════════════════[/bold blue]")
+        console.print("[bold blue]  STEP 1: Dataset Preparation                                  [/bold blue]")
+        console.print("[bold blue]═══════════════════════════════════════════════════════════════[/bold blue]")
+        console.print()
+
+        console.print("[yellow]Loading Xenium data...[/yellow]")
+        reader = XeniumDataReader(xenium_path)
+
+        console.print("[yellow]Initializing CellTypist annotator...[/yellow]")
+        annotator = CellTypeAnnotator(
+            model_names=list(models),
+            confidence_threshold=confidence_threshold,
+            majority_voting=majority_voting,
+        )
+
+        console.print("[yellow]Extracting patches and generating labels...[/yellow]")
+        extractor = PatchExtractor(
+            reader=reader,
+            patch_size=patch_size,
+            confidence_threshold=confidence_threshold,
+            annotator=annotator,
+        )
+        extractor.extract_and_save(dataset_path)
+
+        console.print(f"\n[green]✓ Dataset prepared at {dataset_path}[/green]")
+        console.print()
+    else:
+        console.print("[yellow]Skipping dataset preparation (--skip-prepare)[/yellow]")
+        if not dataset_path.exists():
+            console.print(f"[red]Error: Dataset not found at {dataset_path}[/red]")
+            console.print("[red]Remove --skip-prepare or prepare dataset first.[/red]")
+            raise click.Abort()
+        console.print()
+
+    # Step 2: Train model
+    if not skip_train:
+        console.print("[bold blue]═══════════════════════════════════════════════════════════════[/bold blue]")
+        console.print("[bold blue]  STEP 2: Model Training                                       [/bold blue]")
+        console.print("[bold blue]═══════════════════════════════════════════════════════════════[/bold blue]")
+        console.print()
+
+        trainer = Trainer(
+            data_path=dataset_path,
+            output_path=training_path,
+            epochs=epochs,
+            batch_size=batch_size,
+            learning_rate=lr,
+            use_wandb=wandb,
+        )
+        trainer.train()
+
+        console.print(f"\n[green]✓ Training complete![/green]")
+        console.print()
+    else:
+        console.print("[yellow]Skipping training (--skip-train)[/yellow]")
+        console.print()
+
+    # Summary
+    console.print("[bold magenta]═══════════════════════════════════════════════════════════════[/bold magenta]")
+    console.print("[bold magenta]                    PIPELINE COMPLETE                          [/bold magenta]")
+    console.print("[bold magenta]═══════════════════════════════════════════════════════════════[/bold magenta]")
+    console.print()
+    console.print("[bold green]Output locations:[/bold green]")
+    console.print(f"  Dataset:     {dataset_path}")
+    if not skip_train:
+        console.print(f"  Model:       {training_path}/checkpoints/")
+        console.print(f"  Logs:        {training_path}/")
+
+
 if __name__ == "__main__":
     main()
