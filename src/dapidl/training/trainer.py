@@ -211,6 +211,111 @@ class Trainer:
             logger.warning(f"Failed to initialize W&B: {e}")
             self.use_wandb = False
 
+    def _log_dataset_artifact(self) -> None:
+        """Log dataset with train/val/test splits as a W&B Artifact."""
+        if not self.use_wandb:
+            return
+
+        try:
+            import wandb
+
+            # Create dataset artifact with metadata
+            artifact = wandb.Artifact(
+                name="dapidl-dataset",
+                type="dataset",
+                description="DAPIDL cell type classification dataset with train/val/test splits",
+                metadata={
+                    "num_classes": self.num_classes,
+                    "class_names": self.class_names,
+                    "train_size": len(self.train_loader.dataset),
+                    "val_size": len(self.val_loader.dataset),
+                    "test_size": len(self.test_loader.dataset),
+                    "seed": self.seed,
+                    "data_path": str(self.data_path),
+                },
+            )
+
+            # Add the full dataset directory (patches.zarr, labels.npy, metadata.parquet, etc.)
+            artifact.add_dir(str(self.data_path), name="data")
+
+            # Save and add split indices for reproducibility
+            split_dir = self.output_path / "splits"
+            split_dir.mkdir(exist_ok=True)
+
+            np.save(split_dir / "train_indices.npy", self.train_loader.dataset.indices)
+            np.save(split_dir / "val_indices.npy", self.val_loader.dataset.indices)
+            np.save(split_dir / "test_indices.npy", self.test_loader.dataset.indices)
+
+            artifact.add_dir(str(split_dir), name="splits")
+
+            # Log artifact and link to registry
+            wandb.log_artifact(artifact)
+
+            # Link to the Datasets registry if available
+            try:
+                wandb.run.link_artifact(artifact, target_path="wandb-registry-Datasets/dapidl")
+            except Exception:
+                pass  # Registry linking may not be available in all deployments
+
+            logger.info("Dataset artifact logged to W&B")
+
+        except Exception as e:
+            logger.warning(f"Failed to log dataset artifact: {e}")
+
+    def _log_model_artifact(
+        self, checkpoint_path: str, artifact_name: str, metrics: dict, is_best: bool = False
+    ) -> None:
+        """Log model checkpoint as a W&B Artifact.
+
+        Args:
+            checkpoint_path: Path to the saved checkpoint file
+            artifact_name: Name for the artifact (e.g., 'best-model', 'final-model')
+            metrics: Training/validation metrics to include in metadata
+            is_best: Whether this is the best model (for registry linking)
+        """
+        if not self.use_wandb:
+            return
+
+        try:
+            import wandb
+
+            # Convert numpy types to Python types for JSON serialization
+            clean_metrics = {}
+            for k, v in metrics.items():
+                if isinstance(v, (np.floating, np.integer)):
+                    clean_metrics[k] = float(v)
+                elif isinstance(v, (int, float, str, bool)):
+                    clean_metrics[k] = v
+
+            artifact = wandb.Artifact(
+                name=f"dapidl-{artifact_name}",
+                type="model",
+                description=f"DAPIDL cell type classifier - {artifact_name}",
+                metadata={
+                    "backbone": self.backbone_name,
+                    "pretrained": self.pretrained,
+                    "dropout": self.dropout,
+                    "num_classes": self.num_classes,
+                    "class_names": self.class_names,
+                    **clean_metrics,
+                },
+            )
+
+            artifact.add_file(checkpoint_path)
+            wandb.log_artifact(artifact)
+
+            # Link best model to the Models registry
+            if is_best:
+                try:
+                    wandb.run.link_artifact(artifact, target_path="wandb-registry-Models/dapidl")
+                except Exception:
+                    pass  # Registry linking may not be available
+
+            logger.info(f"Model artifact '{artifact_name}' logged to W&B")
+
+        except Exception as e:
+            logger.warning(f"Failed to log model artifact: {e}")
+
     def train_epoch(self) -> dict[str, float]:
         """Run one training epoch.
 
@@ -315,6 +420,9 @@ class Trainer:
         self._setup_model()
         self._setup_wandb()
 
+        # Log dataset artifact (once at start of training)
+        self._log_dataset_artifact()
+
         logger.info(f"Starting training for {self.epochs} epochs")
 
         for epoch in range(self.epochs):
@@ -359,13 +467,17 @@ class Trainer:
                 self.epochs_without_improvement = 0
 
                 # Save best checkpoint
+                best_path = str(self.output_path / "best_model.pt")
                 self.model.save_checkpoint(
-                    str(self.output_path / "best_model.pt"),
+                    best_path,
                     optimizer=self.optimizer,
                     epoch=epoch + 1,
                     metrics=metrics,
                 )
                 logger.info(f"  New best model saved (F1: {self.best_val_f1:.4f})")
+
+                # Log best model artifact to W&B
+                self._log_model_artifact(best_path, "best-model", metrics, is_best=True)
             else:
                 self.epochs_without_improvement += 1
 
@@ -384,12 +496,16 @@ class Trainer:
             logger.info(f"  {k}: {v:.4f}")
 
         # Save final checkpoint
+        final_path = str(self.output_path / "final_model.pt")
         self.model.save_checkpoint(
-            str(self.output_path / "final_model.pt"),
+            final_path,
             optimizer=self.optimizer,
             epoch=self.epochs,
             metrics=test_metrics,
         )
+
+        # Log final model artifact to W&B
+        self._log_model_artifact(final_path, "final-model", test_metrics, is_best=False)
 
         # Close W&B
         if self.use_wandb:
