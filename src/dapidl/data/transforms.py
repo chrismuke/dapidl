@@ -268,3 +268,109 @@ def get_inference_transforms(
         Albumentations Compose transform
     """
     return get_val_transforms(patch_size, stats=stats)
+
+
+def get_heavy_augmentation_transforms(
+    patch_size: int = 128,
+    stats: dict[str, float] | None = None,
+) -> A.Compose:
+    """Get heavy augmentation pipeline for rare classes.
+
+    This applies more aggressive augmentations to increase variability
+    for underrepresented classes, helping the model generalize better.
+
+    Args:
+        patch_size: Expected input patch size
+        stats: Dataset normalization stats (p_low, p_high, mean, std).
+
+    Returns:
+        Albumentations Compose transform
+    """
+    if stats is not None:
+        normalize = PercentileNormalize(
+            p_low=stats["p_low"],
+            p_high=stats["p_high"],
+            mean=stats["mean"],
+            std=stats["std"],
+        )
+        return A.Compose(
+            [
+                # More aggressive geometric transforms
+                A.RandomRotate90(p=1.0),  # Always rotate
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+                A.ShiftScaleRotate(
+                    shift_limit=0.15,  # Increased from 0.1
+                    scale_limit=0.2,   # Increased from 0.1
+                    rotate_limit=30,   # Increased from 15
+                    border_mode=0,
+                    p=0.8,  # Increased from 0.5
+                ),
+                # More aggressive elastic deformation
+                A.ElasticTransform(
+                    alpha=80,   # Increased from 50
+                    sigma=12,   # Increased from 10
+                    border_mode=0,
+                    p=0.5,  # Increased from 0.3
+                ),
+                # Grid distortion for additional deformation
+                A.GridDistortion(
+                    num_steps=5,
+                    distort_limit=0.3,
+                    p=0.3,
+                ),
+                # Adaptive normalization
+                normalize,
+                # More aggressive intensity transforms
+                A.RandomBrightnessContrast(
+                    brightness_limit=0.3,  # Increased from 0.2
+                    contrast_limit=0.3,    # Increased from 0.2
+                    p=0.7,  # Increased from 0.5
+                ),
+                A.GaussNoise(var_limit=(0.005, 0.02), p=0.5),  # Increased
+                A.GaussianBlur(blur_limit=(3, 7), p=0.3),  # Increased blur
+                # Additional augmentations for rare classes
+                A.RandomGamma(gamma_limit=(80, 120), p=0.3),
+                A.CLAHE(clip_limit=2.0, p=0.2),  # Contrast enhancement
+                # Convert to tensor
+                ToTensorV2(),
+            ]
+        )
+    else:
+        # Legacy version without stats
+        return A.Compose(
+            [
+                A.ToFloat(max_value=65535.0),
+                A.RandomRotate90(p=1.0),
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+                A.ShiftScaleRotate(
+                    shift_limit=0.15,
+                    scale_limit=0.2,
+                    rotate_limit=30,
+                    border_mode=0,
+                    p=0.8,
+                ),
+                A.ElasticTransform(
+                    alpha=80,
+                    sigma=12,
+                    border_mode=0,
+                    p=0.5,
+                ),
+                A.GridDistortion(
+                    num_steps=5,
+                    distort_limit=0.3,
+                    p=0.3,
+                ),
+                A.RandomBrightnessContrast(
+                    brightness_limit=0.3,
+                    contrast_limit=0.3,
+                    p=0.7,
+                ),
+                A.GaussNoise(var_limit=(0.005, 0.02), p=0.5),
+                A.GaussianBlur(blur_limit=(3, 7), p=0.3),
+                A.RandomGamma(gamma_limit=(80, 120), p=0.3),
+                A.Normalize(mean=0.5, std=0.25, max_pixel_value=1.0),
+                ToTensorV2(),
+            ]
+        )

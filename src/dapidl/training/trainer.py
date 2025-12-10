@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from loguru import logger
 from tqdm import tqdm
 
-from dapidl.data.dataset import DAPIDLDataset, create_data_splits, create_dataloaders
+from dapidl.data.dataset import DAPIDLDataset, DAPIDLDatasetWithHeavyAug, create_data_splits, create_dataloaders
 from dapidl.models.classifier import CellTypeClassifier
 from dapidl.training.losses import get_class_weights
 
@@ -56,6 +56,8 @@ class Trainer:
         use_amp: bool = True,
         # Data loading backend
         backend: str = "pytorch",
+        # Augmentation options
+        use_heavy_aug: bool = False,
     ) -> None:
         """Initialize trainer.
 
@@ -81,6 +83,7 @@ class Trainer:
             min_samples_per_class: Filter classes with fewer samples (None to keep all)
             use_amp: Use automatic mixed precision (fp16) for faster training
             backend: Data loading backend ("pytorch" or "dali")
+            use_heavy_aug: Use heavy augmentation for rare classes
         """
         self.data_path = Path(data_path)
         self.output_path = Path(output_path)
@@ -102,6 +105,7 @@ class Trainer:
         self.min_samples_per_class = min_samples_per_class
         self.use_amp = use_amp
         self.backend = backend
+        self.use_heavy_aug = use_heavy_aug
 
         # Model params
         self.backbone_name = backbone_name
@@ -170,6 +174,7 @@ class Trainer:
                 self.data_path,
                 seed=self.seed,
                 min_samples_per_class=min_samples,
+                use_heavy_aug=self.use_heavy_aug,
             )
 
             self.train_loader, self.val_loader, self.test_loader = create_dataloaders(

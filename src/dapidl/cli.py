@@ -621,6 +621,11 @@ def create_dataset(
     show_default=True,
     help="Data loading backend: pytorch (CPU), dali (GPU with Zarr), or dali-lmdb (GPU with LMDB, fastest)",
 )
+@click.option(
+    "--heavy-aug/--no-heavy-aug",
+    default=False,
+    help="Use heavy augmentation for rare classes (<5%% of data)",
+)
 def train(
     config: Path | None,
     data: Path,
@@ -633,6 +638,7 @@ def train(
     max_weight_ratio: float,
     min_samples: int | None,
     backend: str,
+    heavy_aug: bool,
 ) -> None:
     """Train cell type classifier.
 
@@ -660,6 +666,7 @@ def train(
     console.print(f"Max weight ratio: {max_weight_ratio}")
     if min_samples:
         console.print(f"Min samples per class: {min_samples}")
+    console.print(f"Heavy augmentation: {heavy_aug}")
     console.print(f"W&B logging: {wandb}")
 
     # Check DALI availability if requested
@@ -682,6 +689,7 @@ def train(
         max_weight_ratio=max_weight_ratio,
         min_samples_per_class=min_samples,
         backend=backend.lower(),
+        use_heavy_aug=heavy_aug,
     )
     trainer.train()
 

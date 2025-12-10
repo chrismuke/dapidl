@@ -15,6 +15,7 @@ from loguru import logger
 from dapidl.data.transforms import (
     get_train_transforms,
     get_val_transforms,
+    get_heavy_augmentation_transforms,
     compute_dataset_stats,
 )
 
@@ -147,6 +148,119 @@ class DAPIDLDataset(Dataset):
         return class_weights[labels]
 
 
+class DAPIDLDatasetWithHeavyAug(Dataset):
+    """Dataset with class-conditional augmentation for rare classes.
+
+    Applies heavy augmentation to samples from rare classes (< threshold % of data)
+    to increase variability and help the model generalize better.
+    """
+
+    def __init__(
+        self,
+        data_path: str | Path,
+        split: str = "train",
+        indices: np.ndarray | None = None,
+        adaptive_norm: bool = True,
+        rare_class_threshold: float = 0.05,
+    ) -> None:
+        """Initialize dataset with class-conditional augmentation.
+
+        Args:
+            data_path: Path to prepared dataset directory
+            split: One of 'train', 'val', 'test'
+            indices: Optional subset indices
+            adaptive_norm: Use adaptive percentile-based normalization
+            rare_class_threshold: Classes with < this fraction are "rare" (default 5%)
+        """
+        self.data_path = Path(data_path)
+        self.split = split
+
+        # Load data
+        self.patches = zarr.open(self.data_path / "patches.zarr", mode="r")
+        self.labels = np.load(self.data_path / "labels.npy")
+        self.metadata = pl.read_parquet(self.data_path / "metadata.parquet")
+
+        # Load class mapping
+        with open(self.data_path / "class_mapping.json") as f:
+            self.class_mapping = json.load(f)
+        self.num_classes = len(self.class_mapping)
+        self.class_names = list(self.class_mapping.keys())
+
+        # Handle indices
+        if indices is not None:
+            self.indices = indices
+        else:
+            self.indices = np.arange(len(self.labels))
+
+        # Compute stats
+        self.stats = None
+        if adaptive_norm:
+            self.stats = compute_dataset_stats(self.data_path)
+
+        # Identify rare classes based on training distribution
+        labels_subset = self.labels[self.indices]
+        class_counts = np.bincount(labels_subset, minlength=self.num_classes)
+        total = len(labels_subset)
+        threshold_count = rare_class_threshold * total
+
+        self.rare_classes = set(
+            idx for idx, count in enumerate(class_counts)
+            if 0 < count < threshold_count
+        )
+
+        # Create transforms
+        if split == "train":
+            self.normal_transform = get_train_transforms(stats=self.stats)
+            self.heavy_transform = get_heavy_augmentation_transforms(stats=self.stats)
+        else:
+            self.normal_transform = get_val_transforms(stats=self.stats)
+            self.heavy_transform = None  # No heavy aug for val/test
+
+        logger.info(
+            f"DAPIDLDatasetWithHeavyAug: {len(self)} samples, {self.num_classes} classes, "
+            f"{len(self.rare_classes)} rare classes (<{rare_class_threshold*100:.0f}%)"
+        )
+        if self.rare_classes:
+            rare_names = [self.class_names[i] for i in self.rare_classes]
+            logger.info(f"Rare classes: {rare_names}")
+
+    def __len__(self) -> int:
+        return len(self.indices)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+        actual_idx = self.indices[idx]
+        patch = np.array(self.patches[actual_idx])
+        label = self.labels[actual_idx]
+
+        # Use heavy augmentation for rare classes during training
+        if self.split == "train" and label in self.rare_classes and self.heavy_transform is not None:
+            transformed = self.heavy_transform(image=patch)
+        else:
+            transformed = self.normal_transform(image=patch)
+
+        patch = transformed["image"]
+        return patch, int(label)
+
+    def get_class_weights(self, max_weight_ratio: float = 10.0) -> torch.Tensor:
+        """Compute class weights (same as base class)."""
+        labels = self.labels[self.indices]
+        class_counts = np.bincount(labels, minlength=self.num_classes)
+        class_counts = np.maximum(class_counts, 1)
+        weights = 1.0 / class_counts
+        if max_weight_ratio is not None and max_weight_ratio > 0:
+            min_weight = weights.min()
+            max_allowed = min_weight * max_weight_ratio
+            weights = np.minimum(weights, max_allowed)
+        weights = weights / weights.sum() * self.num_classes
+        return torch.FloatTensor(weights)
+
+    def get_sample_weights(self) -> np.ndarray:
+        """Get per-sample weights for WeightedRandomSampler."""
+        class_weights = self.get_class_weights().numpy()
+        labels = self.labels[self.indices]
+        return class_weights[labels]
+
+
 def create_data_splits(
     data_path: str | Path,
     train_ratio: float = 0.7,
@@ -155,6 +269,7 @@ def create_data_splits(
     seed: int = 42,
     stratify: bool = True,
     min_samples_per_class: int | None = None,
+    use_heavy_aug: bool = False,
 ) -> tuple[DAPIDLDataset, DAPIDLDataset, DAPIDLDataset]:
     """Create train/val/test splits of the dataset.
 
@@ -166,6 +281,7 @@ def create_data_splits(
         seed: Random seed for reproducibility
         stratify: Whether to stratify by class labels
         min_samples_per_class: Minimum samples per class (filter rare classes)
+        use_heavy_aug: Use heavy augmentation for rare classes (only for training)
 
     Returns:
         Tuple of (train_dataset, val_dataset, test_dataset)
@@ -232,7 +348,13 @@ def create_data_splits(
     )
 
     # Create datasets
-    train_dataset = DAPIDLDataset(data_path, split="train", indices=train_indices)
+    if use_heavy_aug:
+        # Use class-conditional augmentation for training
+        train_dataset = DAPIDLDatasetWithHeavyAug(data_path, split="train", indices=train_indices)
+        logger.info("Using heavy augmentation for rare classes in training set")
+    else:
+        train_dataset = DAPIDLDataset(data_path, split="train", indices=train_indices)
+
     val_dataset = DAPIDLDataset(data_path, split="val", indices=val_indices)
     test_dataset = DAPIDLDataset(data_path, split="test", indices=test_indices)
 
