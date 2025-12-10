@@ -795,6 +795,151 @@ class Trainer:
         except Exception as e:
             logger.warning(f"Failed to log misclassification analysis: {e}")
 
+    def _log_sample_patches(self, samples_per_class: int = 5) -> None:
+        """Log sample patches from the validation set to W&B.
+
+        Samples N patches per class and logs them as PNG images organized by class.
+
+        Args:
+            samples_per_class: Number of sample patches to log per class (default: 5)
+        """
+        if not self.use_wandb:
+            return
+
+        try:
+            import wandb
+            from PIL import Image
+            import io
+
+            logger.info(f"Logging {samples_per_class} sample patches per class to W&B...")
+
+            # Load labels from dataset
+            labels_path = self.data_path / "labels.npy"
+            if not labels_path.exists():
+                logger.warning("labels.npy not found, skipping sample patch logging")
+                return
+
+            all_labels = np.load(labels_path)
+
+            # Get validation indices
+            if hasattr(self.val_loader.dataset, 'indices'):
+                # PyTorch Subset
+                val_indices = self.val_loader.dataset.indices
+            else:
+                # DALI or other - use a fraction of indices
+                n_total = len(all_labels)
+                np.random.seed(self.seed)
+                val_indices = np.random.choice(n_total, size=min(n_total // 5, 10000), replace=False)
+
+            val_labels = all_labels[val_indices]
+
+            # Try to load patches from LMDB first, then Zarr
+            lmdb_path = self.data_path / "patches.lmdb"
+            zarr_path = self.data_path / "patches.zarr"
+
+            patches_by_class = {i: [] for i in range(self.num_classes)}
+
+            if lmdb_path.exists():
+                # Load from LMDB
+                import lmdb
+                import struct
+
+                env = lmdb.open(str(lmdb_path), readonly=True, lock=False)
+                with env.begin() as txn:
+                    for idx_in_val, global_idx in enumerate(val_indices):
+                        label = val_labels[idx_in_val]
+                        if len(patches_by_class[label]) >= samples_per_class:
+                            continue
+
+                        data = txn.get(str(global_idx).encode())
+                        if data:
+                            # LMDB stores: 4-byte height + 4-byte width + raw data
+                            h = struct.unpack('I', data[:4])[0]
+                            w = struct.unpack('I', data[4:8])[0]
+                            patch = np.frombuffer(data[8:], dtype=np.uint16).reshape(h, w)
+                            patches_by_class[label].append((global_idx, patch))
+
+                        # Check if we have enough samples for all classes
+                        if all(len(patches_by_class[i]) >= samples_per_class for i in range(self.num_classes)):
+                            break
+                env.close()
+
+            elif zarr_path.exists():
+                # Load from Zarr
+                import zarr
+
+                patches = zarr.open(str(zarr_path), mode='r')
+                for idx_in_val, global_idx in enumerate(val_indices):
+                    label = val_labels[idx_in_val]
+                    if len(patches_by_class[label]) >= samples_per_class:
+                        continue
+
+                    patch = patches[global_idx]
+                    patches_by_class[label].append((global_idx, patch))
+
+                    # Check if we have enough samples for all classes
+                    if all(len(patches_by_class[i]) >= samples_per_class for i in range(self.num_classes)):
+                        break
+            else:
+                logger.warning("No patches.lmdb or patches.zarr found, skipping sample patch logging")
+                return
+
+            # Convert patches to wandb.Image objects and log
+            wandb_images = []
+            for class_idx in range(self.num_classes):
+                class_name = self.class_names[class_idx]
+                patches = patches_by_class[class_idx]
+
+                for sample_idx, (global_idx, patch) in enumerate(patches[:samples_per_class]):
+                    # Normalize uint16 to uint8 for visualization
+                    patch_normalized = patch.astype(np.float32)
+                    patch_normalized = (patch_normalized - patch_normalized.min()) / (patch_normalized.max() - patch_normalized.min() + 1e-8)
+                    patch_uint8 = (patch_normalized * 255).astype(np.uint8)
+
+                    # Create PIL Image
+                    img = Image.fromarray(patch_uint8, mode='L')
+
+                    # Add to list with caption
+                    wandb_images.append(wandb.Image(
+                        img,
+                        caption=f"{class_name} (idx={global_idx})"
+                    ))
+
+            # Log as a media panel grouped by class
+            if wandb_images:
+                wandb.log({"sample_patches_by_class": wandb_images})
+
+                # Also create a table for better organization
+                table_data = []
+                for class_idx in range(self.num_classes):
+                    class_name = self.class_names[class_idx]
+                    patches = patches_by_class[class_idx]
+
+                    for sample_idx, (global_idx, patch) in enumerate(patches[:samples_per_class]):
+                        # Normalize for visualization
+                        patch_normalized = patch.astype(np.float32)
+                        patch_normalized = (patch_normalized - patch_normalized.min()) / (patch_normalized.max() - patch_normalized.min() + 1e-8)
+                        patch_uint8 = (patch_normalized * 255).astype(np.uint8)
+
+                        img = Image.fromarray(patch_uint8, mode='L')
+                        table_data.append([
+                            class_name,
+                            sample_idx + 1,
+                            global_idx,
+                            wandb.Image(img)
+                        ])
+
+                table = wandb.Table(
+                    columns=["Cell Type", "Sample #", "Index", "Patch"],
+                    data=table_data
+                )
+                wandb.log({"sample_patches_table": table})
+
+            logger.info(f"  Logged {len(wandb_images)} sample patches to W&B")
+
+        except Exception as e:
+            logger.warning(f"Failed to log sample patches: {e}")
+
     def train(self) -> dict[str, Any]:
         """Run full training loop.
 
@@ -808,6 +953,9 @@ class Trainer:
 
         # Log dataset artifact (once at start of training)
         self._log_dataset_artifact()
+
+        # Log sample patches per class to W&B
+        self._log_sample_patches(samples_per_class=5)
 
         logger.info(f"Starting training for {self.epochs} epochs")
 
