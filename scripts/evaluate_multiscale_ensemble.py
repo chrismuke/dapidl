@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dapidl.models import CellTypeClassifier, MultiScaleEnsemble
-from dapidl.data.dataset import DAPIDLDataset, create_train_val_test_splits
+from dapidl.data.dataset import DAPIDLDataset, create_data_splits
 
 
 def evaluate_single_model(
@@ -147,7 +147,7 @@ def main():
 
     # Create dataset and splits using the standard function (ensures consistent splits)
     print(f"\nLoading dataset from {args.dataset}...")
-    train_dataset, val_dataset, test_dataset = create_train_val_test_splits(
+    train_dataset, val_dataset, test_dataset = create_data_splits(
         args.dataset, seed=42
     )
     print(f"Test samples: {len(test_dataset)}")

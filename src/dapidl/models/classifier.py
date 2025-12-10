@@ -142,7 +142,7 @@ class CellTypeClassifier(nn.Module):
         Returns:
             Loaded model
         """
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
         # Extract hyperparameters
         hparams = checkpoint.get("hparams", {})
