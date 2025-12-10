@@ -1,0 +1,297 @@
+{
+  "source_name": "celltypist_breast",
+  "description": "CellTypist Cells_Adult_Breast.pkl model (58 cell types from healthy breast tissue)",
+  "mappings": {
+    "cd4-tem": {
+      "hierarchy_label": "CD4-Tem",
+      "confidence": 1.0,
+      "notes": "CD4+ effector memory T cells"
+    },
+    "cd4-th": {
+      "hierarchy_label": "CD4-Th",
+      "confidence": 1.0,
+      "notes": "CD4+ T helper cells"
+    },
+    "cd4-th-like": {
+      "hierarchy_label": "CD4-Th-like",
+      "confidence": 1.0,
+      "notes": "CD4+ T helper-like cells"
+    },
+    "cd4-treg": {
+      "hierarchy_label": "CD4-Treg",
+      "confidence": 1.0,
+      "notes": "CD4+ regulatory T cells"
+    },
+    "cd4-activated": {
+      "hierarchy_label": "CD4-activated",
+      "confidence": 1.0,
+      "notes": "Activated CD4+ T cells"
+    },
+    "cd4-naive": {
+      "hierarchy_label": "CD4-naive",
+      "confidence": 1.0,
+      "notes": "Naive CD4+ T cells"
+    },
+    "cd8-tem": {
+      "hierarchy_label": "CD8-Tem",
+      "confidence": 1.0,
+      "notes": "CD8+ effector memory T cells"
+    },
+    "cd8-trm": {
+      "hierarchy_label": "CD8-Trm",
+      "confidence": 1.0,
+      "notes": "CD8+ tissue-resident memory T cells"
+    },
+    "cd8-activated": {
+      "hierarchy_label": "CD8-activated",
+      "confidence": 1.0,
+      "notes": "Activated CD8+ T cells"
+    },
+    "t_prol": {
+      "hierarchy_label": "T_prol",
+      "confidence": 1.0,
+      "notes": "Proliferating T cells"
+    },
+    "gd": {
+      "hierarchy_label": "GD",
+      "confidence": 1.0,
+      "notes": "Gamma-delta T cells"
+    },
+    "nkt": {
+      "hierarchy_label": "NKT",
+      "confidence": 1.0,
+      "notes": "Natural killer T cells"
+    },
+    "nk": {
+      "hierarchy_label": "NK",
+      "confidence": 1.0,
+      "notes": "Natural killer cells"
+    },
+    "nk-ilcs": {
+      "hierarchy_label": "NK-ILCs",
+      "confidence": 1.0,
+      "notes": "NK cells and innate lymphoid cells"
+    },
+    "b_naive": {
+      "hierarchy_label": "b_naive",
+      "confidence": 1.0,
+      "notes": "Naive B cells"
+    },
+    "bmem_switched": {
+      "hierarchy_label": "bmem_switched",
+      "confidence": 1.0,
+      "notes": "Class-switched memory B cells"
+    },
+    "bmem_unswitched": {
+      "hierarchy_label": "bmem_unswitched",
+      "confidence": 1.0,
+      "notes": "Unswitched memory B cells"
+    },
+    "plasma_iga": {
+      "hierarchy_label": "plasma_IgA",
+      "confidence": 1.0,
+      "notes": "IgA-secreting plasma cells"
+    },
+    "plasma_igg": {
+      "hierarchy_label": "plasma_IgG",
+      "confidence": 1.0,
+      "notes": "IgG-secreting plasma cells"
+    },
+    "macro-ifn": {
+      "hierarchy_label": "Macro-IFN",
+      "confidence": 1.0,
+      "notes": "Interferon-stimulated macrophages"
+    },
+    "macro-lipo": {
+      "hierarchy_label": "Macro-lipo",
+      "confidence": 1.0,
+      "notes": "Lipid-associated macrophages"
+    },
+    "macro-m1": {
+      "hierarchy_label": "Macro-m1",
+      "confidence": 1.0,
+      "notes": "M1-like macrophages"
+    },
+    "macro-m1-ccl": {
+      "hierarchy_label": "Macro-m1-CCL",
+      "confidence": 1.0,
+      "notes": "CCL-expressing M1 macrophages"
+    },
+    "macro-m2": {
+      "hierarchy_label": "Macro-m2",
+      "confidence": 1.0,
+      "notes": "M2-like macrophages"
+    },
+    "macro-m2-cxcl": {
+      "hierarchy_label": "Macro-m2-CXCL",
+      "confidence": 1.0,
+      "notes": "CXCL-expressing M2 macrophages"
+    },
+    "mono-classical": {
+      "hierarchy_label": "Mono-classical",
+      "confidence": 1.0,
+      "notes": "Classical monocytes"
+    },
+    "mono-non-classical": {
+      "hierarchy_label": "Mono-non-classical",
+      "confidence": 1.0,
+      "notes": "Non-classical monocytes"
+    },
+    "neutrophil": {
+      "hierarchy_label": "Neutrophil",
+      "confidence": 1.0,
+      "notes": "Neutrophils"
+    },
+    "mye-prol": {
+      "hierarchy_label": "mye-prol",
+      "confidence": 1.0,
+      "notes": "Proliferating myeloid cells"
+    },
+    "cdc1": {
+      "hierarchy_label": "cDC1",
+      "confidence": 1.0,
+      "notes": "Conventional dendritic cells type 1"
+    },
+    "cdc2": {
+      "hierarchy_label": "cDC2",
+      "confidence": 1.0,
+      "notes": "Conventional dendritic cells type 2"
+    },
+    "mdc": {
+      "hierarchy_label": "mDC",
+      "confidence": 1.0,
+      "notes": "Myeloid dendritic cells"
+    },
+    "pdc": {
+      "hierarchy_label": "pDC",
+      "confidence": 1.0,
+      "notes": "Plasmacytoid dendritic cells"
+    },
+    "mast": {
+      "hierarchy_label": "Mast",
+      "confidence": 1.0,
+      "notes": "Mast cells"
+    },
+    "lummhr-scgb": {
+      "hierarchy_label": "LummHR-SCGB",
+      "confidence": 1.0,
+      "notes": "Hormone-responsive luminal cells, SCGB+"
+    },
+    "lummhr-active": {
+      "hierarchy_label": "LummHR-active",
+      "confidence": 1.0,
+      "notes": "Active hormone-responsive luminal cells"
+    },
+    "lummhr-major": {
+      "hierarchy_label": "LummHR-major",
+      "confidence": 1.0,
+      "notes": "Major hormone-responsive luminal population"
+    },
+    "lumsec-hla": {
+      "hierarchy_label": "Lumsec-HLA",
+      "confidence": 1.0,
+      "notes": "HLA-high secretory luminal cells"
+    },
+    "lumsec-kit": {
+      "hierarchy_label": "Lumsec-KIT",
+      "confidence": 1.0,
+      "notes": "KIT+ secretory luminal cells"
+    },
+    "lumsec-basal": {
+      "hierarchy_label": "Lumsec-basal",
+      "confidence": 1.0,
+      "notes": "Basal-like secretory luminal cells"
+    },
+    "lumsec-lac": {
+      "hierarchy_label": "Lumsec-lac",
+      "confidence": 1.0,
+      "notes": "Lactating secretory luminal cells"
+    },
+    "lumsec-major": {
+      "hierarchy_label": "Lumsec-major",
+      "confidence": 1.0,
+      "notes": "Major secretory luminal population"
+    },
+    "lumsec-myo": {
+      "hierarchy_label": "Lumsec-myo",
+      "confidence": 1.0,
+      "notes": "Myoepithelial-like secretory luminal cells"
+    },
+    "lumsec-prol": {
+      "hierarchy_label": "Lumsec-prol",
+      "confidence": 1.0,
+      "notes": "Proliferating secretory luminal cells"
+    },
+    "basal": {
+      "hierarchy_label": "basal",
+      "confidence": 1.0,
+      "notes": "Basal/myoepithelial cells"
+    },
+    "fibro-sfrp4": {
+      "hierarchy_label": "Fibro-SFRP4",
+      "confidence": 1.0,
+      "notes": "SFRP4+ fibroblasts"
+    },
+    "fibro-major": {
+      "hierarchy_label": "Fibro-major",
+      "confidence": 1.0,
+      "notes": "Major fibroblast population"
+    },
+    "fibro-matrix": {
+      "hierarchy_label": "Fibro-matrix",
+      "confidence": 1.0,
+      "notes": "Matrix-producing fibroblasts"
+    },
+    "fibro-prematrix": {
+      "hierarchy_label": "Fibro-prematrix",
+      "confidence": 1.0,
+      "notes": "Pre-matrix fibroblasts"
+    },
+    "vas-arterial": {
+      "hierarchy_label": "Vas-arterial",
+      "confidence": 1.0,
+      "notes": "Arterial endothelial cells"
+    },
+    "vas-capillary": {
+      "hierarchy_label": "Vas-capillary",
+      "confidence": 1.0,
+      "notes": "Capillary endothelial cells"
+    },
+    "vas-venous": {
+      "hierarchy_label": "Vas-venous",
+      "confidence": 1.0,
+      "notes": "Venous endothelial cells"
+    },
+    "pericytes": {
+      "hierarchy_label": "pericytes",
+      "confidence": 1.0,
+      "notes": "Pericytes"
+    },
+    "vsmc": {
+      "hierarchy_label": "vsmc",
+      "confidence": 1.0,
+      "notes": "Vascular smooth muscle cells"
+    },
+    "lymph-immune": {
+      "hierarchy_label": "Lymph-immune",
+      "confidence": 1.0,
+      "notes": "Immune-associated lymphatic endothelial cells"
+    },
+    "lymph-major": {
+      "hierarchy_label": "Lymph-major",
+      "confidence": 1.0,
+      "notes": "Major lymphatic endothelial population"
+    },
+    "lymph-valve1": {
+      "hierarchy_label": "Lymph-valve1",
+      "confidence": 1.0,
+      "notes": "Lymphatic valve cells type 1"
+    },
+    "lymph-valve2": {
+      "hierarchy_label": "Lymph-valve2",
+      "confidence": 1.0,
+      "notes": "Lymphatic valve cells type 2"
+    }
+  },
+  "unmapped_labels": []
+}

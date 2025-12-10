@@ -1,0 +1,92 @@
+{
+  "source_name": "xenium_breast",
+  "description": "Xenium breast cancer ground truth labels (17 classes)",
+  "mappings": {
+    "invasive_tumor": {
+      "hierarchy_label": "Invasive_Tumor",
+      "confidence": 1.0,
+      "notes": "Primary invasive breast carcinoma"
+    },
+    "prolif_invasive_tumor": {
+      "hierarchy_label": "Prolif_Invasive_Tumor",
+      "confidence": 1.0,
+      "notes": "Proliferating invasive tumor cells"
+    },
+    "dcis_1": {
+      "hierarchy_label": "DCIS_1",
+      "confidence": 1.0,
+      "notes": "Ductal carcinoma in situ subtype 1"
+    },
+    "dcis_2": {
+      "hierarchy_label": "DCIS_2",
+      "confidence": 1.0,
+      "notes": "Ductal carcinoma in situ subtype 2"
+    },
+    "myoepi_acta2+": {
+      "hierarchy_label": "Myoepi_ACTA2+",
+      "confidence": 1.0,
+      "notes": "ACTA2+ myoepithelial cells"
+    },
+    "myoepi_krt15+": {
+      "hierarchy_label": "Myoepi_KRT15+",
+      "confidence": 1.0,
+      "notes": "KRT15+ myoepithelial cells"
+    },
+    "cd4+_t_cells": {
+      "hierarchy_label": "CD4+_T_Cells",
+      "confidence": 1.0,
+      "notes": "CD4+ helper T cells"
+    },
+    "cd8+_t_cells": {
+      "hierarchy_label": "CD8+_T_Cells",
+      "confidence": 1.0,
+      "notes": "CD8+ cytotoxic T cells"
+    },
+    "b_cells": {
+      "hierarchy_label": "B_Cells",
+      "confidence": 1.0,
+      "notes": "B lymphocytes"
+    },
+    "macrophages_1": {
+      "hierarchy_label": "Macrophages_1",
+      "confidence": 1.0,
+      "notes": "Macrophage subtype 1"
+    },
+    "macrophages_2": {
+      "hierarchy_label": "Macrophages_2",
+      "confidence": 1.0,
+      "notes": "Macrophage subtype 2"
+    },
+    "irf7+_dcs": {
+      "hierarchy_label": "IRF7+_DCs",
+      "confidence": 1.0,
+      "notes": "IRF7+ plasmacytoid dendritic cells"
+    },
+    "lamp3+_dcs": {
+      "hierarchy_label": "LAMP3+_DCs",
+      "confidence": 1.0,
+      "notes": "LAMP3+ mature dendritic cells"
+    },
+    "mast_cells": {
+      "hierarchy_label": "Mast_Cells",
+      "confidence": 1.0,
+      "notes": "Mast cells"
+    },
+    "stromal": {
+      "hierarchy_label": "Stromal_Cells",
+      "confidence": 1.0,
+      "notes": "General stromal/fibroblast cells"
+    },
+    "endothelial": {
+      "hierarchy_label": "Endothelial_Cells",
+      "confidence": 1.0,
+      "notes": "Vascular endothelial cells"
+    },
+    "perivascular-like": {
+      "hierarchy_label": "Perivascular-Like",
+      "confidence": 1.0,
+      "notes": "Perivascular/pericyte-like cells"
+    }
+  },
+  "unmapped_labels": []
+}

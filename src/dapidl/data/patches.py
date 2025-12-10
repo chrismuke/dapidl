@@ -130,6 +130,12 @@ class PatchExtractor:
         if not use_all_cells:
             annotations = self.annotator.filter_by_confidence(annotations)
 
+        # Filter by category if requested (for fine-grained classification)
+        if self.annotator.filter_category:
+            annotations = self.annotator.filter_by_category(
+                annotations, self.annotator.filter_category
+            )
+
         # Get class mapping
         class_mapping = self.annotator.get_class_mapping(annotations)
         logger.info(f"Class mapping: {class_mapping}")
@@ -163,13 +169,17 @@ class PatchExtractor:
         broad_categories = annotated_cells[broad_col].to_list()
         confidences = annotated_cells[conf_col].to_numpy()
 
+        # Determine which labels to use based on fine_grained mode
+        use_fine_grained = getattr(self.annotator, 'fine_grained', False)
+        label_source = predicted_types if use_fine_grained else broad_categories
+
         # First pass: collect only labels and metadata
         logger.info("First pass: extracting labels and metadata...")
         n_extracted = 0
         for i in range(n_cells):
             patch = self.extract_patch(image, centroids_x[i], centroids_y[i])
             if patch is not None:
-                labels_list.append(class_mapping[broad_categories[i]])
+                labels_list.append(class_mapping[label_source[i]])
                 metadata_list.append(
                     {
                         "cell_id": int(cell_ids[i]),
@@ -244,15 +254,17 @@ class PatchExtractor:
         logger.info(f"Saved patches: shape={zarr_store.shape}, dtype={zarr_store.dtype}")
 
         # Save dataset info
-        # Use correct column name for class distribution (metadata always uses "broad_category")
+        # Use correct column based on fine_grained mode
+        label_column = "predicted_type" if use_fine_grained else "broad_category"
         dataset_info = {
             "n_samples": n_extracted,
             "n_classes": len(class_mapping),
             "patch_size": self.patch_size,
             "image_shape": list(image.shape),
             "confidence_threshold": self.confidence_threshold,
+            "fine_grained": use_fine_grained,
             "class_distribution": {
-                cat: int((metadata_df["broad_category"] == cat).sum())
+                cat: int((metadata_df[label_column] == cat).sum())
                 for cat in class_mapping.keys()
             },
         }

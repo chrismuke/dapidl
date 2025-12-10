@@ -4,7 +4,12 @@ import torch
 import torch.nn as nn
 from loguru import logger
 
-from dapidl.models.backbone import create_backbone, SingleChannelAdapter
+from dapidl.models.backbone import (
+    create_backbone,
+    SingleChannelAdapter,
+    BACKBONE_PRESETS,
+    list_backbones,
+)
 
 
 class CellTypeClassifier(nn.Module):
@@ -20,21 +25,39 @@ class CellTypeClassifier(nn.Module):
         backbone_name: str = "efficientnetv2_rw_s",
         pretrained: bool = True,
         dropout: float = 0.3,
-        input_adapter: str = "replicate",
+        input_adapter: str = "auto",
     ) -> None:
         """Initialize classifier.
 
         Args:
             num_classes: Number of cell type classes
-            backbone_name: Name of timm backbone model
+            backbone_name: Name of backbone model (see list_backbones() for options)
             pretrained: Use pretrained weights
             dropout: Dropout probability for classification head
-            input_adapter: How to handle single-channel input ('replicate' or 'learned')
+            input_adapter: How to handle single-channel input:
+                - 'auto': automatically detect based on backbone
+                - 'replicate': replicate single channel to 3 channels
+                - 'learned': learnable 1x1 conv to expand channels
+                - 'none': no adaptation (for native single-channel backbones)
         """
         super().__init__()
 
         self.num_classes = num_classes
         self.backbone_name = backbone_name
+
+        # Determine input adapter based on backbone
+        if input_adapter == "auto":
+            # Check if backbone natively supports single-channel
+            if backbone_name in BACKBONE_PRESETS:
+                native_channels = BACKBONE_PRESETS[backbone_name]["native_channels"]
+                if native_channels == 1:
+                    input_adapter = "none"
+                else:
+                    input_adapter = "replicate"
+            else:
+                # Unknown backbone, assume it needs 3 channels
+                input_adapter = "replicate"
+
         self.input_adapter_name = input_adapter
 
         # Input adapter for single-channel DAPI images

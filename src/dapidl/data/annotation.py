@@ -32,6 +32,7 @@ class AnnotationStrategy(str, Enum):
     CONSENSUS = "consensus"  # Consensus voting across multiple models (default)
     HIERARCHICAL = "hierarchical"  # Tissue-specific + specialized refinement
     POPV = "popv"  # popV ensemble prediction
+    GROUND_TRUTH = "ground_truth"  # Use ground truth annotations from file
 
 
 # Default strategy
@@ -171,6 +172,35 @@ CELL_TYPE_HIERARCHY = {
 }
 
 
+# Ground truth cell type to broad category mapping (from Cell_Barcode_Type_Matrices.xlsx)
+GROUND_TRUTH_MAPPING = {
+    # Epithelial/Tumor cells
+    "DCIS_1": "Epithelial",
+    "DCIS_2": "Epithelial",
+    "Invasive_Tumor": "Epithelial",
+    "Prolif_Invasive_Tumor": "Epithelial",
+    "Myoepi_ACTA2+": "Epithelial",
+    "Myoepi_KRT15+": "Epithelial",
+    # Immune cells
+    "B_Cells": "Immune",
+    "CD4+_T_Cells": "Immune",
+    "CD8+_T_Cells": "Immune",
+    "Macrophages_1": "Immune",
+    "Macrophages_2": "Immune",
+    "IRF7+_DCs": "Immune",
+    "LAMP3+_DCs": "Immune",
+    "Mast_Cells": "Immune",
+    # Stromal cells
+    "Stromal": "Stromal",
+    "Endothelial": "Stromal",
+    "Perivascular-Like": "Stromal",
+    # Hybrid/Unlabeled - excluded from training by default
+    "Stromal_&_T_Cell_Hybrid": "Hybrid",
+    "T_Cell_&_Tumor_Hybrid": "Hybrid",
+    "Unlabeled": "Unlabeled",
+}
+
+
 def map_to_broad_category(cell_type: str) -> str:
     """Map a detailed cell type to a broad category.
 
@@ -208,6 +238,10 @@ class CellTypeAnnotator:
         confidence_threshold: float = 0.5,
         majority_voting: bool = True,
         strategy: AnnotationStrategy | str = DEFAULT_STRATEGY,
+        fine_grained: bool = False,
+        filter_category: str | None = None,
+        ground_truth_file: str | Path | None = None,
+        ground_truth_sheet: str = "Xenium R1 Fig1-5 (supervised)",
     ) -> None:
         """Initialize annotator.
 
@@ -216,7 +250,15 @@ class CellTypeAnnotator:
                 string or a list of model names for multi-model annotation.
             confidence_threshold: Minimum confidence score to accept prediction
             majority_voting: Whether to use majority voting for predictions
-            strategy: Annotation strategy to use (single, consensus, hierarchical, popv)
+            strategy: Annotation strategy to use (single, consensus, hierarchical,
+                popv, ground_truth)
+            fine_grained: If True, use fine-grained cell type labels instead of
+                broad categories (e.g., "CD4+ T cells" instead of "Immune")
+            filter_category: If set, only include cells from this broad category
+                (e.g., "Immune" to only train on immune cell subtypes)
+            ground_truth_file: Path to Excel file with ground truth annotations
+                (required for ground_truth strategy)
+            ground_truth_sheet: Sheet name in Excel file (default for Xenium breast)
         """
         # Normalize to list
         if isinstance(model_names, str):
@@ -226,6 +268,10 @@ class CellTypeAnnotator:
 
         self.confidence_threshold = confidence_threshold
         self.majority_voting = majority_voting
+        self.fine_grained = fine_grained
+        self.filter_category = filter_category
+        self.ground_truth_file = Path(ground_truth_file) if ground_truth_file else None
+        self.ground_truth_sheet = ground_truth_sheet
 
         # Parse strategy
         if isinstance(strategy, str):
@@ -238,6 +284,12 @@ class CellTypeAnnotator:
             logger.warning("Install popV with: pip install popv")
             self.strategy = AnnotationStrategy.CONSENSUS
 
+        if self.strategy == AnnotationStrategy.GROUND_TRUTH and not self.ground_truth_file:
+            raise ValueError("ground_truth strategy requires ground_truth_file to be set")
+
+        if self.strategy == AnnotationStrategy.GROUND_TRUTH and not self.ground_truth_file.exists():
+            raise ValueError(f"Ground truth file not found: {self.ground_truth_file}")
+
         if self.strategy == AnnotationStrategy.CONSENSUS and len(self.model_names) < 2:
             logger.warning("Consensus strategy requires at least 2 models. Adding Immune_All_High.pkl")
             if "Immune_All_High.pkl" not in self.model_names:
@@ -245,6 +297,8 @@ class CellTypeAnnotator:
 
         self._models: dict[str, Any] = {}
         logger.info(f"Annotation strategy: {self.strategy.value}")
+        if self.fine_grained:
+            logger.info(f"Fine-grained mode enabled (filter: {filter_category or 'none'})")
 
     def _load_model(self, model_name: str) -> Any:
         """Download and load a CellTypist model.
@@ -329,55 +383,183 @@ class CellTypeAnnotator:
     def _annotate_popv(self, adata: ad.AnnData) -> pl.DataFrame:
         """Run annotation using popV ensemble prediction.
 
+        popV 0.6.0+ requires either:
+        1. A pretrained HubModel from HuggingFace (for inference mode)
+        2. A reference dataset with cell type labels (for training mode)
+
+        This method uses pretrained Tabula Sapiens models from HuggingFace.
+        The models use Ensembl gene IDs, so we map gene symbols if needed.
+        If unavailable or incompatible, falls back to CellTypist consensus.
+
         Args:
-            adata: AnnData object with gene expression
+            adata: AnnData object with gene expression (raw counts preferred)
 
         Returns:
             DataFrame with annotations
         """
         try:
             import popv
+            from popv.hub import HubModel
         except ImportError:
             raise ImportError("popV not installed. Install with: pip install popv")
 
         logger.info("Running popV ensemble prediction...")
 
-        # popV requires a reference dataset - use pretrained models if available
-        # For now, we'll run popV's prediction pipeline
-        # Note: This is a simplified integration - full popV requires reference data
+        # popV 0.6.0 uses HubModel for pretrained inference
+        # Available Tabula Sapiens models on HuggingFace:
+        # https://huggingface.co/models?library=popv
+        # Uses ensemble of 8 methods: CellTypist, KNN, ONCLASS, scANVI, SVM, XGBoost
 
-        import scanpy as sc
-        adata_norm = adata.copy()
-        sc.pp.normalize_total(adata_norm, target_sum=1e4)
-        sc.pp.log1p(adata_norm)
+        adata_query = adata.copy()
 
-        # Run popV annotation
-        # popV.annotation.annotate_data returns annotated AnnData
+        # popV requires raw counts (NO normalization) - it handles preprocessing internally
+        # Check if data looks normalized (no integers, small range)
+        x_sample = adata_query.X[:100].toarray() if hasattr(adata_query.X, 'toarray') else adata_query.X[:100]
+        if x_sample.max() < 20 and not np.allclose(x_sample, x_sample.astype(int)):
+            logger.warning("Data appears normalized. popV works best with raw counts.")
+
+        # popV Tabula Sapiens models use Ensembl gene IDs
+        # If var_names are gene symbols, try to map them to Ensembl IDs
+        sample_genes = list(adata_query.var_names[:5])
+        genes_are_ensembl = all(g.startswith('ENSG') for g in sample_genes)
+
+        if not genes_are_ensembl:
+            # Try to map gene symbols to Ensembl IDs
+            logger.info("Gene symbols detected, attempting to map to Ensembl IDs...")
+            try:
+                # Check if adata has ensembl_id in var
+                if 'ensembl_id' in adata_query.var.columns:
+                    # Use pre-existing Ensembl IDs
+                    ensembl_ids = adata_query.var['ensembl_id'].values
+                    adata_query.var['gene_symbol'] = adata_query.var_names.tolist()
+                    adata_query.var_names = pd.Index(ensembl_ids)
+                    logger.info(f"Mapped {len(ensembl_ids)} genes using ensembl_id column")
+                else:
+                    # Try to use cellxgene census for mapping
+                    try:
+                        import cellxgene_census
+                        with cellxgene_census.open_soma() as census:
+                            gene_df = census["census_data"]["homo_sapiens"].ms["RNA"].var.read().concat().to_pandas()
+                            # Create symbol to ensembl mapping
+                            symbol_to_ensembl = dict(zip(gene_df['feature_name'], gene_df['feature_id']))
+                            # Map genes
+                            new_var_names = []
+                            mapped_count = 0
+                            for gene in adata_query.var_names:
+                                if gene in symbol_to_ensembl:
+                                    new_var_names.append(symbol_to_ensembl[gene])
+                                    mapped_count += 1
+                                else:
+                                    new_var_names.append(gene)  # Keep original if no mapping
+                            adata_query.var['gene_symbol'] = adata_query.var_names.tolist()
+                            adata_query.var_names = pd.Index(new_var_names)
+                            logger.info(f"Mapped {mapped_count}/{len(new_var_names)} genes to Ensembl IDs")
+                    except Exception as e:
+                        logger.warning(f"Could not map gene symbols: {e}")
+            except Exception as e:
+                logger.warning(f"Gene mapping failed: {e}")
+
+        # Available popV HubModels on HuggingFace (Tabula Sapiens reference)
+        # Note: Despite Python 3.11 warning, these load successfully with Python 3.12
+        hub_models_to_try = [
+            "popV/tabula_sapiens_Immune",      # Immune cell types
+        ]
+
         try:
-            popv.annotation.annotate_data(
-                adata_norm,
-                methods=["celltypist"],  # Start with celltypist only for compatibility
-                model_name=self.model_names[0] if self.model_names else DEFAULT_MODEL,
-            )
+            hub_model = None
+            for repo_name in hub_models_to_try:
+                try:
+                    logger.info(f"Attempting to load popV HubModel: {repo_name}")
+                    hub_model = HubModel.pull_from_huggingface_hub(repo_name)
+                    logger.info(f"Successfully loaded popV model: {repo_name}")
+                    break
+                except Exception as e:
+                    logger.debug(f"Could not load {repo_name}: {e}")
+                    continue
 
-            # Extract results
-            cell_types = adata_norm.obs.get("popv_prediction", adata_norm.obs.get("celltypist_prediction", np.array(["Unknown"] * len(adata_norm))))
-            confidence = adata_norm.obs.get("popv_confidence", np.ones(len(adata_norm)) * 0.5)
+            if hub_model is not None:
+                import tempfile
+                import os
+                # Use HubModel's annotate_data method
+                # signature: annotate_data(query_adata, query_batch_key=None,
+                #   save_path='tmp', prediction_mode='fast', methods=None, gene_symbols=None)
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    adata_query = hub_model.annotate_data(
+                        adata_query,
+                        save_path=tmpdir,
+                        prediction_mode='fast'
+                    )
+
+                # Extract results from annotated AnnData
+                # popV stores predictions in obs columns:
+                # - popv_prediction: final consensus (ontology-aware)
+                # - popv_prediction_score: confidence score
+                # - Individual: popv_celltypist_prediction, popv_knn_*_prediction, etc.
+                pred_key = "popv_prediction"
+                if pred_key not in adata_query.obs.columns:
+                    # Fall back to majority vote
+                    for key in ["popv_majority_vote_prediction", "popv_majority_vote"]:
+                        if key in adata_query.obs.columns:
+                            pred_key = key
+                            break
+
+                if pred_key not in adata_query.obs.columns:
+                    available_cols = [c for c in adata_query.obs.columns if 'popv' in c.lower()]
+                    raise ValueError(f"No prediction column found. Available: {available_cols}")
+
+                cell_types = adata_query.obs[pred_key].values
+                logger.info(f"Using prediction column: {pred_key}")
+
+                # Use popV's built-in prediction score if available
+                if 'popv_prediction_score' in adata_query.obs.columns:
+                    confidence = adata_query.obs['popv_prediction_score'].values
+                    logger.info("Using popv_prediction_score for confidence")
+                elif 'popv_majority_vote_score' in adata_query.obs.columns:
+                    confidence = adata_query.obs['popv_majority_vote_score'].values
+                    logger.info("Using popv_majority_vote_score for confidence")
+                else:
+                    # Compute agreement rate as fallback confidence
+                    prediction_keys = hub_model.metadata.prediction_keys
+                    available_preds = [k for k in prediction_keys if k in adata_query.obs.columns]
+                    if len(available_preds) > 1:
+                        agreement = np.zeros(len(adata_query))
+                        for idx in range(len(adata_query)):
+                            final_pred = cell_types[idx]
+                            votes = sum(1 for k in available_preds
+                                       if adata_query.obs[k].iloc[idx] == final_pred)
+                            agreement[idx] = votes / len(available_preds)
+                        confidence = agreement
+                        logger.info(f"Computed confidence from {len(available_preds)} method agreement")
+                    else:
+                        confidence = np.ones(len(adata_query)) * 0.7
+            else:
+                raise RuntimeError("No pretrained popV HubModel available")
 
         except Exception as e:
-            logger.warning(f"popV annotation failed: {e}. Falling back to CellTypist.")
+            logger.warning(
+                f"popV HubModel annotation failed: {e}. "
+                "Falling back to CellTypist consensus."
+            )
             return self._annotate_consensus(adata)
 
         # Map to broad categories
         if isinstance(cell_types, pd.Series):
             cell_types = cell_types.values
+
+        # Convert Categorical to string array for Polars compatibility
+        if hasattr(cell_types, 'astype'):
+            cell_types = np.array(cell_types.astype(str))
+        elif hasattr(cell_types, 'categories'):
+            # Handle pandas Categorical directly
+            cell_types = np.array([str(ct) for ct in cell_types])
+
         broad_categories = [map_to_broad_category(ct) for ct in cell_types]
 
         results = pl.DataFrame({
             "cell_id": adata.obs["cell_id"].values,
             "predicted_type": cell_types,
             "broad_category": broad_categories,
-            "confidence": confidence if isinstance(confidence, np.ndarray) else confidence.values,
+            "confidence": confidence if isinstance(confidence, np.ndarray) else confidence,
         })
 
         logger.info(f"popV annotation complete for {len(results)} cells")
@@ -551,8 +733,9 @@ class CellTypeAnnotator:
 
             # Adjust confidence based on consensus score
             # High agreement (all models agree) = full confidence
-            # Low agreement = reduced confidence
-            adjusted_confidence = best_conf * consensus_score
+            # Low agreement = slightly reduced confidence (keep it usable)
+            # Use sqrt to soften the penalty: 50% consensus → ~71% multiplier instead of 50%
+            adjusted_confidence = best_conf * np.sqrt(consensus_score)
 
             final_cell_types.append(best_type)
             final_broad.append(consensus_broad)
@@ -605,7 +788,9 @@ class CellTypeAnnotator:
         Returns:
             DataFrame with cell_id and prediction columns.
         """
-        if self.strategy == AnnotationStrategy.POPV:
+        if self.strategy == AnnotationStrategy.GROUND_TRUTH:
+            return self._annotate_ground_truth(adata)
+        elif self.strategy == AnnotationStrategy.POPV:
             return self._annotate_popv(adata)
         elif self.strategy == AnnotationStrategy.HIERARCHICAL:
             return self._annotate_hierarchical(adata)
@@ -613,6 +798,80 @@ class CellTypeAnnotator:
             return self._annotate_consensus(adata)
         else:  # SINGLE
             return self._annotate_single(adata)
+
+    def _annotate_ground_truth(self, adata: ad.AnnData) -> pl.DataFrame:
+        """Load ground truth annotations from Excel file.
+
+        Args:
+            adata: AnnData object (used only for cell_id matching)
+
+        Returns:
+            DataFrame with annotations from ground truth file
+        """
+        logger.info(f"Loading ground truth from: {self.ground_truth_file}")
+        logger.info(f"Sheet: {self.ground_truth_sheet}")
+
+        # Load Excel file
+        gt_df = pd.read_excel(
+            self.ground_truth_file,
+            sheet_name=self.ground_truth_sheet,
+        )
+
+        logger.info(f"Loaded {len(gt_df)} cells from ground truth")
+        logger.info(f"Columns: {list(gt_df.columns)}")
+
+        # Expected format: Barcode (cell_id), Cluster (cell_type)
+        if "Barcode" not in gt_df.columns or "Cluster" not in gt_df.columns:
+            raise ValueError(
+                f"Ground truth file must have 'Barcode' and 'Cluster' columns. "
+                f"Found: {list(gt_df.columns)}"
+            )
+
+        # Get cell IDs from AnnData
+        adata_cell_ids = set(adata.obs["cell_id"].values)
+        gt_cell_ids = set(gt_df["Barcode"].values)
+
+        # Check overlap
+        overlap = adata_cell_ids & gt_cell_ids
+        logger.info(f"Cell ID overlap: {len(overlap)} / {len(adata_cell_ids)} cells")
+
+        if len(overlap) == 0:
+            raise ValueError("No matching cell IDs between AnnData and ground truth file")
+
+        # Map ground truth cell types to broad categories
+        gt_df["broad_category"] = gt_df["Cluster"].map(GROUND_TRUTH_MAPPING)
+
+        # Check for unmapped types
+        unmapped = gt_df[gt_df["broad_category"].isna()]["Cluster"].unique()
+        if len(unmapped) > 0:
+            logger.warning(f"Unmapped cell types in ground truth: {unmapped}")
+            gt_df["broad_category"] = gt_df["broad_category"].fillna("Unknown")
+
+        # Create result DataFrame with same format as other strategies
+        results = pl.DataFrame({
+            "cell_id": gt_df["Barcode"].values,
+            "predicted_type": gt_df["Cluster"].values,
+            "broad_category": gt_df["broad_category"].values,
+            "confidence": np.ones(len(gt_df)),  # Ground truth has confidence 1.0
+        })
+
+        # Filter to only cells in AnnData
+        results = results.filter(pl.col("cell_id").is_in(list(adata_cell_ids)))
+
+        # Filter out Hybrid and Unlabeled cells (not useful for training)
+        excluded_categories = ["Hybrid", "Unlabeled"]
+        before_filter = len(results)
+        results = results.filter(~pl.col("broad_category").is_in(excluded_categories))
+        excluded_count = before_filter - len(results)
+        if excluded_count > 0:
+            logger.info(f"Excluded {excluded_count} Hybrid/Unlabeled cells from training")
+
+        logger.info(f"Ground truth annotation complete for {len(results)} cells")
+
+        # Log distribution
+        self._log_category_distribution(results, "broad_category")
+
+        return results
 
     def _annotate_single(self, adata: ad.AnnData) -> pl.DataFrame:
         """Run single-model annotation (original behavior).
@@ -712,25 +971,74 @@ class CellTypeAnnotator:
         return filtered
 
     def get_class_mapping(self, annotations: pl.DataFrame) -> dict[str, int]:
-        """Get mapping from broad category names to integer labels.
+        """Get mapping from category names to integer labels.
+
+        In fine-grained mode, uses predicted_type (fine-grained cell types).
+        In normal mode, uses broad_category (Epithelial/Immune/Stromal/etc).
 
         Args:
-            annotations: DataFrame with broad_category column
+            annotations: DataFrame with broad_category and/or predicted_type column
 
         Returns:
             Dictionary mapping category name to integer label
         """
-        # Determine broad_category column name (handles all strategies)
+        if self.fine_grained:
+            # Use fine-grained cell types
+            if "predicted_type" in annotations.columns:
+                pred_col = "predicted_type"
+            elif "predicted_type_1" in annotations.columns:
+                pred_col = "predicted_type_1"
+            else:
+                raise ValueError("No predicted_type column found in annotations")
+
+            cell_types = sorted(annotations[pred_col].unique().to_list())
+            # Filter out Unknown if present, add at end
+            if "Unknown" in cell_types:
+                cell_types.remove("Unknown")
+                cell_types.append("Unknown")
+            return {ct: i for i, ct in enumerate(cell_types)}
+        else:
+            # Use broad categories (original behavior)
+            if "broad_category" in annotations.columns:
+                broad_col = "broad_category"
+            elif "broad_category_1" in annotations.columns:
+                broad_col = "broad_category_1"  # Use first model for class mapping
+            else:
+                raise ValueError("No broad_category column found in annotations")
+
+            categories = sorted(annotations[broad_col].unique().to_list())
+            # Filter out Unknown if present, add at end
+            if "Unknown" in categories:
+                categories.remove("Unknown")
+                categories.append("Unknown")
+            return {cat: i for i, cat in enumerate(categories)}
+
+    def filter_by_category(
+        self, annotations: pl.DataFrame, category: str
+    ) -> pl.DataFrame:
+        """Filter annotations to only include cells from a specific broad category.
+
+        Useful for fine-grained classification where you want to train only on
+        immune cells, epithelial cells, etc.
+
+        Args:
+            annotations: DataFrame with annotations
+            category: Broad category to filter for (e.g., "Immune", "Epithelial")
+
+        Returns:
+            Filtered DataFrame containing only cells from the specified category
+        """
+        # Determine broad_category column name
         if "broad_category" in annotations.columns:
             broad_col = "broad_category"
         elif "broad_category_1" in annotations.columns:
-            broad_col = "broad_category_1"  # Use first model for class mapping
+            broad_col = "broad_category_1"
         else:
             raise ValueError("No broad_category column found in annotations")
 
-        categories = sorted(annotations[broad_col].unique().to_list())
-        # Filter out Unknown if present, add at end
-        if "Unknown" in categories:
-            categories.remove("Unknown")
-            categories.append("Unknown")
-        return {cat: i for i, cat in enumerate(categories)}
+        original_count = len(annotations)
+        filtered = annotations.filter(pl.col(broad_col) == category)
+        logger.info(
+            f"Filtered to {category} cells: {original_count} -> {len(filtered)}"
+        )
+        return filtered

@@ -119,6 +119,7 @@ def get_class_weights(
     labels: np.ndarray | torch.Tensor,
     num_classes: int,
     method: str = "inverse",
+    max_weight_ratio: float = 10.0,
 ) -> torch.Tensor:
     """Compute class weights for imbalanced data.
 
@@ -129,6 +130,10 @@ def get_class_weights(
             - 'inverse': 1 / count
             - 'inverse_sqrt': 1 / sqrt(count)
             - 'effective': Effective number of samples (Class-Balanced Loss)
+        max_weight_ratio: Maximum ratio between largest and smallest weight.
+            Prevents extreme over-weighting of rare classes which causes mode
+            collapse. Default 10.0 means rare classes get at most 10x the
+            weight of the most common class. Set to 0 or None to disable.
 
     Returns:
         Tensor of class weights
@@ -150,6 +155,12 @@ def get_class_weights(
         weights = (1.0 - beta) / effective_num
     else:
         raise ValueError(f"Unknown method: {method}")
+
+    # Cap the weight ratio to prevent mode collapse
+    if max_weight_ratio is not None and max_weight_ratio > 0:
+        min_weight = weights.min()
+        max_allowed = min_weight * max_weight_ratio
+        weights = np.minimum(weights, max_allowed)
 
     # Normalize weights
     weights = weights / weights.sum() * num_classes

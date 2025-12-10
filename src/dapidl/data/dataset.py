@@ -12,7 +12,11 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from loguru import logger
 
-from dapidl.data.transforms import get_train_transforms, get_val_transforms
+from dapidl.data.transforms import (
+    get_train_transforms,
+    get_val_transforms,
+    compute_dataset_stats,
+)
 
 
 class DAPIDLDataset(Dataset):
@@ -27,6 +31,7 @@ class DAPIDLDataset(Dataset):
         split: str = "train",
         transform: Callable | None = None,
         indices: np.ndarray | None = None,
+        adaptive_norm: bool = True,
     ) -> None:
         """Initialize dataset.
 
@@ -35,6 +40,7 @@ class DAPIDLDataset(Dataset):
             split: One of 'train', 'val', 'test' (used for default transforms)
             transform: Optional custom transform (uses default if None)
             indices: Optional subset indices (for train/val/test splits)
+            adaptive_norm: Use adaptive percentile-based normalization (default True)
         """
         self.data_path = Path(data_path)
         self.split = split
@@ -56,16 +62,22 @@ class DAPIDLDataset(Dataset):
         else:
             self.indices = np.arange(len(self.labels))
 
+        # Compute/load normalization stats if using adaptive normalization
+        self.stats = None
+        if adaptive_norm:
+            self.stats = compute_dataset_stats(self.data_path)
+
         # Set transform
         if transform is not None:
             self.transform = transform
         elif split == "train":
-            self.transform = get_train_transforms()
+            self.transform = get_train_transforms(stats=self.stats)
         else:
-            self.transform = get_val_transforms()
+            self.transform = get_val_transforms(stats=self.stats)
 
         logger.info(
-            f"DAPIDLDataset: {len(self)} samples, {self.num_classes} classes, split={split}"
+            f"DAPIDLDataset: {len(self)} samples, {self.num_classes} classes, "
+            f"split={split}, adaptive_norm={adaptive_norm}"
         )
 
     def __len__(self) -> int:
@@ -93,17 +105,34 @@ class DAPIDLDataset(Dataset):
 
         return patch, int(label)
 
-    def get_class_weights(self) -> torch.Tensor:
+    def get_class_weights(self, max_weight_ratio: float = 10.0) -> torch.Tensor:
         """Compute class weights for imbalanced data.
 
+        Args:
+            max_weight_ratio: Maximum ratio between largest and smallest weight.
+                              Prevents extreme over-weighting of rare classes.
+                              Default 10.0 means rare classes get at most 10x
+                              the weight of the most common class.
+
         Returns:
-            Tensor of class weights (inverse frequency)
+            Tensor of class weights (inverse frequency, capped)
         """
         labels = self.labels[self.indices]
         class_counts = np.bincount(labels, minlength=self.num_classes)
         # Avoid division by zero
         class_counts = np.maximum(class_counts, 1)
         weights = 1.0 / class_counts
+
+        # Cap the weight ratio to prevent mode collapse
+        if max_weight_ratio is not None and max_weight_ratio > 0:
+            min_weight = weights.min()
+            max_allowed = min_weight * max_weight_ratio
+            weights = np.minimum(weights, max_allowed)
+            logger.debug(
+                f"Class weights capped at {max_weight_ratio}x ratio "
+                f"(min={min_weight:.6f}, max={weights.max():.6f})"
+            )
+
         weights = weights / weights.sum() * self.num_classes
         return torch.FloatTensor(weights)
 
@@ -125,6 +154,7 @@ def create_data_splits(
     test_ratio: float = 0.15,
     seed: int = 42,
     stratify: bool = True,
+    min_samples_per_class: int | None = None,
 ) -> tuple[DAPIDLDataset, DAPIDLDataset, DAPIDLDataset]:
     """Create train/val/test splits of the dataset.
 
@@ -135,6 +165,7 @@ def create_data_splits(
         test_ratio: Fraction for testing
         seed: Random seed for reproducibility
         stratify: Whether to stratify by class labels
+        min_samples_per_class: Minimum samples per class (filter rare classes)
 
     Returns:
         Tuple of (train_dataset, val_dataset, test_dataset)
@@ -146,21 +177,53 @@ def create_data_splits(
     n_samples = len(labels)
     indices = np.arange(n_samples)
 
+    # Filter rare classes if min_samples_per_class is set
+    if min_samples_per_class is not None:
+        unique_classes, counts = np.unique(labels, return_counts=True)
+        valid_classes = unique_classes[counts >= min_samples_per_class]
+        rare_classes = unique_classes[counts < min_samples_per_class]
+        if len(rare_classes) > 0:
+            logger.warning(
+                f"Filtering {len(rare_classes)} classes with < {min_samples_per_class} samples"
+            )
+            mask = np.isin(labels, valid_classes)
+            indices = indices[mask]
+            labels = labels[mask]
+            n_samples = len(indices)
+            logger.info(f"Remaining samples after filtering: {n_samples}")
+
+    # For stratification, we need the labels corresponding to current indices
+    # When filtering is done, labels are filtered alongside indices
+    # Create a mapping from indices to their positions for stratification
+    stratify_labels = labels if stratify else None
+
     # First split: train vs (val + test)
     train_indices, temp_indices = train_test_split(
         indices,
         train_size=train_ratio,
         random_state=seed,
-        stratify=labels if stratify else None,
+        stratify=stratify_labels,
     )
 
     # Second split: val vs test
+    # Get the labels for temp_indices for stratification
     val_size = val_ratio / (val_ratio + test_ratio)
+    if stratify:
+        # Find positions of temp_indices in the indices array to get their labels
+        temp_positions = np.searchsorted(indices, temp_indices)
+        temp_labels = labels[temp_positions] if len(indices) == len(labels) else None
+        if temp_labels is None:
+            # Fallback: just get labels by the indices themselves from original
+            all_labels = np.load(data_path / "labels.npy")
+            temp_labels = all_labels[temp_indices]
+    else:
+        temp_labels = None
+
     val_indices, test_indices = train_test_split(
         temp_indices,
         train_size=val_size,
         random_state=seed,
-        stratify=labels[temp_indices] if stratify else None,
+        stratify=temp_labels,
     )
 
     logger.info(
@@ -181,8 +244,10 @@ def create_dataloaders(
     val_dataset: DAPIDLDataset,
     test_dataset: DAPIDLDataset | None = None,
     batch_size: int = 64,
-    num_workers: int = 4,
+    num_workers: int = 8,
     use_weighted_sampler: bool = True,
+    prefetch_factor: int = 4,
+    persistent_workers: bool = True,
 ) -> tuple[DataLoader, DataLoader, DataLoader | None]:
     """Create DataLoaders from datasets.
 
@@ -191,12 +256,22 @@ def create_dataloaders(
         val_dataset: Validation dataset
         test_dataset: Optional test dataset
         batch_size: Batch size
-        num_workers: Number of worker processes
+        num_workers: Number of worker processes (default 8 for better GPU utilization)
         use_weighted_sampler: Use WeightedRandomSampler for balanced batches
+        prefetch_factor: Number of batches to prefetch per worker (default 4)
+        persistent_workers: Keep workers alive between epochs (default True)
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
+    # Common DataLoader kwargs for GPU saturation
+    loader_kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": True,
+        "persistent_workers": persistent_workers and num_workers > 0,
+        "prefetch_factor": prefetch_factor if num_workers > 0 else None,
+    }
+
     # Training loader with optional weighted sampling
     if use_weighted_sampler:
         sample_weights = train_dataset.get_sample_weights()
@@ -209,16 +284,14 @@ def create_dataloaders(
             train_dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=num_workers,
-            pin_memory=True,
+            **loader_kwargs,
         )
     else:
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=num_workers,
-            pin_memory=True,
+            **loader_kwargs,
         )
 
     # Validation loader (no shuffling)
@@ -226,8 +299,7 @@ def create_dataloaders(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
+        **loader_kwargs,
     )
 
     # Test loader (no shuffling)
@@ -237,8 +309,242 @@ def create_dataloaders(
             test_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=num_workers,
-            pin_memory=True,
+            **loader_kwargs,
         )
 
     return train_loader, val_loader, test_loader
+
+
+def get_split_indices(
+    data_path: str | Path,
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15,
+    seed: int = 42,
+    stratify: bool = True,
+    min_samples_per_class: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Get train/val/test split indices without creating datasets.
+
+    This is useful for DALI backend which needs raw indices.
+
+    Args:
+        data_path: Path to prepared dataset
+        train_ratio: Fraction for training
+        val_ratio: Fraction for validation
+        test_ratio: Fraction for testing
+        seed: Random seed for reproducibility
+        stratify: Whether to stratify by class labels
+        min_samples_per_class: Minimum samples per class (filter rare classes)
+
+    Returns:
+        Tuple of (train_indices, val_indices, test_indices)
+    """
+    data_path = Path(data_path)
+
+    # Load labels for stratification
+    labels = np.load(data_path / "labels.npy")
+    n_samples = len(labels)
+    indices = np.arange(n_samples)
+
+    # Filter rare classes if min_samples_per_class is set
+    if min_samples_per_class is not None:
+        unique_classes, counts = np.unique(labels, return_counts=True)
+        valid_classes = unique_classes[counts >= min_samples_per_class]
+        rare_classes = unique_classes[counts < min_samples_per_class]
+        if len(rare_classes) > 0:
+            logger.warning(
+                f"Filtering {len(rare_classes)} classes with < {min_samples_per_class} samples"
+            )
+            mask = np.isin(labels, valid_classes)
+            indices = indices[mask]
+            labels = labels[mask]
+            n_samples = len(indices)
+            logger.info(f"Remaining samples after filtering: {n_samples}")
+
+    stratify_labels = labels if stratify else None
+
+    # First split: train vs (val + test)
+    train_indices, temp_indices = train_test_split(
+        indices,
+        train_size=train_ratio,
+        random_state=seed,
+        stratify=stratify_labels,
+    )
+
+    # Second split: val vs test
+    val_size = val_ratio / (val_ratio + test_ratio)
+    if stratify:
+        temp_positions = np.searchsorted(indices, temp_indices)
+        temp_labels = labels[temp_positions] if len(indices) == len(labels) else None
+        if temp_labels is None:
+            all_labels = np.load(data_path / "labels.npy")
+            temp_labels = all_labels[temp_indices]
+    else:
+        temp_labels = None
+
+    val_indices, test_indices = train_test_split(
+        temp_indices,
+        train_size=val_size,
+        random_state=seed,
+        stratify=temp_labels,
+    )
+
+    logger.info(
+        f"Data splits: train={len(train_indices)}, "
+        f"val={len(val_indices)}, test={len(test_indices)}"
+    )
+
+    return train_indices, val_indices, test_indices
+
+
+def create_dataloaders_with_backend(
+    data_path: str | Path,
+    batch_size: int = 64,
+    num_workers: int = 8,
+    backend: str = "pytorch",
+    use_weighted_sampler: bool = True,
+    prefetch_factor: int = 4,
+    persistent_workers: bool = True,
+    seed: int = 42,
+    min_samples_per_class: int | None = None,
+    device_id: int = 0,
+) -> tuple:
+    """Create DataLoaders with selectable backend (PyTorch, DALI, or DALI-LMDB).
+
+    Args:
+        data_path: Path to prepared dataset directory
+        batch_size: Batch size
+        num_workers: Number of worker processes
+        backend: "pytorch", "dali", or "dali-lmdb"
+        use_weighted_sampler: Use WeightedRandomSampler (PyTorch only)
+        prefetch_factor: Batches to prefetch per worker
+        persistent_workers: Keep workers alive between epochs
+        seed: Random seed
+        min_samples_per_class: Minimum samples per class to include
+        device_id: GPU device ID (DALI only)
+
+    Returns:
+        Tuple of (train_loader, val_loader, test_loader, metadata)
+        metadata contains num_classes, class_names, class_weights
+    """
+    data_path = Path(data_path)
+
+    # Get split indices
+    train_indices, val_indices, test_indices = get_split_indices(
+        data_path,
+        seed=seed,
+        min_samples_per_class=min_samples_per_class,
+    )
+
+    # Load class info for metadata
+    with open(data_path / "class_mapping.json") as f:
+        class_mapping = json.load(f)
+    num_classes = len(class_mapping)
+    class_names = list(class_mapping.keys())
+
+    # Compute class weights
+    labels = np.load(data_path / "labels.npy")
+    train_labels = labels[train_indices]
+    class_counts = np.bincount(train_labels, minlength=num_classes)
+    class_counts = np.maximum(class_counts, 1)
+    weights = 1.0 / class_counts
+    # Cap at 10x ratio
+    min_weight = weights.min()
+    max_allowed = min_weight * 10.0
+    weights = np.minimum(weights, max_allowed)
+    weights = weights / weights.sum() * num_classes
+    class_weights = torch.FloatTensor(weights)
+
+    metadata = {
+        "num_classes": num_classes,
+        "class_names": class_names,
+        "class_weights": class_weights,
+        "backend": backend,
+    }
+
+    if backend == "dali-lmdb":
+        # Use DALI with LMDB backend (fastest)
+        from dapidl.data.dali_native import (
+            is_lmdb_available,
+            create_dali_lmdb_dataloaders,
+        )
+        from dapidl.data.dali_pipeline import is_dali_available
+
+        if not is_dali_available():
+            raise RuntimeError(
+                "DALI backend requested but DALI is not installed. "
+                "Install with: pip install nvidia-dali-cuda120"
+            )
+        if not is_lmdb_available():
+            raise RuntimeError(
+                "LMDB backend requested but LMDB is not installed. "
+                "Install with: pip install lmdb"
+            )
+
+        # Check if LMDB exists
+        lmdb_path = data_path / "patches.lmdb"
+        if not lmdb_path.exists():
+            raise FileNotFoundError(
+                f"LMDB database not found at {lmdb_path}. "
+                "Run 'dapidl export-lmdb -d <dataset_path>' to create it."
+            )
+
+        train_loader, val_loader, test_loader = create_dali_lmdb_dataloaders(
+            data_path=data_path,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
+            batch_size=batch_size,
+            num_threads=num_workers,
+            device_id=device_id,
+            seed=seed,
+            prefetch_queue_depth=prefetch_factor,
+        )
+
+        logger.info(f"Created DALI-LMDB DataLoaders: backend={backend}, device={device_id}")
+
+    elif backend == "dali":
+        # Use DALI backend with Zarr (slower due to Python external source)
+        from dapidl.data.dali_pipeline import is_dali_available, create_dali_dataloaders
+
+        if not is_dali_available():
+            raise RuntimeError(
+                "DALI backend requested but DALI is not installed. "
+                "Install with: pip install nvidia-dali-cuda120"
+            )
+
+        train_loader, val_loader, test_loader = create_dali_dataloaders(
+            data_path=data_path,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
+            batch_size=batch_size,
+            num_threads=num_workers,
+            device_id=device_id,
+            seed=seed,
+            prefetch_queue_depth=prefetch_factor,
+        )
+
+        logger.info(f"Created DALI DataLoaders: backend={backend}, device={device_id}")
+
+    else:
+        # Use PyTorch backend (default)
+        train_dataset = DAPIDLDataset(data_path, split="train", indices=train_indices)
+        val_dataset = DAPIDLDataset(data_path, split="val", indices=val_indices)
+        test_dataset = DAPIDLDataset(data_path, split="test", indices=test_indices)
+
+        train_loader, val_loader, test_loader = create_dataloaders(
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            use_weighted_sampler=use_weighted_sampler,
+            prefetch_factor=prefetch_factor,
+            persistent_workers=persistent_workers,
+        )
+
+        logger.info(f"Created PyTorch DataLoaders: backend={backend}")
+
+    return train_loader, val_loader, test_loader, metadata

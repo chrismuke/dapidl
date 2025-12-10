@@ -14,6 +14,19 @@ Always use Firefox client ID when fetching web content (WebFetch tool).
 
 Always use `uv` for Python package management and running commands. Prefer `uv run` over activating virtualenvs manually.
 
+## GPU Memory Management
+
+**IMPORTANT**: Before running any GPU-intensive task (training, popV annotation, etc.), always check GPU memory:
+
+```bash
+nvidia-smi --query-gpu=memory.used,memory.total,memory.free --format=csv
+```
+
+Plan a buffer of at least 2-4GB free memory. If memory is tight:
+- Reduce batch size
+- Wait for other GPU tasks to complete
+- Kill unnecessary background processes
+
 ## Project Overview
 
 DAPIDL predicts cell types from DAPI nuclear staining using Xenium spatial transcriptomics as automatic training data. The system uses CellTypist to annotate cells from gene expression, then trains a CNN to predict those labels from DAPI patches alone.
@@ -99,3 +112,86 @@ DAPIDLDataset → transforms (ToFloat → augment → Normalize → ToTensor)
 **Hardlink exports**: Use `create_hardlink_dataset()` for space-efficient Xenium dataset copies. Hardlinks share inodes, saving ~10GB per dataset.
 
 **Multi-model support**: CellTypeAnnotator accepts list of model names. When using multiple models, columns are suffixed (_1, _2, etc.).
+
+## Cross-Platform Compatibility (Xenium ↔ MERSCOPE)
+
+### Gene Panel Comparison (Dec 2024)
+
+| Platform | Genes | Shared |
+|----------|-------|--------|
+| Xenium (breast) | 341 | 94 (27.6%) |
+| MERSCOPE (breast) | 500 | 94 (18.8%) |
+
+**Key insight**: Only ~28% gene overlap, BUT this doesn't matter for DAPIDL because:
+
+1. **DAPIDL uses DAPI images only** - The model learns morphological features from nuclear staining, not gene expression
+2. **Transcripts only used for training labels** - CellTypist generates annotations independently on each platform
+3. **DAPI is platform-agnostic** - Same staining chemistry on both platforms
+
+### Marker Gene Coverage (for CellTypist annotation quality)
+
+| Cell Type | In Both Panels | Notes |
+|-----------|----------------|-------|
+| Immune | 14/15 (93%) | Excellent - CD3D/E, CD4, CD8A/B, CD14, CD68, etc. |
+| Endothelial | 4/6 (67%) | Good - PECAM1, VWF, CLDN5, KDR |
+| Stromal | 3/10 (30%) | Moderate - ACTA2, PDGFRA, PDGFRB |
+| Epithelial | 2/9 (22%) | Limited but key markers: EPCAM, CDH1 |
+
+### Cross-Platform Model Transfer
+
+A model trained on MERSCOPE **should work on Xenium** (and vice versa) because:
+- Same DAPI staining chemistry
+- Same 128x128 patch extraction around nuclei
+- Adaptive normalization handles intensity differences (~16x higher on MERSCOPE)
+- CellTypist uses similar markers for both platforms
+
+**Main considerations for transfer**:
+1. Normalize images appropriately (adaptive percentile normalization)
+2. Cell type distributions may differ between tissues/samples
+3. Image quality/resolution differences may affect fine-grained classification
+
+## Training Run Status (Dec 9, 2024)
+
+### Currently Running Experiments
+
+| Experiment | Platform | Classes | Epoch | Best F1 | Status |
+|------------|----------|---------|-------|---------|--------|
+| merscope_finegrained_v3 | MERSCOPE | 17 | 6/50 | 0.2019 | Training (with balanced weights) |
+| vizgen_adaptive_v2 | MERSCOPE | 4 | 32/50 | 0.0468 | Training (coarse) |
+| merscope_finegrained_v2 | MERSCOPE | 17 | 11/50 | 0.0011 | Training (baseline) |
+
+### Key Findings
+
+**Class Weight Capping (max_weight_ratio=10.0)**: Massive improvement!
+- MERSCOPE v2 (uncapped): F1 = 0.0011 after 10 epochs (mode collapse to majority class)
+- MERSCOPE v3 (capped): F1 = 0.2019 after 5 epochs (180x improvement!)
+
+**Adaptive Normalization**: Essential for MERSCOPE data
+- MERSCOPE intensity ~16x higher than Xenium (median ~13000 vs ~800)
+- Stats: p_low=2188, p_high=24577, mean=0.298, std=0.203
+
+### Completed Experiments (Xenium)
+
+| Experiment | Classes | Best Val F1 | Backbone |
+|------------|---------|-------------|----------|
+| groundtruth | 3 | ~0.68 | EfficientNetV2-S |
+| groundtruth_finegrained | ~20 | ~0.45 | EfficientNetV2-S |
+| groundtruth_convnext | 3 | ~0.65 | ConvNeXt-Tiny |
+| groundtruth_resnet50 | 3 | ~0.62 | ResNet50 |
+| consensus_v2 | 3 | ~0.70 | EfficientNetV2-S |
+| finegrained_immune | ~15 | ~0.55 | EfficientNetV2-S |
+
+### Problem: Mode Collapse in Fine-Grained Training
+
+Without class weight capping, rare classes (< 1% of samples) get extreme weights that destabilize training. Solution:
+```python
+# In losses.py and dataset.py
+max_weight_ratio=10.0  # Rare classes get at most 10x the weight of common classes
+```
+
+### MERSCOPE Dataset Characteristics
+
+- Total cells: 713,121 (all annotations)
+- Training samples: 151,479 (high-confidence consensus)
+- Classes after filtering (min 20 samples): 17 fine-grained types
+- Filtered classes: DC1, DC3, Fibro-myofibro, pDC, NK cells (< 20 samples each)

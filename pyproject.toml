@@ -41,6 +41,12 @@ dependencies = [
     "h5py>=3.10",
     "rich>=13.7",
     "loguru>=0.7",
+    "popv>=0.6.0",
+    "sentence-transformers>=4.0",
+    "tokenizers>=0.15",
+    "openpyxl>=3.1.5",
+    "nvidia-dali-cuda120>=1.52.0",
+    "lmdb>=1.7.5",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +59,10 @@ dev = [
     "jupyter>=1.0",
     "matplotlib>=3.8",
     "seaborn>=0.13",
+]
+dali = [
+    "nvidia-dali-cuda120>=1.35",
+    "lmdb>=1.4",
 ]
 
 [project.scripts]
