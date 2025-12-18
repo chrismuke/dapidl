@@ -182,7 +182,7 @@ class PatchExtractor:
                 labels_list.append(class_mapping[label_source[i]])
                 metadata_list.append(
                     {
-                        "cell_id": int(cell_ids[i]),
+                        "cell_id": str(cell_ids[i]),
                         "predicted_type": predicted_types[i],
                         "broad_category": broad_categories[i],
                         "confidence": float(confidences[i]),

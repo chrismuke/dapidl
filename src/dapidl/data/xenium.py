@@ -185,7 +185,8 @@ class XeniumDataReader:
             # Get cell barcodes/IDs
             barcodes = f["matrix/barcodes"][:]
             # Barcodes are stored as strings like "1", "2", etc.
-            cell_ids = np.array([int(b.decode()) for b in barcodes])
+            # Handle both numeric and alphanumeric cell barcodes
+            cell_ids = np.array([b.decode() for b in barcodes])
 
         logger.info(
             f"Loaded expression matrix: {expression_matrix.shape[0]} cells x {expression_matrix.shape[1]} genes"

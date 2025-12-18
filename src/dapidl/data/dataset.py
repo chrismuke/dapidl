@@ -261,6 +261,236 @@ class DAPIDLDatasetWithHeavyAug(Dataset):
         return class_weights[labels]
 
 
+class MultiTaskDataset(Dataset):
+    """Dataset for multi-task learning (classification + segmentation).
+
+    Extends the base dataset to also return nucleus masks for the
+    auxiliary segmentation task. Masks can come from:
+    1. Pre-computed masks stored in masks.zarr
+    2. Simple circular masks based on patch center (fallback)
+
+    The segmentation task is auxiliary - it helps the backbone learn better
+    features for classification by forcing it to understand nuclear morphology.
+    """
+
+    def __init__(
+        self,
+        data_path: str | Path,
+        split: str = "train",
+        transform: Callable | None = None,
+        indices: np.ndarray | None = None,
+        adaptive_norm: bool = True,
+        mask_source: str = "auto",
+        fallback_mask_radius: int = 32,
+    ) -> None:
+        """Initialize multi-task dataset.
+
+        Args:
+            data_path: Path to prepared dataset directory
+            split: One of 'train', 'val', 'test'
+            transform: Optional custom transform
+            indices: Optional subset indices
+            adaptive_norm: Use adaptive percentile-based normalization
+            mask_source: Source for masks:
+                - 'auto': Try masks.zarr, fallback to circular
+                - 'zarr': Load from masks.zarr (error if not found)
+                - 'circular': Generate circular masks at patch center
+            fallback_mask_radius: Radius for circular fallback masks
+        """
+        self.data_path = Path(data_path)
+        self.split = split
+        self.mask_source = mask_source
+        self.fallback_mask_radius = fallback_mask_radius
+
+        # Load data
+        self.patches = zarr.open(self.data_path / "patches.zarr", mode="r")
+        self.labels = np.load(self.data_path / "labels.npy")
+        self.metadata = pl.read_parquet(self.data_path / "metadata.parquet")
+
+        # Load class mapping
+        with open(self.data_path / "class_mapping.json") as f:
+            self.class_mapping = json.load(f)
+        self.num_classes = len(self.class_mapping)
+        self.class_names = list(self.class_mapping.keys())
+
+        # Handle indices
+        if indices is not None:
+            self.indices = indices
+        else:
+            self.indices = np.arange(len(self.labels))
+
+        # Load masks if available
+        self.masks = None
+        masks_path = self.data_path / "masks.zarr"
+        if mask_source == "zarr":
+            if not masks_path.exists():
+                raise FileNotFoundError(
+                    f"Mask zarr not found at {masks_path}. "
+                    "Run mask generation first or use mask_source='circular'"
+                )
+            self.masks = zarr.open(masks_path, mode="r")
+        elif mask_source == "auto":
+            if masks_path.exists():
+                self.masks = zarr.open(masks_path, mode="r")
+                logger.info(f"Loaded masks from {masks_path}")
+            else:
+                logger.info(
+                    f"No masks.zarr found, using circular masks "
+                    f"(radius={fallback_mask_radius})"
+                )
+
+        # Compute stats
+        self.stats = None
+        if adaptive_norm:
+            self.stats = compute_dataset_stats(self.data_path)
+
+        # Set transform
+        if transform is not None:
+            self.transform = transform
+        elif split == "train":
+            self.transform = get_train_transforms(stats=self.stats)
+        else:
+            self.transform = get_val_transforms(stats=self.stats)
+
+        # Pre-compute circular mask template for fallback
+        self._circular_mask_template = None
+        if self.masks is None:
+            self._create_circular_mask_template()
+
+        logger.info(
+            f"MultiTaskDataset: {len(self)} samples, {self.num_classes} classes, "
+            f"split={split}, mask_source={mask_source}"
+        )
+
+    def _create_circular_mask_template(self) -> None:
+        """Create circular mask template for fallback."""
+        # Get patch size from first patch
+        sample_patch = np.array(self.patches[0])
+        h, w = sample_patch.shape[:2]
+        center = (h // 2, w // 2)
+
+        # Create circular mask
+        y, x = np.ogrid[:h, :w]
+        dist = np.sqrt((x - center[1])**2 + (y - center[0])**2)
+        self._circular_mask_template = (dist <= self.fallback_mask_radius).astype(np.float32)
+
+    def __len__(self) -> int:
+        return len(self.indices)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int, torch.Tensor]:
+        """Get a single sample with mask.
+
+        Args:
+            idx: Sample index
+
+        Returns:
+            Tuple of (image_tensor, label, mask_tensor)
+            mask_tensor has shape (1, H, W) with values 0 or 1
+        """
+        actual_idx = self.indices[idx]
+
+        # Load patch
+        patch = np.array(self.patches[actual_idx])
+        label = self.labels[actual_idx]
+
+        # Load or generate mask
+        if self.masks is not None:
+            mask = np.array(self.masks[actual_idx]).astype(np.float32)
+            # Ensure binary mask
+            mask = (mask > 0).astype(np.float32)
+        else:
+            # Use circular fallback
+            mask = self._circular_mask_template.copy()
+
+        # Apply transform (to both image and mask)
+        if self.transform is not None:
+            transformed = self.transform(image=patch, mask=mask)
+            patch = transformed["image"]
+            mask = transformed["mask"]
+
+        # Ensure mask has channel dimension
+        if isinstance(mask, np.ndarray):
+            mask = torch.from_numpy(mask).unsqueeze(0)
+        elif mask.dim() == 2:
+            mask = mask.unsqueeze(0)
+
+        return patch, int(label), mask
+
+    def get_class_weights(self, max_weight_ratio: float = 10.0) -> torch.Tensor:
+        """Compute class weights (same as base class)."""
+        labels = self.labels[self.indices]
+        class_counts = np.bincount(labels, minlength=self.num_classes)
+        class_counts = np.maximum(class_counts, 1)
+        weights = 1.0 / class_counts
+        if max_weight_ratio is not None and max_weight_ratio > 0:
+            min_weight = weights.min()
+            max_allowed = min_weight * max_weight_ratio
+            weights = np.minimum(weights, max_allowed)
+        weights = weights / weights.sum() * self.num_classes
+        return torch.FloatTensor(weights)
+
+    def get_sample_weights(self) -> np.ndarray:
+        """Get per-sample weights for WeightedRandomSampler."""
+        class_weights = self.get_class_weights().numpy()
+        labels = self.labels[self.indices]
+        return class_weights[labels]
+
+
+def create_multitask_data_splits(
+    data_path: str | Path,
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15,
+    seed: int = 42,
+    stratify: bool = True,
+    min_samples_per_class: int | None = None,
+    mask_source: str = "auto",
+    fallback_mask_radius: int = 32,
+) -> tuple[MultiTaskDataset, MultiTaskDataset, MultiTaskDataset]:
+    """Create train/val/test splits of the multi-task dataset.
+
+    Args:
+        data_path: Path to prepared dataset
+        train_ratio: Fraction for training
+        val_ratio: Fraction for validation
+        test_ratio: Fraction for testing
+        seed: Random seed
+        stratify: Whether to stratify by class labels
+        min_samples_per_class: Minimum samples per class
+        mask_source: Source for segmentation masks
+        fallback_mask_radius: Radius for circular fallback masks
+
+    Returns:
+        Tuple of (train_dataset, val_dataset, test_dataset)
+    """
+    # Get split indices using existing function
+    train_indices, val_indices, test_indices = get_split_indices(
+        data_path,
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
+        seed=seed,
+        stratify=stratify,
+        min_samples_per_class=min_samples_per_class,
+    )
+
+    # Create multi-task datasets
+    train_dataset = MultiTaskDataset(
+        data_path, split="train", indices=train_indices,
+        mask_source=mask_source, fallback_mask_radius=fallback_mask_radius
+    )
+    val_dataset = MultiTaskDataset(
+        data_path, split="val", indices=val_indices,
+        mask_source=mask_source, fallback_mask_radius=fallback_mask_radius
+    )
+    test_dataset = MultiTaskDataset(
+        data_path, split="test", indices=test_indices,
+        mask_source=mask_source, fallback_mask_radius=fallback_mask_radius
+    )
+
+    return train_dataset, val_dataset, test_dataset
+
+
 def create_data_splits(
     data_path: str | Path,
     train_ratio: float = 0.7,

@@ -79,16 +79,16 @@ def is_popv_available() -> bool:
         return False
 
 
-# Mapping from CellTypist cell types to broad categories
-# Based on Cells_Adult_Breast.pkl model cell types
+# Mapping from CellTypist and popV cell types to broad categories
+# Includes both CellTypist (Cells_Adult_Breast.pkl) and popV (Tabula Sapiens) cell types
+# Note: Uses prefix/substring matching - order matters (more specific first)
 CELL_TYPE_HIERARCHY = {
     "Epithelial": [
-        # Luminal HR+ cells
+        # CellTypist breast model
         "LummHR",
         "LummHR-SCGB",
         "LummHR-active",
         "LummHR-major",
-        # Luminal secretory cells
         "Lumsec",
         "Lumsec-HLA",
         "Lumsec-KIT",
@@ -97,37 +97,75 @@ CELL_TYPE_HIERARCHY = {
         "Lumsec-major",
         "Lumsec-myo",
         "Lumsec-prol",
-        # Basal cells
         "basal",
+        # popV Mammary/Epithelium models (Cell Ontology names)
+        "luminal epithelial cell of mammary gland",
+        "progenitor cell of mammary luminal epithelium",
+        "basal cell",  # Also matches "basal cell of prostate epithelium"
+        "myoepithelial cell",
+        "epithelial cell",  # Generic
+        "epithelial fate stem cell",
+        "glandular epithelial cell",
+        # Organ-specific epithelial (from popV Epithelium model)
+        "hepatocyte",
+        "enterocyte",
+        "enterochromaffin",
+        "enteroendocrine",
+        "intestinal crypt stem cell",
+        "intestinal tuft cell",
+        "cholangiocyte",
+        "kidney epithelial cell",
+        "goblet cell",
+        "club cell",
+        "ciliated",
+        "alveolar",
+        "pulmonary",
+        "acinar cell",
+        "pancreatic",
+        "paneth cell",
+        "mucus secreting cell",
+        "ductal cell",
+        "duct epithelial cell",
+        "urothelial cell",
+        "keratinocyte",
+        "keratocyte",
+        "corneal epithelial cell",
+        "conjunctival epithelial cell",
+        "retinal pigment epithelial cell",
+        "thymic epithelial cell",
+        "salivary gland cell",
+        "serous cell",
+        "ionocyte",
+        "ovarian surface epithelial cell",
+        "mesothelial cell",
+        "luminal cell of prostate",
+        "sebum secreting cell",
     ],
     "Immune": [
-        # T cells
+        # CellTypist breast model
         "CD4",
         "CD8",
         "T_prol",
         "GD",  # gamma-delta T cells
         "NKT",
         "Treg",
-        # B cells
         "b_naive",
         "bmem_switched",
         "bmem_unswitched",
         "plasma",
         "plasma_IgA",
         "plasma_IgG",
-        # Myeloid
         "Macro",
         "Mono",
         "cDC",
         "mDC",
         "pDC",
         "mye-prol",
-        # Others
         "NK",
         "NK-ILCs",
         "Mast",
         "Neutrophil",
-        # Additional immune cell types from Immune_All_High model
+        # CellTypist Immune_All_High model
         "B cell",
         "B cells",
         "T cell",
@@ -138,9 +176,46 @@ CELL_TYPE_HIERARCHY = {
         "DC",
         "Monocyte",
         "Monocytes",
+        # popV Immune model (Cell Ontology names)
+        "CD4-positive",
+        "CD8-positive",
+        "alpha-beta T cell",
+        "alpha-beta thymocyte",
+        "gamma-delta T cell",
+        "regulatory T cell",
+        "T follicular helper cell",
+        "thymocyte",
+        "natural killer cell",
+        "mature NK T cell",
+        "innate lymphoid cell",
+        "plasma cell",
+        "macrophage",
+        "tissue-resident macrophage",
+        "colon macrophage",
+        "microglial cell",
+        "monocyte",
+        "classical monocyte",
+        "intermediate monocyte",
+        "non-classical monocyte",
+        "mononuclear phagocyte",
+        "neutrophil",
+        "basophil",
+        "mast cell",
+        "granulocyte",
+        "dendritic cell",
+        "myeloid dendritic cell",
+        "plasmacytoid dendritic cell",
+        "Langerhans cell",
+        "erythrocyte",
+        "erythroid",
+        "platelet",
+        "hematopoietic",
+        "leukocyte",
+        "myeloid cell",
+        "myeloid leukocyte",
     ],
     "Stromal": [
-        # Fibroblasts
+        # CellTypist breast model
         "Fibro",
         "Fibro-SFRP4",
         "Fibro-major",
@@ -148,26 +223,48 @@ CELL_TYPE_HIERARCHY = {
         "Fibro-prematrix",
         "Fibroblast",
         "Fibroblasts",
-        # Smooth muscle and pericytes
         "pericytes",
         "Pericyte",
         "Pericytes",
         "vsmc",
         "Smooth muscle",
+        # popV Stromal model (Cell Ontology names)
+        "fibroblast",
+        "fibroblast of breast",
+        "myofibroblast",
+        "vascular associated smooth muscle cell",
+        "blood vessel smooth muscle cell",
+        "smooth muscle cell",
+        "pericyte",
+        "adventitial cell",
+        "mesenchymal stem cell",
+        "mesenchymal cell",
+        "stromal cell",
+        "interstitial cell",
+        "peritubular myoid cell",
+        "stellate cell",
+        "adipocyte",
+        "fat cell",
     ],
     "Endothelial": [
-        # Vascular endothelial
+        # CellTypist breast model
         "Vas",
         "Vas-arterial",
         "Vas-capillary",
         "Vas-venous",
         "Endothelial",
-        # Lymphatic endothelial
         "Lymph",
         "Lymph-immune",
         "Lymph-major",
         "Lymph-valve1",
         "Lymph-valve2",
+        # popV models (Cell Ontology names)
+        "endothelial cell",
+        "vascular endothelial cell",
+        "lymphatic endothelial cell",
+        "capillary endothelial cell",
+        "arterial endothelial cell",
+        "venous endothelial cell",
     ],
 }
 
@@ -381,188 +478,192 @@ class CellTypeAnnotator:
         return cell_types, conf_scores, prob_matrix
 
     def _annotate_popv(self, adata: ad.AnnData) -> pl.DataFrame:
-        """Run annotation using popV ensemble prediction.
+        """Run annotation using popV ensemble prediction with multiple models.
 
-        popV 0.6.0+ requires either:
-        1. A pretrained HubModel from HuggingFace (for inference mode)
-        2. A reference dataset with cell type labels (for training mode)
+        popV 0.6.0+ uses pretrained HubModels from HuggingFace. This method
+        runs multiple specialized models and combines their predictions:
+        - Mammary: tissue-specific model for breast
+        - Immune: all immune cell types
+        - Epithelium: epithelial cells
+        - Stromal: fibroblasts and stromal cells
 
-        This method uses pretrained Tabula Sapiens models from HuggingFace.
-        The models use Ensembl gene IDs, so we map gene symbols if needed.
-        If unavailable or incompatible, falls back to CellTypist consensus.
+        The gene_symbols='feature_name' parameter tells popV to map gene symbols
+        to Ensembl IDs using the CELLxGENE census internally.
 
         Args:
             adata: AnnData object with gene expression (raw counts preferred)
 
         Returns:
-            DataFrame with annotations
+            DataFrame with annotations including per-model predictions
         """
         try:
-            import popv
             from popv.hub import HubModel
         except ImportError:
             raise ImportError("popV not installed. Install with: pip install popv")
 
-        logger.info("Running popV ensemble prediction...")
+        logger.info("Running popV multi-model ensemble prediction...")
 
-        # popV 0.6.0 uses HubModel for pretrained inference
-        # Available Tabula Sapiens models on HuggingFace:
-        # https://huggingface.co/models?library=popv
-        # Uses ensemble of 8 methods: CellTypist, KNN, ONCLASS, scANVI, SVM, XGBoost
-
-        adata_query = adata.copy()
-
-        # popV requires raw counts (NO normalization) - it handles preprocessing internally
-        # Check if data looks normalized (no integers, small range)
-        x_sample = adata_query.X[:100].toarray() if hasattr(adata_query.X, 'toarray') else adata_query.X[:100]
+        # Check if data looks normalized
+        x_sample = adata.X[:100].toarray() if hasattr(adata.X, 'toarray') else adata.X[:100]
         if x_sample.max() < 20 and not np.allclose(x_sample, x_sample.astype(int)):
             logger.warning("Data appears normalized. popV works best with raw counts.")
 
-        # popV Tabula Sapiens models use Ensembl gene IDs
-        # If var_names are gene symbols, try to map them to Ensembl IDs
-        sample_genes = list(adata_query.var_names[:5])
+        # Check if genes are already Ensembl IDs
+        sample_genes = list(adata.var_names[:5])
         genes_are_ensembl = all(g.startswith('ENSG') for g in sample_genes)
 
-        if not genes_are_ensembl:
-            # Try to map gene symbols to Ensembl IDs
-            logger.info("Gene symbols detected, attempting to map to Ensembl IDs...")
-            try:
-                # Check if adata has ensembl_id in var
-                if 'ensembl_id' in adata_query.var.columns:
-                    # Use pre-existing Ensembl IDs
-                    ensembl_ids = adata_query.var['ensembl_id'].values
-                    adata_query.var['gene_symbol'] = adata_query.var_names.tolist()
-                    adata_query.var_names = pd.Index(ensembl_ids)
-                    logger.info(f"Mapped {len(ensembl_ids)} genes using ensembl_id column")
-                else:
-                    # Try to use cellxgene census for mapping
-                    try:
-                        import cellxgene_census
-                        with cellxgene_census.open_soma() as census:
-                            gene_df = census["census_data"]["homo_sapiens"].ms["RNA"].var.read().concat().to_pandas()
-                            # Create symbol to ensembl mapping
-                            symbol_to_ensembl = dict(zip(gene_df['feature_name'], gene_df['feature_id']))
-                            # Map genes
-                            new_var_names = []
-                            mapped_count = 0
-                            for gene in adata_query.var_names:
-                                if gene in symbol_to_ensembl:
-                                    new_var_names.append(symbol_to_ensembl[gene])
-                                    mapped_count += 1
-                                else:
-                                    new_var_names.append(gene)  # Keep original if no mapping
-                            adata_query.var['gene_symbol'] = adata_query.var_names.tolist()
-                            adata_query.var_names = pd.Index(new_var_names)
-                            logger.info(f"Mapped {mapped_count}/{len(new_var_names)} genes to Ensembl IDs")
-                    except Exception as e:
-                        logger.warning(f"Could not map gene symbols: {e}")
-            except Exception as e:
-                logger.warning(f"Gene mapping failed: {e}")
+        # Determine gene_symbols parameter for popV
+        # If genes are symbols, tell popV to map them using 'feature_name' column in census
+        gene_symbols_param = None if genes_are_ensembl else 'feature_name'
+        if gene_symbols_param:
+            logger.info("Gene symbols detected - popV will map to Ensembl IDs internally")
 
-        # Available popV HubModels on HuggingFace (Tabula Sapiens reference)
-        # Note: Despite Python 3.11 warning, these load successfully with Python 3.12
-        hub_models_to_try = [
-            "popV/tabula_sapiens_Immune",      # Immune cell types
+        # Available popV HubModels for human breast tissue annotation
+        # Order matters: more specific models first, then general models
+        popv_models = [
+            ("popV/tabula_sapiens_Mammary", "mammary"),      # Breast-specific
+            ("popV/tabula_sapiens_Immune", "immune"),        # All immune cells
+            ("popV/tabula_sapiens_Epithelium", "epithelium"), # Epithelial cells
+            ("popV/tabula_sapiens_Stromal", "stromal"),      # Stromal/fibroblasts
         ]
 
-        try:
-            hub_model = None
-            for repo_name in hub_models_to_try:
-                try:
-                    logger.info(f"Attempting to load popV HubModel: {repo_name}")
-                    hub_model = HubModel.pull_from_huggingface_hub(repo_name)
-                    logger.info(f"Successfully loaded popV model: {repo_name}")
-                    break
-                except Exception as e:
-                    logger.debug(f"Could not load {repo_name}: {e}")
-                    continue
+        # Collect predictions from all models
+        all_predictions: dict[str, dict] = {}  # cell_id -> {model: prediction}
+        all_scores: dict[str, dict] = {}       # cell_id -> {model: score}
+        cell_ids = adata.obs["cell_id"].values
 
-            if hub_model is not None:
-                import tempfile
-                import os
-                # Use HubModel's annotate_data method
-                # signature: annotate_data(query_adata, query_batch_key=None,
-                #   save_path='tmp', prediction_mode='fast', methods=None, gene_symbols=None)
+        # Initialize with cell IDs
+        for cid in cell_ids:
+            all_predictions[cid] = {}
+            all_scores[cid] = {}
+
+        import tempfile
+
+        for repo_name, model_key in popv_models:
+            try:
+                logger.info(f"Loading popV model: {repo_name}")
+                hub_model = HubModel.pull_from_huggingface_hub(repo_name)
+
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    adata_query = hub_model.annotate_data(
-                        adata_query,
+                    # CRITICAL FIX: Pass gene_symbols parameter for symbol->Ensembl mapping
+                    adata_annotated = hub_model.annotate_data(
+                        adata.copy(),
                         save_path=tmpdir,
-                        prediction_mode='fast'
+                        prediction_mode='fast',
+                        gene_symbols=gene_symbols_param  # This enables internal gene mapping!
                     )
 
-                # Extract results from annotated AnnData
-                # popV stores predictions in obs columns:
-                # - popv_prediction: final consensus (ontology-aware)
-                # - popv_prediction_score: confidence score
-                # - Individual: popv_celltypist_prediction, popv_knn_*_prediction, etc.
+                # Extract predictions
                 pred_key = "popv_prediction"
-                if pred_key not in adata_query.obs.columns:
+                score_key = "popv_prediction_score"
+
+                if pred_key not in adata_annotated.obs.columns:
                     # Fall back to majority vote
-                    for key in ["popv_majority_vote_prediction", "popv_majority_vote"]:
-                        if key in adata_query.obs.columns:
-                            pred_key = key
-                            break
+                    if "popv_majority_vote_prediction" in adata_annotated.obs.columns:
+                        pred_key = "popv_majority_vote_prediction"
+                        score_key = "popv_majority_vote_score"
 
-                if pred_key not in adata_query.obs.columns:
-                    available_cols = [c for c in adata_query.obs.columns if 'popv' in c.lower()]
-                    raise ValueError(f"No prediction column found. Available: {available_cols}")
+                if pred_key in adata_annotated.obs.columns:
+                    predictions = adata_annotated.obs[pred_key].values
+                    scores = adata_annotated.obs.get(score_key, pd.Series([0.5] * len(adata_annotated))).values
 
-                cell_types = adata_query.obs[pred_key].values
-                logger.info(f"Using prediction column: {pred_key}")
+                    # Store per-model predictions
+                    for i, cid in enumerate(cell_ids):
+                        pred = str(predictions[i]) if hasattr(predictions[i], '__str__') else predictions[i]
+                        all_predictions[cid][model_key] = pred
+                        all_scores[cid][model_key] = float(scores[i]) if not pd.isna(scores[i]) else 0.5
 
-                # Use popV's built-in prediction score if available
-                if 'popv_prediction_score' in adata_query.obs.columns:
-                    confidence = adata_query.obs['popv_prediction_score'].values
-                    logger.info("Using popv_prediction_score for confidence")
-                elif 'popv_majority_vote_score' in adata_query.obs.columns:
-                    confidence = adata_query.obs['popv_majority_vote_score'].values
-                    logger.info("Using popv_majority_vote_score for confidence")
+                    # Log distribution
+                    unique_preds = pd.Series(predictions).value_counts()
+                    logger.info(f"  {model_key}: {len(unique_preds)} unique types, top: {unique_preds.head(3).to_dict()}")
                 else:
-                    # Compute agreement rate as fallback confidence
-                    prediction_keys = hub_model.metadata.prediction_keys
-                    available_preds = [k for k in prediction_keys if k in adata_query.obs.columns]
-                    if len(available_preds) > 1:
-                        agreement = np.zeros(len(adata_query))
-                        for idx in range(len(adata_query)):
-                            final_pred = cell_types[idx]
-                            votes = sum(1 for k in available_preds
-                                       if adata_query.obs[k].iloc[idx] == final_pred)
-                            agreement[idx] = votes / len(available_preds)
-                        confidence = agreement
-                        logger.info(f"Computed confidence from {len(available_preds)} method agreement")
-                    else:
-                        confidence = np.ones(len(adata_query)) * 0.7
-            else:
-                raise RuntimeError("No pretrained popV HubModel available")
+                    logger.warning(f"  {model_key}: No prediction column found")
 
-        except Exception as e:
-            logger.warning(
-                f"popV HubModel annotation failed: {e}. "
-                "Falling back to CellTypist consensus."
-            )
+            except Exception as e:
+                logger.warning(f"  {model_key} failed: {e}")
+                continue
+
+        if not any(all_predictions[cell_ids[0]]):
+            logger.warning("All popV models failed. Falling back to CellTypist consensus.")
             return self._annotate_consensus(adata)
 
-        # Map to broad categories
-        if isinstance(cell_types, pd.Series):
-            cell_types = cell_types.values
+        # Combine predictions: use consensus across models
+        final_cell_types = []
+        final_confidence = []
+        final_broad = []
 
-        # Convert Categorical to string array for Polars compatibility
-        if hasattr(cell_types, 'astype'):
-            cell_types = np.array(cell_types.astype(str))
-        elif hasattr(cell_types, 'categories'):
-            # Handle pandas Categorical directly
-            cell_types = np.array([str(ct) for ct in cell_types])
+        for cid in cell_ids:
+            preds = all_predictions[cid]
+            scores = all_scores[cid]
 
-        broad_categories = [map_to_broad_category(ct) for ct in cell_types]
+            if not preds:
+                final_cell_types.append("Unknown")
+                final_confidence.append(0.0)
+                final_broad.append("Unknown")
+                continue
 
-        results = pl.DataFrame({
-            "cell_id": adata.obs["cell_id"].values,
-            "predicted_type": cell_types,
-            "broad_category": broad_categories,
-            "confidence": confidence if isinstance(confidence, np.ndarray) else confidence,
-        })
+            # Strategy: weighted voting by confidence score
+            # Group predictions by broad category first
+            broad_votes: dict[str, float] = {}
+            type_votes: dict[str, tuple[float, str]] = {}  # broad -> (score, fine_type)
 
-        logger.info(f"popV annotation complete for {len(results)} cells")
+            for model_key, pred in preds.items():
+                score = scores.get(model_key, 0.5)
+                broad = map_to_broad_category(pred)
+
+                # Skip "unassigned" predictions from models
+                if pred.lower() in ("unassigned", "unknown", "nan"):
+                    continue
+
+                broad_votes[broad] = broad_votes.get(broad, 0) + score
+
+                # Track best fine-grained prediction per broad category
+                if broad not in type_votes or score > type_votes[broad][0]:
+                    type_votes[broad] = (score, pred)
+
+            if not broad_votes:
+                final_cell_types.append("Unknown")
+                final_confidence.append(0.0)
+                final_broad.append("Unknown")
+                continue
+
+            # Select broad category with highest weighted votes
+            best_broad = max(broad_votes, key=broad_votes.get)
+            best_score, best_type = type_votes[best_broad]
+
+            # Confidence = normalized vote weight
+            total_votes = sum(broad_votes.values())
+            confidence = broad_votes[best_broad] / total_votes if total_votes > 0 else 0.5
+
+            final_cell_types.append(best_type)
+            final_confidence.append(confidence)
+            final_broad.append(best_broad)
+
+        # Build results DataFrame with per-model predictions
+        results_data = {
+            "cell_id": cell_ids,
+            "predicted_type": final_cell_types,
+            "broad_category": final_broad,
+            "confidence": final_confidence,
+        }
+
+        # Add individual model predictions
+        for _, model_key in popv_models:
+            results_data[f"popv_{model_key}"] = [
+                all_predictions[cid].get(model_key, "")
+                for cid in cell_ids
+            ]
+            results_data[f"popv_{model_key}_score"] = [
+                all_scores[cid].get(model_key, 0.0)
+                for cid in cell_ids
+            ]
+
+        results = pl.DataFrame(results_data)
+
+        # Log final distribution
+        logger.info(f"popV multi-model annotation complete for {len(results)} cells")
+        self._log_category_distribution(results, "broad_category")
+
         return results
 
     def _annotate_hierarchical(self, adata: ad.AnnData) -> pl.DataFrame:

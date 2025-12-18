@@ -195,3 +195,4 @@ max_weight_ratio=10.0  # Rare classes get at most 10x the weight of common class
 - Training samples: 151,479 (high-confidence consensus)
 - Classes after filtering (min 20 samples): 17 fine-grained types
 - Filtered classes: DC1, DC3, Fibro-myofibro, pDC, NK cells (< 20 samples each)
+- in your obsidian brain is a file Dear Claude where I can write something to you to ingest. each note is ended by Done checkbox. when you read this inform me and mark it
