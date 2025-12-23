@@ -168,6 +168,7 @@ class DAPIDLPipelineController:
         )
 
         # Step 2: Segmentation (depends on data_loader)
+        # Pass parent outputs via parameter_override using ${step.artifact} syntax
         self._pipeline.add_step(
             name="segmentation",
             parents=["data_loader"],
@@ -178,6 +179,9 @@ class DAPIDLPipelineController:
                 "step_config/diameter": cfg.diameter,
                 "step_config/flow_threshold": cfg.flow_threshold,
                 "step_config/match_threshold_um": cfg.match_threshold_um,
+                # Pass outputs from data_loader
+                "step_config/data_path": "${data_loader.data_path}",
+                "step_config/platform": "${data_loader.platform}",
             },
             execution_queue=cfg.gpu_queue if cfg.execute_remotely else None,
             cache_executed_step=True,  # Skip if inputs/params unchanged
@@ -196,6 +200,11 @@ class DAPIDLPipelineController:
                 "step_config/confidence_threshold": cfg.confidence_threshold,
                 "step_config/ground_truth_file": cfg.ground_truth_file or "",
                 "step_config/fine_grained": cfg.fine_grained,
+                # Pass outputs from data_loader
+                "step_config/data_path": "${data_loader.data_path}",
+                "step_config/platform": "${data_loader.platform}",
+                "step_config/cells_parquet": "${data_loader.cells_parquet}",
+                "step_config/expression_path": "${data_loader.expression_path}",
             },
             execution_queue=cfg.default_queue if cfg.execute_remotely else None,
             cache_executed_step=True,  # Skip if inputs/params unchanged
@@ -211,6 +220,11 @@ class DAPIDLPipelineController:
                 "step_config/patch_size": cfg.patch_size,
                 "step_config/output_format": cfg.output_format,
                 "step_config/normalization_method": cfg.normalization,
+                # Pass outputs from parent steps
+                "step_config/data_path": "${data_loader.data_path}",
+                "step_config/platform": "${data_loader.platform}",
+                "step_config/segmentation_result": "${segmentation.segmentation_result}",
+                "step_config/annotations": "${annotation.annotations}",
             },
             execution_queue=cfg.default_queue if cfg.execute_remotely else None,
             cache_executed_step=True,  # Skip if inputs/params unchanged
@@ -229,6 +243,10 @@ class DAPIDLPipelineController:
                 "step_config/epochs": cfg.epochs,
                 "step_config/batch_size": cfg.batch_size,
                 "step_config/learning_rate": cfg.learning_rate,
+                # Pass outputs from patch_extraction
+                "step_config/dataset_path": "${patch_extraction.dataset_path}",
+                "step_config/num_classes": "${patch_extraction.num_classes}",
+                "step_config/class_names": "${patch_extraction.class_names}",
             },
             execution_queue=cfg.gpu_queue if cfg.execute_remotely else None,
             cache_executed_step=cfg.cache_training,  # Configurable

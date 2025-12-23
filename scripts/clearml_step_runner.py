@@ -133,20 +133,30 @@ def run_step(step_name: str):
         logger.error(f"Unknown step: {step_name}")
         sys.exit(1)
 
-    # Get input artifacts from parent tasks (via ClearML pipeline)
+    # Get input artifacts from parent tasks (via step_config parameters)
+    # The pipeline controller passes parent outputs as step_config parameters
     from dapidl.pipeline.base import StepArtifacts
 
     inputs = {}
 
-    # Check for artifacts from parent tasks
-    pipeline_artifacts = task.artifacts
-    for name, artifact in pipeline_artifacts.items():
-        logger.info(f"Found artifact: {name}")
-        # Load artifact based on type
-        if artifact.type == "json":
-            inputs[name] = json.loads(artifact.get())
-        else:
-            inputs[name] = artifact.get()
+    # Extract parent outputs from step_config (set by pipeline parameter_override)
+    parent_output_keys = [
+        "data_path", "platform", "cells_parquet", "expression_path",
+        "segmentation_result", "annotations", "dataset_path",
+        "num_classes", "class_names", "metadata"
+    ]
+    for key in parent_output_keys:
+        if key in step_config and step_config[key]:
+            value = step_config[key]
+            # Handle JSON-encoded values
+            if isinstance(value, str) and value.startswith("{"):
+                try:
+                    inputs[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    inputs[key] = value
+            else:
+                inputs[key] = value
+            logger.info(f"Got parent output: {key} = {value[:100] if isinstance(value, str) and len(value) > 100 else value}")
 
     artifacts = StepArtifacts(inputs=inputs, outputs={})
 
