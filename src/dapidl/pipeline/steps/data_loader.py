@@ -134,6 +134,10 @@ class DataLoaderStep(PipelineStep):
         else:
             data_path = self._download_dataset()
 
+        # Resolve effective data path (handle outs/ subdirectory)
+        data_path = self._resolve_data_path(data_path)
+        logger.info(f"Resolved data path: {data_path}")
+
         # Detect platform
         platform = self._detect_platform(data_path) if cfg.platform == "auto" else cfg.platform
         logger.info(f"Platform: {platform}")
@@ -178,6 +182,45 @@ class DataLoaderStep(PipelineStep):
         data_path = Path(dataset.get_local_copy())
         logger.info(f"Downloaded dataset to: {data_path}")
 
+        return data_path
+
+    def _resolve_data_path(self, data_path: Path) -> Path:
+        """Resolve the effective data path, handling outs/ subdirectory.
+
+        Xenium datasets can be structured as:
+        - /path/to/dataset/morphology_focus.ome.tif (files at root)
+        - /path/to/dataset/outs/morphology_focus.ome.tif (files in outs/)
+
+        This method returns the path containing the actual data files.
+        """
+        # Check for Xenium markers at root
+        if (data_path / "morphology_focus.ome.tif").exists():
+            return data_path
+        if (data_path / "morphology.ome.tif").exists():
+            return data_path
+
+        # Check for MERSCOPE markers at root
+        if (data_path / "images").exists():
+            return data_path
+
+        # Check outs/ subdirectory (common Xenium structure)
+        outs_path = data_path / "outs"
+        if outs_path.exists():
+            if (outs_path / "morphology_focus.ome.tif").exists():
+                logger.info("Found Xenium data in outs/ subdirectory")
+                return outs_path
+            if (outs_path / "morphology.ome.tif").exists():
+                logger.info("Found Xenium data in outs/ subdirectory")
+                return outs_path
+
+        # Check output/ subdirectory (alternative structure)
+        output_path = data_path / "output"
+        if output_path.exists():
+            if (output_path / "morphology_focus.ome.tif").exists():
+                logger.info("Found Xenium data in output/ subdirectory")
+                return output_path
+
+        # Return original path, let _detect_platform raise error if needed
         return data_path
 
     def _detect_platform(self, data_path: Path) -> str:
