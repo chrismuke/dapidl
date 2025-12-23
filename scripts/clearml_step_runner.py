@@ -155,6 +155,22 @@ def run_step(step_name: str):
 
 
 def main():
+    # First try to get step name from ClearML task parameters (preferred method)
+    # This avoids issues with argparse_args not being passed by ClearML agent
+    try:
+        from clearml import Task
+        task = Task.current_task()
+        if task:
+            params = task.get_parameters_as_dict()
+            step_name = params.get("step_config", {}).get("step_name")
+            if step_name:
+                print(f"Running step '{step_name}' from task parameters")
+                run_step(step_name)
+                return
+    except Exception as e:
+        print(f"Could not get step from task parameters: {e}")
+
+    # Fallback to argparse for local execution/testing
     parser = argparse.ArgumentParser(description="ClearML Pipeline Step Runner")
     parser.add_argument(
         "--step",

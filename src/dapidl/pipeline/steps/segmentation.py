@@ -328,7 +328,9 @@ class SegmentationStep(PipelineStep):
         )
 
         # Connect parameters for UI editing
+        # step_name is used by clearml_step_runner.py to identify which step to run
         params = {
+            "step_name": self.name,
             "segmenter": self.config.segmenter,
             "diameter": self.config.diameter,
             "flow_threshold": self.config.flow_threshold,

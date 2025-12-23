@@ -346,7 +346,9 @@ class AnnotationStep(PipelineStep):
         )
 
         # Connect parameters for UI editing
+        # step_name is used by clearml_step_runner.py to identify which step to run
         params = {
+            "step_name": self.name,
             "annotator": self.config.annotator,
             "strategy": self.config.strategy,
             "model_names": ",".join(self.config.model_names),

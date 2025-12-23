@@ -312,7 +312,9 @@ class DataLoaderStep(PipelineStep):
         )
 
         # Connect parameters for UI editing
+        # step_name is used by clearml_step_runner.py to identify which step to run
         params = {
+            "step_name": self.name,
             "dataset_id": self.config.dataset_id or "",
             "dataset_project": self.config.dataset_project,
             "dataset_name": self.config.dataset_name or "",

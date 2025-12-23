@@ -589,7 +589,9 @@ class PatchExtractionStep(PipelineStep):
             add_task_init_call=False,
         )
 
+        # step_name is used by clearml_step_runner.py to identify which step to run
         params = {
+            "step_name": self.name,
             "patch_size": self.config.patch_size,
             "output_format": self.config.output_format,
             "normalization_method": self.config.normalization_method,

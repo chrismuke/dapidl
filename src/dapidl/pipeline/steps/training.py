@@ -721,7 +721,9 @@ class TrainingStep(PipelineStep):
             add_task_init_call=False,
         )
 
+        # step_name is used by clearml_step_runner.py to identify which step to run
         params = {
+            "step_name": self.name,
             "backbone": self.config.backbone,
             "epochs": self.config.epochs,
             "batch_size": self.config.batch_size,

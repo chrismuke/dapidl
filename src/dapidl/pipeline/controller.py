@@ -234,6 +234,10 @@ class DAPIDLPipelineController:
     def run(self, wait: bool = True) -> str:
         """Run the pipeline.
 
+        The pipeline controller runs locally while step tasks are executed
+        on ClearML agents. This avoids entry point issues with uv-managed
+        CLI tools that don't exist in the cloned repository.
+
         Args:
             wait: If True, wait for pipeline completion
 
@@ -244,7 +248,9 @@ class DAPIDLPipelineController:
             self.create_pipeline()
 
         logger.info("Starting pipeline execution...")
-        self._pipeline.start()
+        # Use start_locally() to run controller here, but steps go to agents
+        # This avoids the .venv/bin/dapidl entry point issue on agents
+        self._pipeline.start_locally(run_pipeline_steps_locally=False)
 
         if wait:
             self._pipeline.wait()
