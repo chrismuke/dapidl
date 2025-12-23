@@ -1322,5 +1322,596 @@ def export_lmdb(data_path: str, output_path: str | None, map_size: float, worker
         raise click.Abort()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# HEIST Commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@main.command(name="heist-prepare")
+@click.option(
+    "-x",
+    "--xenium-path",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to Xenium output directory",
+)
+@click.option(
+    "-o",
+    "--output-dir",
+    required=True,
+    type=click.Path(),
+    help="Output directory for HEIST data",
+)
+@click.option(
+    "--model",
+    "celltypist_model",
+    default="Cells_Adult_Breast.pkl",
+    help="CellTypist model for annotations",
+)
+@click.option(
+    "--ground-truth",
+    "ground_truth_file",
+    default=None,
+    type=click.Path(exists=True),
+    help="Path to ground truth Excel file (overrides CellTypist)",
+)
+@click.option(
+    "--mi-threshold",
+    default=0.35,
+    type=float,
+    help="Mutual information threshold for GRN edges",
+)
+@click.option(
+    "--spatial-k",
+    default=10,
+    type=int,
+    help="Number of spatial neighbors",
+)
+@click.option(
+    "--max-distance-um",
+    default=50.0,
+    type=float,
+    help="Maximum distance for spatial edges (micrometers)",
+)
+@click.option(
+    "--max-cells-per-type",
+    default=5000,
+    type=int,
+    help="Maximum cells to sample per type for GRN computation (for speed)",
+)
+def heist_prepare(
+    xenium_path: str,
+    output_dir: str,
+    celltypist_model: str,
+    ground_truth_file: str | None,
+    mi_threshold: float,
+    spatial_k: int,
+    max_distance_um: float,
+    max_cells_per_type: int,
+) -> None:
+    """Prepare data for HEIST training.
+
+    Exports expression matrix, builds spatial graph and cell-type GRNs.
+
+    Example:
+        dapidl heist-prepare -x /path/to/xenium -o ./heist_data
+    """
+    import numpy as np
+    import torch
+    from loguru import logger
+
+    from dapidl.data.annotation import CellTypeAnnotator
+    from dapidl.data.xenium import XeniumDataReader
+    from dapidl.models.heist import CellTypeGRNBuilder, SpatialGraphBuilder
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    console.print("[bold blue]HEIST Data Preparation[/bold blue]")
+    console.print(f"Xenium path: {xenium_path}")
+    console.print(f"Output: {output_dir}")
+
+    # Load Xenium data
+    console.print("\n[cyan]Loading Xenium data...[/cyan]")
+    reader = XeniumDataReader(xenium_path)
+    cells_df = reader.cells_df  # Property, not method
+    expression_matrix, gene_names, cell_ids = reader.load_expression_matrix()
+
+    console.print(f"  Cells: {len(cells_df)}")
+    console.print(f"  Genes: {expression_matrix.shape[1]}")
+
+    # Get coordinates (in microns for spatial graph)
+    coords = reader.get_centroids_microns()
+
+    # Annotate cells
+    import anndata as ad
+    import pandas as pd
+    from dapidl.data.annotation import AnnotationStrategy
+
+    # Create AnnData for annotation
+    adata = ad.AnnData(
+        X=expression_matrix,
+        obs=pd.DataFrame({"cell_id": cell_ids}),
+        var=pd.DataFrame(index=gene_names),
+    )
+
+    if ground_truth_file:
+        console.print(f"\n[cyan]Loading ground truth from {ground_truth_file}...[/cyan]")
+        annotator = CellTypeAnnotator(
+            strategy=AnnotationStrategy.GROUND_TRUTH,
+            ground_truth_file=ground_truth_file,
+            fine_grained=True,
+        )
+    else:
+        console.print(f"\n[cyan]Annotating cells with {celltypist_model}...[/cyan]")
+        annotator = CellTypeAnnotator(
+            model_names=celltypist_model,
+            fine_grained=True,
+        )
+
+    annotations = annotator.annotate(adata)
+
+    # Get annotated cell IDs and filter data to match
+    # Ensure consistent types (convert to strings for comparison)
+    annotated_cell_ids = annotations["cell_id"].to_numpy()
+    annotated_cell_ids_set = set(str(cid) for cid in annotated_cell_ids)
+    cell_id_to_idx = {str(cid): i for i, cid in enumerate(cell_ids)}
+
+    # Create valid indices matching annotation order
+    valid_indices = np.array([cell_id_to_idx[str(cid)] for cid in annotated_cell_ids
+                              if str(cid) in cell_id_to_idx])
+
+    # Filter expression and coordinates to annotated cells
+    expression_matrix = expression_matrix[valid_indices]
+    coords = coords[valid_indices]
+
+    # Also filter labels to match valid_indices order
+    valid_cids = [str(cid) for cid in annotated_cell_ids if str(cid) in cell_id_to_idx]
+
+    console.print(f"  Annotated cells: {len(valid_indices)} / {len(cell_ids)}")
+
+    # Get fine-grained labels - filter to match valid_indices
+    # Create a mapping from cell_id to label
+    labels_full = annotations["predicted_type"].to_numpy()
+    cid_to_label = {str(cid): label for cid, label in zip(annotated_cell_ids, labels_full, strict=True)}
+    labels = np.array([cid_to_label[cid] for cid in valid_cids])
+
+    label_to_idx = {label: i for i, label in enumerate(sorted(set(labels)))}
+    labels_encoded = np.array([label_to_idx[l] for l in labels])
+
+    console.print(f"  Cell types: {len(label_to_idx)}")
+
+    # Build spatial graph
+    console.print(f"\n[cyan]Building spatial graph (k={spatial_k})...[/cyan]")
+    spatial_builder = SpatialGraphBuilder(k=spatial_k, max_distance_um=max_distance_um)
+    spatial_edge_index, _ = spatial_builder.build_graph(coords)
+
+    console.print(f"  Edges: {spatial_edge_index.shape[1]}")
+
+    # Build cell-type GRNs
+    console.print(f"\n[cyan]Building cell-type GRNs (MI > {mi_threshold})...[/cyan]")
+    grn_builder = CellTypeGRNBuilder(
+        mi_threshold=mi_threshold,
+        max_cells_per_type=max_cells_per_type,
+    )
+
+    # Log-normalize expression for GRN computation
+    expr_log = np.log1p(expression_matrix)
+    cell_type_names = list(label_to_idx.keys())
+    cell_type_grns = grn_builder.build_grns(
+        expr_log, labels_encoded, cell_type_names
+    )
+
+    # Build universal GRN for inference
+    universal_grn = grn_builder.build_universal_grn(cell_type_grns)
+
+    # Save everything
+    console.print("\n[cyan]Saving data...[/cyan]")
+    np.save(output_path / "expression.npy", expr_log.astype(np.float32))
+    np.save(output_path / "coords.npy", coords.astype(np.float32))
+    np.save(output_path / "labels.npy", labels_encoded)
+    torch.save(spatial_edge_index, output_path / "spatial_graph.pt")
+    torch.save(cell_type_grns, output_path / "cell_type_grns.pt")
+    torch.save(universal_grn, output_path / "universal_grn.pt")
+
+    # Save metadata
+    import json
+    metadata = {
+        "n_cells": len(valid_indices),
+        "n_genes": expression_matrix.shape[1],
+        "n_cell_types": len(label_to_idx),
+        "cell_type_map": label_to_idx,
+        "gene_names": gene_names,
+        "annotation_source": ground_truth_file if ground_truth_file else celltypist_model,
+        "mi_threshold": mi_threshold,
+        "spatial_k": spatial_k,
+    }
+    with open(output_path / "metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    console.print(f"\n[green]✓ HEIST data prepared![/green]")
+    console.print(f"  Expression: {output_path / 'expression.npy'}")
+    console.print(f"  Spatial graph: {spatial_edge_index.shape[1]} edges")
+    console.print(f"  Cell-type GRNs: {len(cell_type_grns)} types")
+    console.print("\n[dim]Next: dapidl heist-train -d {output_dir}[/dim]")
+
+
+@main.command(name="heist-train")
+@click.option(
+    "-d",
+    "--data-dir",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to HEIST data directory (from heist-prepare)",
+)
+@click.option(
+    "-o",
+    "--output-dir",
+    default=None,
+    type=click.Path(),
+    help="Output directory for model (default: data_dir/training)",
+)
+@click.option("--epochs", default=50, type=int, help="Number of training epochs")
+@click.option("--batch-size", default=4, type=int, help="Partitions per batch")
+@click.option("--partition-size", default=128, type=int, help="Cells per partition")
+@click.option("--hidden-dim", default=128, type=int, help="Hidden dimension")
+@click.option("--n-layers", default=4, type=int, help="Number of HEIST layers")
+@click.option("--learning-rate", default=1e-3, type=float, help="Learning rate")
+@click.option("--patience", default=10, type=int, help="Early stopping patience")
+@click.option("--no-wandb", is_flag=True, help="Disable W&B logging")
+@click.option("--wandb-project", default="dapidl-heist", help="W&B project name")
+def heist_train(
+    data_dir: str,
+    output_dir: str | None,
+    epochs: int,
+    batch_size: int,
+    partition_size: int,
+    hidden_dim: int,
+    n_layers: int,
+    learning_rate: float,
+    patience: int,
+    no_wandb: bool,
+    wandb_project: str,
+) -> None:
+    """Train HEIST classifier.
+
+    Trains the HEIST model for cell type classification using
+    expression data prepared with heist-prepare.
+
+    Example:
+        dapidl heist-train -d ./heist_data --epochs 50
+    """
+    import json
+    import numpy as np
+    import torch
+    from loguru import logger
+
+    from dapidl.data.heist_dataset import create_heist_data_splits, load_heist_data
+    from dapidl.models.heist import HEISTClassifier
+    from dapidl.training.heist_trainer import HEISTTrainer, compute_class_weights
+
+    data_path = Path(data_dir)
+    if output_dir is None:
+        output_path = data_path / "training"
+    else:
+        output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    console.print("[bold blue]HEIST Training[/bold blue]")
+    console.print(f"Data: {data_dir}")
+    console.print(f"Output: {output_path}")
+
+    # Check GPU
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        console.print(f"[green]Using GPU: {torch.cuda.get_device_name()}[/green]")
+    else:
+        console.print("[yellow]Warning: Training on CPU (slow)[/yellow]")
+
+    # Load data
+    console.print("\n[cyan]Loading data...[/cyan]")
+    expression, coords, labels, spatial_edge_index, cell_type_grns = load_heist_data(
+        data_path
+    )
+
+    # Load metadata
+    with open(data_path / "metadata.json") as f:
+        metadata = json.load(f)
+
+    n_genes = expression.shape[1]
+    n_classes = metadata["n_cell_types"]
+
+    console.print(f"  Cells: {len(expression)}")
+    console.print(f"  Genes: {n_genes}")
+    console.print(f"  Classes: {n_classes}")
+
+    # Create data splits
+    console.print("\n[cyan]Creating train/val/test splits...[/cyan]")
+    train_ds, val_ds, test_ds = create_heist_data_splits(
+        expression=expression,
+        coords=coords,
+        labels=labels,
+        spatial_edge_index=spatial_edge_index,
+        partition_size=partition_size,
+    )
+
+    console.print(f"  Train: {len(train_ds)} partitions")
+    console.print(f"  Val: {len(val_ds)} partitions")
+    console.print(f"  Test: {len(test_ds)} partitions")
+
+    # Compute class weights
+    class_weights = compute_class_weights(labels)
+
+    # Load universal GRN
+    universal_grn = torch.load(data_path / "universal_grn.pt", weights_only=True)
+
+    # Create model
+    console.print("\n[cyan]Creating model...[/cyan]")
+    model = HEISTClassifier(
+        num_classes=n_classes,
+        n_genes=n_genes,
+        hidden_dim=hidden_dim,
+        n_layers=n_layers,
+    )
+
+    total_params = sum(p.numel() for p in model.parameters())
+    console.print(f"  Parameters: {total_params:,}")
+
+    # Create trainer
+    # NOTE: GRN is currently disabled because it's a gene-gene graph (nodes 0-540)
+    # but the model expects cell-cell edges. This is a fundamental architecture
+    # issue that needs proper redesign. For now, we use spatial graph only.
+    trainer = HEISTTrainer(
+        model=model,
+        train_dataset=train_ds,
+        val_dataset=val_ds,
+        test_dataset=test_ds,
+        grn_edge_index=None,  # Disabled until proper GRN integration
+        output_dir=output_path,
+        learning_rate=learning_rate,
+        epochs=epochs,
+        batch_size=batch_size,
+        patience=patience,
+        class_weights=class_weights,
+        device=device,
+        use_wandb=not no_wandb,
+        wandb_project=wandb_project,
+    )
+
+    # Train
+    console.print("\n[cyan]Starting training...[/cyan]")
+    results = trainer.train()
+
+    console.print(f"\n[green]✓ Training complete![/green]")
+    console.print(f"  Best val F1: {results['best_val_f1']:.4f} (epoch {results['best_epoch']})")
+    if "test_metrics" in results:
+        console.print(f"  Test F1: {results['test_metrics']['f1']:.4f}")
+        console.print(f"  Test accuracy: {results['test_metrics']['accuracy']:.4f}")
+    console.print(f"\n  Model saved to: {output_path / 'best_model.pt'}")
+
+
+# =============================================================================
+# ClearML Pipeline Commands
+# =============================================================================
+
+
+@main.group(name="clearml-pipeline")
+def clearml_pipeline_group() -> None:
+    """ClearML Pipeline commands for distributed processing.
+
+    Run spatial transcriptomics pipelines using ClearML for orchestration,
+    experiment tracking, and remote execution.
+    """
+    pass
+
+
+@clearml_pipeline_group.command(name="run")
+@click.option(
+    "--dataset-id",
+    help="ClearML Dataset ID for input data",
+)
+@click.option(
+    "--local-path",
+    type=click.Path(exists=True, path_type=Path),
+    help="Local path to Xenium/MERSCOPE data (alternative to dataset-id)",
+)
+@click.option(
+    "--platform",
+    type=click.Choice(["auto", "xenium", "merscope"]),
+    default="auto",
+    help="Platform type",
+)
+@click.option(
+    "--segmenter",
+    type=click.Choice(["cellpose", "native"]),
+    default="cellpose",
+    help="Segmentation method",
+)
+@click.option(
+    "--annotator",
+    type=click.Choice(["celltypist", "ground_truth", "popv"]),
+    default="celltypist",
+    help="Annotation method",
+)
+@click.option(
+    "--ground-truth-file",
+    type=click.Path(exists=False, path_type=Path),
+    help="Path to ground truth file (for ground_truth annotator). For remote execution, use filename from dataset.",
+)
+@click.option(
+    "--patch-size",
+    type=click.Choice(["32", "64", "128", "256"]),
+    default="128",
+    help="Patch size in pixels",
+)
+@click.option(
+    "--backbone",
+    default="efficientnetv2_rw_s",
+    help="CNN backbone for training",
+)
+@click.option(
+    "--epochs",
+    type=int,
+    default=50,
+    help="Training epochs",
+)
+@click.option(
+    "--local",
+    is_flag=True,
+    help="Run locally (without ClearML agents)",
+)
+@click.option(
+    "--project",
+    default="DAPIDL/pipelines",
+    help="ClearML project name",
+)
+def run_pipeline(
+    dataset_id: str | None,
+    local_path: Path | None,
+    platform: str,
+    segmenter: str,
+    annotator: str,
+    ground_truth_file: Path | None,
+    patch_size: str,
+    backbone: str,
+    epochs: int,
+    local: bool,
+    project: str,
+) -> None:
+    """Run the DAPIDL ClearML pipeline.
+
+    Process spatial transcriptomics data through segmentation, annotation,
+    patch extraction, and model training.
+
+    Examples:
+
+        # Run with ClearML Dataset
+        dapidl clearml-pipeline run --dataset-id abc123 --epochs 50
+
+        # Run locally with Xenium data
+        dapidl clearml-pipeline run --local-path /path/to/xenium --local
+
+        # Use ground truth annotations
+        dapidl clearml-pipeline run --dataset-id abc123 \\
+            --annotator ground_truth \\
+            --ground-truth-file annotations.xlsx
+    """
+    from dapidl.pipeline import PipelineConfig, create_pipeline
+
+    if not dataset_id and not local_path:
+        console.print("[red]Error: Either --dataset-id or --local-path required[/red]")
+        raise click.Abort()
+
+    config = PipelineConfig(
+        project=project,
+        dataset_id=dataset_id,
+        local_path=str(local_path) if local_path else None,
+        platform=platform,
+        segmenter=segmenter,
+        annotator=annotator,
+        ground_truth_file=str(ground_truth_file) if ground_truth_file else None,
+        patch_size=int(patch_size),
+        backbone=backbone,
+        epochs=epochs,
+        execute_remotely=not local,
+    )
+
+    console.print("[bold blue]DAPIDL ClearML Pipeline[/bold blue]\n")
+    console.print(f"  Platform: {platform}")
+    console.print(f"  Segmenter: {segmenter}")
+    console.print(f"  Annotator: {annotator}")
+    console.print(f"  Patch size: {patch_size}px")
+    console.print(f"  Backbone: {backbone}")
+    console.print(f"  Epochs: {epochs}")
+    console.print(f"  Execution: {'local' if local else 'ClearML agents'}")
+    console.print()
+
+    pipeline = create_pipeline(config)
+
+    if local:
+        console.print("[cyan]Running pipeline locally...[/cyan]\n")
+        results = pipeline.run_locally()
+        console.print("\n[green]✓ Pipeline completed![/green]")
+        if "training" in results:
+            test_metrics = results["training"].get("test_metrics", {})
+            console.print(f"  Test F1: {test_metrics.get('f1', 'N/A'):.4f}")
+            console.print(f"  Test Accuracy: {test_metrics.get('accuracy', 'N/A'):.4f}")
+    else:
+        console.print("[cyan]Creating ClearML pipeline...[/cyan]")
+        pipeline.create_pipeline()
+        console.print("[cyan]Starting remote execution...[/cyan]")
+        pipeline_id = pipeline.run(wait=False)
+        console.print(f"\n[green]✓ Pipeline started: {pipeline_id}[/green]")
+        console.print("  Monitor at: https://app.clear.ml")
+
+
+@clearml_pipeline_group.command(name="list-components")
+def list_components() -> None:
+    """List available pipeline components.
+
+    Shows all registered segmenters and annotators that can be used
+    in the pipeline.
+    """
+    from dapidl.pipeline import list_segmenters, list_annotators
+
+    console.print("[bold blue]Pipeline Components[/bold blue]\n")
+
+    table = Table(title="Segmenters")
+    table.add_column("Name", style="cyan")
+    table.add_column("Description", style="white")
+
+    segmenter_desc = {
+        "cellpose": "GPU-accelerated nucleus segmentation with Cellpose 2.0",
+        "native": "Use platform-provided cell boundaries (pass-through)",
+    }
+
+    for name in list_segmenters():
+        table.add_row(name, segmenter_desc.get(name, ""))
+    console.print(table)
+
+    console.print()
+
+    table = Table(title="Annotators")
+    table.add_column("Name", style="cyan")
+    table.add_column("Description", style="white")
+
+    annotator_desc = {
+        "celltypist": "Gene expression-based annotation with CellTypist models",
+        "ground_truth": "Load annotations from curated Excel/CSV/Parquet files",
+        "popv": "Ensemble prediction using HuggingFace Tabula Sapiens models",
+    }
+
+    for name in list_annotators():
+        table.add_row(name, annotator_desc.get(name, ""))
+    console.print(table)
+
+
+@clearml_pipeline_group.command(name="create-base-tasks")
+@click.option(
+    "--project",
+    default="DAPIDL/pipelines",
+    help="ClearML project name",
+)
+def create_base_tasks(project: str) -> None:
+    """Create ClearML base tasks for pipeline steps.
+
+    This registers each pipeline step as a ClearML Task, which is required
+    before running the pipeline remotely. Only needs to be run once.
+    """
+    from dapidl.pipeline import PipelineConfig, create_pipeline
+
+    console.print("[bold blue]Creating ClearML Base Tasks[/bold blue]\n")
+
+    config = PipelineConfig(project=project)
+    pipeline = create_pipeline(config)
+
+    console.print("[cyan]Registering pipeline steps...[/cyan]")
+    pipeline.create_base_tasks()
+
+    console.print("\n[green]✓ Base tasks created![/green]")
+    console.print(f"  Project: {project}")
+    console.print("  You can now run the pipeline with: dapidl clearml-pipeline run")
+
+
 if __name__ == "__main__":
     main()
