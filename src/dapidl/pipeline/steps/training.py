@@ -709,7 +709,8 @@ class TrainingStep(PipelineStep):
         task_name = task_name or f"step-{self.name}"
 
         # Use the runner script for remote execution (avoids uv entry point issues)
-        runner_script = Path(__file__).parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        # Path: src/dapidl/pipeline/steps -> 5 parents to reach repo root
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
 
         self._task = Task.create(
             project_name=project,
