@@ -326,14 +326,22 @@ class AnnotationStep(PipelineStep):
         task_name: str | None = None,
     ):
         """Create ClearML Task for this step."""
+        from pathlib import Path
+
         from clearml import Task
 
         task_name = task_name or f"step-{self.name}"
 
-        self._task = Task.init(
+        # Use the runner script for remote execution (avoids uv entry point issues)
+        runner_script = Path(__file__).parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+
+        self._task = Task.create(
             project_name=project,
             task_name=task_name,
             task_type=Task.TaskTypes.data_processing,
+            script=str(runner_script),
+            argparse_args=[f"--step={self.name}"],
+            add_task_init_call=False,
         )
 
         # Connect parameters for UI editing
@@ -346,6 +354,6 @@ class AnnotationStep(PipelineStep):
             "fine_grained": self.config.fine_grained,
             "ground_truth_file": self.config.ground_truth_file or "",
         }
-        self._task.connect(params, name="step_config")
+        self._task.set_parameters(params, __parameters_prefix="step_config")
 
         return self._task

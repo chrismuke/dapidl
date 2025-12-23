@@ -702,14 +702,22 @@ class TrainingStep(PipelineStep):
         task_name: str | None = None,
     ):
         """Create ClearML Task for this step."""
+        from pathlib import Path
+
         from clearml import Task
 
         task_name = task_name or f"step-{self.name}"
 
-        self._task = Task.init(
+        # Use the runner script for remote execution (avoids uv entry point issues)
+        runner_script = Path(__file__).parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+
+        self._task = Task.create(
             project_name=project,
             task_name=task_name,
             task_type=Task.TaskTypes.training,
+            script=str(runner_script),
+            argparse_args=[f"--step={self.name}"],
+            add_task_init_call=False,
         )
 
         params = {
@@ -721,6 +729,6 @@ class TrainingStep(PipelineStep):
             "augmentation": self.config.augmentation,
             "patience": self.config.patience,
         }
-        self._task.connect(params, name="step_config")
+        self._task.set_parameters(params, __parameters_prefix="step_config")
 
         return self._task
