@@ -155,33 +155,46 @@ def run_step(step_name: str):
 
 
 def main():
-    # First try to get step name from ClearML task parameters (preferred method)
-    # This avoids issues with argparse_args not being passed by ClearML agent
+    import os
+
+    # Method 1: Get step name from CLEARML_TASK_NAME environment variable
+    # ClearML agent sets this before running the script
+    task_name = os.environ.get("CLEARML_TASK_NAME", "")
+    valid_steps = ["data_loader", "segmentation", "annotation", "patch_extraction", "training"]
+
+    if task_name in valid_steps:
+        print(f"Running step '{task_name}' from CLEARML_TASK_NAME env var")
+        run_step(task_name)
+        return
+
+    # Method 2: Try to get step name from ClearML task parameters
+    # This requires clearml to be installed (happens after venv setup)
     try:
         from clearml import Task
         task = Task.current_task()
         if task:
+            # The task name IS the step name in our pipeline
+            if task.name in valid_steps:
+                print(f"Running step '{task.name}' from ClearML task name")
+                run_step(task.name)
+                return
+
+            # Also check step_config parameters
             params = task.get_parameters_as_dict()
             step_name = params.get("step_config", {}).get("step_name")
-            if step_name:
+            if step_name and step_name in valid_steps:
                 print(f"Running step '{step_name}' from task parameters")
                 run_step(step_name)
                 return
     except Exception as e:
-        print(f"Could not get step from task parameters: {e}")
+        print(f"Could not get step from ClearML: {e}")
 
     # Fallback to argparse for local execution/testing
     parser = argparse.ArgumentParser(description="ClearML Pipeline Step Runner")
     parser.add_argument(
         "--step",
         required=True,
-        choices=[
-            "data_loader",
-            "segmentation",
-            "annotation",
-            "patch_extraction",
-            "training",
-        ],
+        choices=valid_steps,
         help="Step to execute",
     )
     args = parser.parse_args()
