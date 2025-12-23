@@ -176,18 +176,21 @@ def main():
 
     # Method 1: Try to connect to ClearML task (works when running under agent)
     # Task.init() will reconnect to existing task when running remotely
+    # Note: We always try Task.init() because CLEARML_TASK_ID may not be set
+    # when using uv run mode, but Task.init() can still detect the running context
     try:
         early_log("Attempting to connect to ClearML task...")
         from clearml import Task
 
-        # Check if we're running under ClearML agent by looking for task ID env var
         task_id = os.environ.get("CLEARML_TASK_ID", "")
         early_log(f"CLEARML_TASK_ID: {task_id!r}")
 
-        if task_id:
-            # Running under ClearML agent - reconnect to the task
-            early_log("Running under ClearML agent, reconnecting to task...")
-            task = Task.init()
+        # Always try Task.init() - it will reconnect if running under agent
+        # or create a new task if running locally (which we'll catch and handle)
+        early_log("Calling Task.init()...")
+        task = Task.init()
+
+        if task:
             early_log(f"Connected to task: {task.name} (id={task.id})")
 
             # Get step name from task name (pipeline creates tasks like "data_loader")
