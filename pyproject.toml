@@ -51,9 +51,19 @@ dependencies = [
     "lmdb>=1.7.5",
     "scikit-image>=0.25.2",
     "cellpose>=4.0.8",
+    # ClearML experiment tracking and remote execution
+    "clearml[s3]>=1.16",
 ]
 
 [project.optional-dependencies]
+# HEIST graph neural network dependencies (require special build handling)
+# These packages need torch installed first, use: pip install torch && pip install .[heist]
+heist = [
+    "torch-geometric>=2.4",
+    "torch-scatter>=2.1",
+    "torch-sparse>=0.6",
+    "pymetis",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
@@ -97,3 +107,8 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+# Fix PyTorch Geometric build dependencies (torch-scatter/sparse need torch at build time)
+[tool.uv.extra-build-dependencies]
+torch-scatter = ["torch"]
+torch-sparse = ["torch"]
