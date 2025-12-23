@@ -309,6 +309,8 @@ class DataLoaderStep(PipelineStep):
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
             add_task_init_call=False,
+            # Install dapidl from the cloned repo
+            packages=["-e ."],
         )
 
         # Connect parameters for UI editing

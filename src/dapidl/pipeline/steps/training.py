@@ -719,6 +719,8 @@ class TrainingStep(PipelineStep):
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
             add_task_init_call=False,
+            # Install dapidl from the cloned repo
+            packages=["-e ."],
         )
 
         # step_name is used by clearml_step_runner.py to identify which step to run
