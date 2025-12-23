@@ -115,6 +115,10 @@ class DAPIDLPipelineController:
             add_pipeline_tags=True,
         )
 
+        # Set default execution queue for all steps
+        if cfg.execute_remotely:
+            self._pipeline.set_default_execution_queue(cfg.default_queue)
+
         # Add pipeline-level parameters
         self._pipeline.add_parameter(
             name="dataset_id",
@@ -148,13 +152,15 @@ class DAPIDLPipelineController:
         )
 
         # Step 1: Data Loader
+        # Note: Use direct values instead of ${pipeline.xxx} substitution
+        # because start_locally() doesn't properly resolve pipeline parameters
         self._pipeline.add_step(
             name="data_loader",
             base_task_project=cfg.project,
             base_task_name="step-data_loader",
             parameter_override={
-                "step_config/dataset_id": "${pipeline.dataset_id}",
-                "step_config/platform": "${pipeline.platform}",
+                "step_config/dataset_id": cfg.dataset_id or "",
+                "step_config/platform": cfg.platform,
                 "step_config/local_path": cfg.local_path or "",
             },
             execution_queue=cfg.default_queue if cfg.execute_remotely else None,
@@ -168,7 +174,7 @@ class DAPIDLPipelineController:
             base_task_project=cfg.project,
             base_task_name="step-segmentation",
             parameter_override={
-                "step_config/segmenter": "${pipeline.segmenter}",
+                "step_config/segmenter": cfg.segmenter,
                 "step_config/diameter": cfg.diameter,
                 "step_config/flow_threshold": cfg.flow_threshold,
                 "step_config/match_threshold_um": cfg.match_threshold_um,
@@ -184,7 +190,7 @@ class DAPIDLPipelineController:
             base_task_project=cfg.project,
             base_task_name="step-annotation",
             parameter_override={
-                "step_config/annotator": "${pipeline.annotator}",
+                "step_config/annotator": cfg.annotator,
                 "step_config/strategy": cfg.annotation_strategy,
                 "step_config/model_names": ",".join(cfg.model_names),
                 "step_config/confidence_threshold": cfg.confidence_threshold,
@@ -202,7 +208,7 @@ class DAPIDLPipelineController:
             base_task_project=cfg.project,
             base_task_name="step-patch_extraction",
             parameter_override={
-                "step_config/patch_size": "${pipeline.patch_size}",
+                "step_config/patch_size": cfg.patch_size,
                 "step_config/output_format": cfg.output_format,
                 "step_config/normalization_method": cfg.normalization,
             },
@@ -220,7 +226,7 @@ class DAPIDLPipelineController:
             base_task_name="step-training",
             parameter_override={
                 "step_config/backbone": cfg.backbone,
-                "step_config/epochs": "${pipeline.epochs}",
+                "step_config/epochs": cfg.epochs,
                 "step_config/batch_size": cfg.batch_size,
                 "step_config/learning_rate": cfg.learning_rate,
             },
