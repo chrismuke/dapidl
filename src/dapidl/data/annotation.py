@@ -295,6 +295,10 @@ GROUND_TRUTH_MAPPING = {
     "Stromal_&_T_Cell_Hybrid": "Hybrid",
     "T_Cell_&_Tumor_Hybrid": "Hybrid",
     "Unlabeled": "Unlabeled",
+    # Identity mappings for marker-based annotations
+    "Epithelial": "Epithelial",
+    "Immune": "Immune",
+    "Stromal": "Stromal",
 }
 
 
@@ -928,8 +932,10 @@ class CellTypeAnnotator:
                 f"Found: {list(gt_df.columns)}"
             )
 
-        # Get cell IDs from AnnData
-        adata_cell_ids = set(adata.obs["cell_id"].values)
+        # Get cell IDs from AnnData - convert to strings for comparison
+        # (H5 stores as strings, Excel may convert to int)
+        adata_cell_ids = set(str(x) for x in adata.obs["cell_id"].values)
+        gt_df["Barcode"] = gt_df["Barcode"].astype(str)
         gt_cell_ids = set(gt_df["Barcode"].values)
 
         # Check overlap
@@ -949,15 +955,18 @@ class CellTypeAnnotator:
             gt_df["broad_category"] = gt_df["broad_category"].fillna("Unknown")
 
         # Create result DataFrame with same format as other strategies
+        # Convert cell_id back to int to match cells_df format (use numpy int32)
+        cell_ids = np.array([int(x) for x in gt_df["Barcode"]], dtype=np.int32)
         results = pl.DataFrame({
-            "cell_id": gt_df["Barcode"].values,
+            "cell_id": cell_ids,
             "predicted_type": gt_df["Cluster"].values,
             "broad_category": gt_df["broad_category"].values,
             "confidence": np.ones(len(gt_df)),  # Ground truth has confidence 1.0
         })
 
-        # Filter to only cells in AnnData
-        results = results.filter(pl.col("cell_id").is_in(list(adata_cell_ids)))
+        # Filter to only cells in AnnData (convert string IDs to int for filtering)
+        adata_cell_ids_int = [int(x) for x in adata_cell_ids]
+        results = results.filter(pl.col("cell_id").is_in(adata_cell_ids_int))
 
         # Filter out Hybrid and Unlabeled cells (not useful for training)
         excluded_categories = ["Hybrid", "Unlabeled"]
