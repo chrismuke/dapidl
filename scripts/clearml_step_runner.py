@@ -13,12 +13,25 @@ The script reads step configuration from ClearML Task parameters.
 import argparse
 import json
 import sys
+import traceback
 from pathlib import Path
+
+# Early logging to stderr for debugging
+def early_log(msg):
+    """Log to stderr before logging framework is available."""
+    print(f"[clearml_step_runner] {msg}", file=sys.stderr, flush=True)
+
+early_log(f"Python: {sys.version}")
+early_log(f"Working dir: {Path.cwd()}")
+early_log(f"Script path: {__file__}")
 
 # Add src to path for development mode
 src_path = Path(__file__).parent.parent / "src"
 if src_path.exists():
+    early_log(f"Adding to path: {src_path}")
     sys.path.insert(0, str(src_path))
+else:
+    early_log(f"src path not found: {src_path}")
 
 
 def run_step(step_name: str):
@@ -157,37 +170,46 @@ def run_step(step_name: str):
 def main():
     import os
 
+    early_log("Entered main()")
+
     # Method 1: Get step name from CLEARML_TASK_NAME environment variable
     # ClearML agent sets this before running the script
     task_name = os.environ.get("CLEARML_TASK_NAME", "")
     valid_steps = ["data_loader", "segmentation", "annotation", "patch_extraction", "training"]
+    early_log(f"CLEARML_TASK_NAME: {task_name!r}")
 
     if task_name in valid_steps:
-        print(f"Running step '{task_name}' from CLEARML_TASK_NAME env var")
+        early_log(f"Running step '{task_name}' from CLEARML_TASK_NAME env var")
         run_step(task_name)
         return
 
     # Method 2: Try to get step name from ClearML task parameters
     # This requires clearml to be installed (happens after venv setup)
     try:
+        early_log("Attempting to import clearml...")
         from clearml import Task
+        early_log("ClearML imported successfully")
         task = Task.current_task()
+        early_log(f"Current task: {task}")
         if task:
+            early_log(f"Task name: {task.name}")
             # The task name IS the step name in our pipeline
             if task.name in valid_steps:
-                print(f"Running step '{task.name}' from ClearML task name")
+                early_log(f"Running step '{task.name}' from ClearML task name")
                 run_step(task.name)
                 return
 
             # Also check step_config parameters
             params = task.get_parameters_as_dict()
             step_name = params.get("step_config", {}).get("step_name")
+            early_log(f"step_name from params: {step_name}")
             if step_name and step_name in valid_steps:
-                print(f"Running step '{step_name}' from task parameters")
+                early_log(f"Running step '{step_name}' from task parameters")
                 run_step(step_name)
                 return
     except Exception as e:
-        print(f"Could not get step from ClearML: {e}")
+        early_log(f"Could not get step from ClearML: {e}")
+        early_log(traceback.format_exc())
 
     # Fallback to argparse for local execution/testing
     parser = argparse.ArgumentParser(description="ClearML Pipeline Step Runner")
@@ -203,4 +225,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        early_log("Starting main()")
+        main()
+    except Exception as e:
+        early_log(f"FATAL ERROR: {type(e).__name__}: {e}")
+        early_log(traceback.format_exc())
+        sys.exit(1)
