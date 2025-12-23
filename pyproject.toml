@@ -43,7 +43,7 @@ dependencies = [
     "h5py>=3.10",
     "rich>=13.7",
     "loguru>=0.7",
-    "popv>=0.6.0",
+    # popv moved to optional [popv] extra - has heavy deps that slow pip resolution
     "sentence-transformers>=4.0",
     "tokenizers>=0.15",
     "openpyxl>=3.1.5",
@@ -56,6 +56,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# PopV annotator - heavy dependency tree that causes slow pip resolution
+popv = [
+    "popv>=0.6.0",
+]
 # HEIST graph neural network dependencies (require special build handling)
 # These packages need torch installed first, use: pip install torch && pip install .[heist]
 heist = [
