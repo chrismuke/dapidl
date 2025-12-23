@@ -172,28 +172,25 @@ def main():
 
     early_log("Entered main()")
 
-    # Method 1: Get step name from CLEARML_TASK_NAME environment variable
-    # ClearML agent sets this before running the script
-    task_name = os.environ.get("CLEARML_TASK_NAME", "")
     valid_steps = ["data_loader", "segmentation", "annotation", "patch_extraction", "training"]
-    early_log(f"CLEARML_TASK_NAME: {task_name!r}")
 
-    if task_name in valid_steps:
-        early_log(f"Running step '{task_name}' from CLEARML_TASK_NAME env var")
-        run_step(task_name)
-        return
-
-    # Method 2: Try to get step name from ClearML task parameters
-    # This requires clearml to be installed (happens after venv setup)
+    # Method 1: Try to connect to ClearML task (works when running under agent)
+    # Task.init() will reconnect to existing task when running remotely
     try:
-        early_log("Attempting to import clearml...")
+        early_log("Attempting to connect to ClearML task...")
         from clearml import Task
-        early_log("ClearML imported successfully")
-        task = Task.current_task()
-        early_log(f"Current task: {task}")
-        if task:
-            early_log(f"Task name: {task.name}")
-            # The task name IS the step name in our pipeline
+
+        # Check if we're running under ClearML agent by looking for task ID env var
+        task_id = os.environ.get("CLEARML_TASK_ID", "")
+        early_log(f"CLEARML_TASK_ID: {task_id!r}")
+
+        if task_id:
+            # Running under ClearML agent - reconnect to the task
+            early_log("Running under ClearML agent, reconnecting to task...")
+            task = Task.init()
+            early_log(f"Connected to task: {task.name} (id={task.id})")
+
+            # Get step name from task name (pipeline creates tasks like "data_loader")
             if task.name in valid_steps:
                 early_log(f"Running step '{task.name}' from ClearML task name")
                 run_step(task.name)
@@ -201,17 +198,37 @@ def main():
 
             # Also check step_config parameters
             params = task.get_parameters_as_dict()
+            early_log(f"Task params: {list(params.keys())}")
             step_name = params.get("step_config", {}).get("step_name")
             early_log(f"step_name from params: {step_name}")
             if step_name and step_name in valid_steps:
                 early_log(f"Running step '{step_name}' from task parameters")
                 run_step(step_name)
                 return
+
+            # If task name is not a valid step, might be a prefixed name like "step-data_loader"
+            for step in valid_steps:
+                if step in task.name:
+                    early_log(f"Found step '{step}' in task name '{task.name}'")
+                    run_step(step)
+                    return
+
+            early_log(f"Could not determine step from task name: {task.name}")
     except Exception as e:
-        early_log(f"Could not get step from ClearML: {e}")
+        early_log(f"Could not connect to ClearML task: {e}")
         early_log(traceback.format_exc())
 
+    # Method 2: Get step name from CLEARML_TASK_NAME environment variable
+    task_name = os.environ.get("CLEARML_TASK_NAME", "")
+    early_log(f"CLEARML_TASK_NAME: {task_name!r}")
+
+    if task_name in valid_steps:
+        early_log(f"Running step '{task_name}' from CLEARML_TASK_NAME env var")
+        run_step(task_name)
+        return
+
     # Fallback to argparse for local execution/testing
+    early_log("Falling back to argparse (local execution mode)")
     parser = argparse.ArgumentParser(description="ClearML Pipeline Step Runner")
     parser.add_argument(
         "--step",
