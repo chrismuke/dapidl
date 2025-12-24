@@ -158,7 +158,8 @@ def run_step(step_name: str):
                 inputs[key] = value
             logger.info(f"Got parent output: {key} = {value[:100] if isinstance(value, str) and len(value) > 100 else value}")
 
-    artifacts = StepArtifacts(inputs=inputs, outputs={})
+    # Parent outputs go in 'outputs' - steps access via artifacts.outputs
+    artifacts = StepArtifacts(inputs={}, outputs=inputs)
 
     # Execute step
     logger.info(f"Executing step: {step_name}")
