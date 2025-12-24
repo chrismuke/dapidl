@@ -266,9 +266,18 @@ class CellposeSegmenter:
         This is O(n) complexity - we just look up mask values at each
         centroid's pixel location. Much faster than KD-tree for this use case.
         """
-        # Get centroid columns (handle both naming conventions)
-        x_col = "x_centroid" if "x_centroid" in cells_df.columns else "centroid_x"
-        y_col = "y_centroid" if "y_centroid" in cells_df.columns else "centroid_y"
+        # Get centroid columns (handle multiple naming conventions)
+        # Priority: x_centroid (Xenium) > centroid_x > x (simple)
+        if "x_centroid" in cells_df.columns:
+            x_col, y_col = "x_centroid", "y_centroid"
+        elif "centroid_x" in cells_df.columns:
+            x_col, y_col = "centroid_x", "centroid_y"
+        elif "x" in cells_df.columns:
+            x_col, y_col = "x", "y"
+        else:
+            raise ValueError(
+                f"Could not find centroid columns. Available: {cells_df.columns}"
+            )
 
         # Convert coordinates from microns to pixels
         cx_px = (cells_df[x_col].to_numpy() / pixel_size).astype(int)
