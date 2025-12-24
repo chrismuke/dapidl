@@ -17,7 +17,7 @@ from typing import Any
 
 from loguru import logger
 
-from dapidl.pipeline.base import PipelineStep, StepArtifacts
+from dapidl.pipeline.base import PipelineStep, StepArtifacts, resolve_artifact_path
 
 
 @dataclass
@@ -171,13 +171,28 @@ class TrainingStep(PipelineStep):
             - test_metrics: Dict with test set metrics
             - training_history: Training log
         """
+        import json
         import torch
 
         cfg = self.config
         inputs = artifacts.outputs
 
-        patches_path = Path(inputs["patches_path"])
-        class_mapping = inputs["class_mapping"]
+        # Resolve artifact URLs to local paths
+        patches_path = resolve_artifact_path(inputs["patches_path"], "patches_path")
+        if patches_path is None:
+            raise ValueError("patches_path artifact is required")
+
+        # class_mapping can be a URL to a JSON file or a dict directly
+        class_mapping_raw = inputs["class_mapping"]
+        if isinstance(class_mapping_raw, str):
+            class_mapping_path = resolve_artifact_path(class_mapping_raw, "class_mapping")
+            if class_mapping_path and class_mapping_path.exists():
+                class_mapping = json.loads(class_mapping_path.read_text())
+            else:
+                class_mapping = json.loads(class_mapping_raw)
+        else:
+            class_mapping = class_mapping_raw
+
         num_classes = len(class_mapping)
 
         # Determine output directory

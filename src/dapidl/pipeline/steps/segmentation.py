@@ -22,6 +22,7 @@ from dapidl.pipeline.base import (
     PipelineStep,
     SegmentationConfig,
     StepArtifacts,
+    resolve_artifact_path,
 )
 from dapidl.pipeline.registry import get_segmenter
 
@@ -139,8 +140,20 @@ class SegmentationStep(PipelineStep):
         cfg = self.config
         inputs = artifacts.outputs  # From data loader
 
-        data_path = Path(inputs["data_path"])
-        platform = inputs.get("platform", cfg.platform)
+        # Resolve artifact URLs to local paths
+        data_path = resolve_artifact_path(inputs["data_path"], "data_path")
+        if data_path is None:
+            raise ValueError("data_path artifact is required")
+
+        # Platform can be a URL to a text file or a direct value
+        platform_value = inputs.get("platform", cfg.platform)
+        platform_path = resolve_artifact_path(platform_value, "platform")
+        if platform_path and platform_path.exists() and platform_path.is_file():
+            # Read platform from downloaded text file
+            platform = platform_path.read_text().strip()
+            logger.info(f"Read platform from artifact: {platform}")
+        else:
+            platform = str(platform_value)
 
         # Update config with platform info
         if cfg.pixel_size_um == 0:

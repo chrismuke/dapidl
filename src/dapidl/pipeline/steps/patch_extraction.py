@@ -20,7 +20,7 @@ import numpy as np
 import polars as pl
 from loguru import logger
 
-from dapidl.pipeline.base import PipelineStep, StepArtifacts
+from dapidl.pipeline.base import PipelineStep, StepArtifacts, resolve_artifact_path
 
 
 @dataclass
@@ -146,8 +146,19 @@ class PatchExtractionStep(PipelineStep):
         cfg = self.config
         inputs = artifacts.outputs
 
-        data_path = Path(inputs["data_path"])
-        platform = inputs.get("platform", "xenium")
+        # Resolve artifact URLs to local paths
+        data_path = resolve_artifact_path(inputs["data_path"], "data_path")
+        if data_path is None:
+            raise ValueError("data_path artifact is required")
+
+        # Platform can be a URL to a text file or a direct value
+        platform_value = inputs.get("platform", "xenium")
+        platform_path = resolve_artifact_path(platform_value, "platform")
+        if platform_path and platform_path.exists() and platform_path.is_file():
+            platform = platform_path.read_text().strip()
+            logger.info(f"Read platform from artifact: {platform}")
+        else:
+            platform = str(platform_value)
 
         # Load DAPI image
         dapi_image = self._load_dapi_image(data_path, platform)
@@ -157,20 +168,27 @@ class PatchExtractionStep(PipelineStep):
         if cfg.normalize:
             dapi_image = self._normalize_image(dapi_image, cfg)
 
-        # Load annotations
-        annotations_df = pl.read_parquet(inputs["annotations_parquet"])
+        # Load annotations (resolve artifact URL)
+        annotations_path = resolve_artifact_path(
+            inputs["annotations_parquet"], "annotations_parquet"
+        )
+        if annotations_path is None:
+            raise ValueError("annotations_parquet artifact is required")
+        annotations_df = pl.read_parquet(annotations_path)
         logger.info(f"Loaded {annotations_df.height} annotations")
 
         # Load centroids (prefer segmentation output if available)
         if cfg.use_cellpose_centroids and inputs.get("centroids_parquet"):
             # Use segmentation output centroids
-            centroids_df = self._load_centroids(
-                Path(inputs["centroids_parquet"]), platform
+            centroids_path = resolve_artifact_path(
+                inputs["centroids_parquet"], "centroids_parquet"
             )
+            centroids_df = self._load_centroids(centroids_path, platform)
         else:
-            cells_path = inputs.get("cells_parquet")
-            if cells_path:
-                centroids_df = self._load_centroids(Path(cells_path), platform)
+            cells_path_raw = inputs.get("cells_parquet")
+            if cells_path_raw:
+                cells_path = resolve_artifact_path(cells_path_raw, "cells_parquet")
+                centroids_df = self._load_centroids(cells_path, platform)
             else:
                 raise ValueError("No cell coordinates available")
 

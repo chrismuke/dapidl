@@ -20,6 +20,78 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 import polars as pl
+from loguru import logger
+
+
+# =============================================================================
+# Artifact URL Resolution
+# =============================================================================
+
+
+def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> Path | None:
+    """Resolve an artifact value to a local path.
+
+    ClearML pipelines pass artifact URLs like:
+    https://files.clear.ml/.../artifacts/data_path/outs.zip
+
+    This function detects URLs and downloads them to a local cache.
+
+    Args:
+        value: Path string, URL string, or Path object
+        artifact_name: Name for logging (optional)
+
+    Returns:
+        Local Path object, or None if value is None/empty
+    """
+    if value is None or value == "":
+        return None
+
+    value_str = str(value)
+
+    # Check if it's a URL
+    if value_str.startswith("http://") or value_str.startswith("https://"):
+        logger.info(f"Resolving artifact URL: {artifact_name or value_str[:80]}...")
+
+        try:
+            from clearml import StorageManager
+
+            # Download to local cache and get local path
+            local_path = StorageManager.get_local_copy(value_str)
+            if local_path is None:
+                raise ValueError(f"Failed to download artifact: {value_str}")
+
+            local_path = Path(local_path)
+            logger.info(f"Downloaded artifact to: {local_path}")
+
+            # If it's a zip file, extract it
+            if local_path.suffix == ".zip":
+                import zipfile
+                import tempfile
+
+                extract_dir = Path(tempfile.mkdtemp(prefix="dapidl_artifact_"))
+                logger.info(f"Extracting zip to: {extract_dir}")
+
+                with zipfile.ZipFile(local_path, "r") as zf:
+                    zf.extractall(extract_dir)
+
+                # Check if all files are in a single subdirectory
+                extracted_items = list(extract_dir.iterdir())
+                if len(extracted_items) == 1 and extracted_items[0].is_dir():
+                    # Return the single subdirectory
+                    local_path = extracted_items[0]
+                else:
+                    local_path = extract_dir
+
+                logger.info(f"Extracted to: {local_path}")
+
+            return local_path
+
+        except ImportError:
+            logger.warning("ClearML not available, treating URL as path")
+            return Path(value_str)
+
+    # Already a local path
+    return Path(value_str)
 
 
 # =============================================================================

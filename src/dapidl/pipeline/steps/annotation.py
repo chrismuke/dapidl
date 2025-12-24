@@ -22,6 +22,7 @@ from dapidl.pipeline.base import (
     AnnotationConfig,
     PipelineStep,
     StepArtifacts,
+    resolve_artifact_path,
 )
 from dapidl.pipeline.registry import get_annotator
 
@@ -145,8 +146,19 @@ class AnnotationStep(PipelineStep):
         cfg = self.config
         inputs = artifacts.outputs
 
-        data_path = Path(inputs["data_path"])
-        platform = inputs.get("platform", "xenium")
+        # Resolve artifact URLs to local paths
+        data_path = resolve_artifact_path(inputs["data_path"], "data_path")
+        if data_path is None:
+            raise ValueError("data_path artifact is required")
+
+        # Platform can be a URL to a text file or a direct value
+        platform_value = inputs.get("platform", "xenium")
+        platform_path = resolve_artifact_path(platform_value, "platform")
+        if platform_path and platform_path.exists() and platform_path.is_file():
+            platform = platform_path.read_text().strip()
+            logger.info(f"Read platform from artifact: {platform}")
+        else:
+            platform = str(platform_value)
 
         # Create annotation config
         annot_config = AnnotationConfig(
@@ -168,20 +180,24 @@ class AnnotationStep(PipelineStep):
         # Prepare inputs based on method
         if cfg.annotator == "ground_truth":
             # Ground truth: load from file
-            cells_df = self._load_cells_df(inputs.get("cells_parquet"))
+            cells_parquet_path = resolve_artifact_path(
+                inputs.get("cells_parquet"), "cells_parquet"
+            )
+            cells_df = self._load_cells_df(str(cells_parquet_path) if cells_parquet_path else None)
             result = annotator.annotate(
                 config=annot_config,
                 cells_df=cells_df,
             )
         else:
             # CellTypist/popV: need expression data
-            expression_path = inputs.get("expression_path")
-            if not expression_path:
+            expression_path_raw = inputs.get("expression_path")
+            if not expression_path_raw:
                 raise ValueError(
                     f"{cfg.annotator} requires expression data but none provided"
                 )
 
-            adata = self._load_expression(Path(expression_path), data_path, platform)
+            expression_path = resolve_artifact_path(expression_path_raw, "expression_path")
+            adata = self._load_expression(expression_path, data_path, platform)
 
             # Ensure cell_id is in obs (required by CellTypeAnnotator)
             if "cell_id" not in adata.obs.columns:
