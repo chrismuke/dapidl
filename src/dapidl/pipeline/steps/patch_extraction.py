@@ -31,6 +31,12 @@ class PatchExtractionConfig:
     patch_size: int = 128  # 32, 64, 128, 256
     output_format: str = "lmdb"  # "lmdb" or "zarr"
 
+    # Physical-space normalization (for cross-platform compatibility)
+    # If enabled, patches cover the same physical area regardless of source platform
+    normalize_physical_size: bool = False  # Enable physical-space normalization
+    target_pixel_size_um: float = 0.2125  # Xenium default (0.2125 µm/px)
+    source_pixel_size_um: float = 0.0  # 0 = auto-detect from platform
+
     # Segmentation source
     use_segmented_boundaries: bool = True
     use_cellpose_centroids: bool = True
@@ -216,10 +222,27 @@ class PatchExtractionStep(PipelineStep):
         output_dir = data_path / "pipeline_outputs" / "patches"
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Determine pixel sizes for physical-space normalization
+        source_pixel_size = 0.0
+        target_pixel_size = 0.0
+        if cfg.normalize_physical_size:
+            source_pixel_size = (
+                cfg.source_pixel_size_um
+                if cfg.source_pixel_size_um > 0
+                else self._get_platform_pixel_size(platform)
+            )
+            target_pixel_size = cfg.target_pixel_size_um
+            logger.info(
+                f"Physical-space normalization enabled: "
+                f"source={source_pixel_size} µm/px, target={target_pixel_size} µm/px"
+            )
+
         if cfg.output_format == "lmdb":
             patches_path = output_dir / "patches.lmdb"
             stats = self._extract_to_lmdb(
-                dapi_image, merged_df, patches_path, cfg.patch_size
+                dapi_image, merged_df, patches_path, cfg.patch_size,
+                source_pixel_size=source_pixel_size,
+                target_pixel_size=target_pixel_size,
             )
         else:
             patches_path = output_dir / "patches.zarr"
@@ -372,13 +395,34 @@ class PatchExtractionStep(PipelineStep):
     def _add_class_labels(
         self, df: pl.DataFrame, class_mapping: dict[str, int]
     ) -> pl.DataFrame:
-        """Add numeric class labels."""
+        """Add numeric class labels.
+
+        Automatically detects fine-grained vs coarse mode based on class_mapping keys.
+        """
         if not class_mapping:
             # Default coarse mapping
             class_mapping = {"Epithelial": 0, "Immune": 1, "Stromal": 2}
 
-        # Map broad_category to class index
-        label_col = "broad_category" if "broad_category" in df.columns else "predicted_type"
+        # Detect if we're in fine-grained mode by checking if class_mapping
+        # contains broad categories or fine-grained types
+        broad_categories = {"Epithelial", "Immune", "Stromal", "Endothelial", "Unknown"}
+        is_fine_grained = not all(k in broad_categories for k in class_mapping.keys())
+
+        # Choose label column based on mode
+        if is_fine_grained:
+            # Fine-grained: use predicted_type
+            if "predicted_type" in df.columns:
+                label_col = "predicted_type"
+            elif "predicted_type_1" in df.columns:
+                label_col = "predicted_type_1"
+            else:
+                logger.warning("Fine-grained mode but no predicted_type column, falling back to broad_category")
+                label_col = "broad_category" if "broad_category" in df.columns else "predicted_type"
+        else:
+            # Coarse: use broad_category
+            label_col = "broad_category" if "broad_category" in df.columns else "predicted_type"
+
+        logger.info(f"Using label column '{label_col}' for class mapping (fine_grained={is_fine_grained})")
 
         df = df.with_columns(
             pl.col(label_col)
@@ -390,7 +434,20 @@ class PatchExtractionStep(PipelineStep):
         )
 
         # Filter out unmapped classes
-        return df.filter(pl.col("label") >= 0)
+        before = df.height
+        df = df.filter(pl.col("label") >= 0)
+        if df.height < before:
+            logger.info(f"Filtered unmapped classes: {before} -> {df.height}")
+
+        return df
+
+    def _get_platform_pixel_size(self, platform: str) -> float:
+        """Get pixel size in µm for a platform."""
+        pixel_sizes = {
+            "xenium": 0.2125,   # Xenium: 0.2125 µm/pixel
+            "merscope": 0.108,  # MERSCOPE: 0.108 µm/pixel (2x higher resolution)
+        }
+        return pixel_sizes.get(platform.lower(), 0.2125)
 
     def _extract_to_lmdb(
         self,
@@ -398,15 +455,39 @@ class PatchExtractionStep(PipelineStep):
         df: pl.DataFrame,
         output_path: Path,
         patch_size: int,
+        source_pixel_size: float = 0.0,
+        target_pixel_size: float = 0.0,
     ) -> dict[str, Any]:
         """Extract patches to LMDB database.
 
-        Uses numpy's native tobytes()/frombuffer() for safe serialization
-        instead of pickle.
+        Uses numpy's native tobytes()/frombuffer() for safe serialization.
+
+        Args:
+            image: DAPI image to extract from
+            df: DataFrame with x, y, label columns
+            output_path: Path to save LMDB
+            patch_size: Output patch size in pixels
+            source_pixel_size: Source platform pixel size (µm/px). 0 = no rescaling.
+            target_pixel_size: Target pixel size (µm/px). 0 = no rescaling.
         """
+        import cv2
         import lmdb
 
-        half = patch_size // 2
+        # Calculate extraction size for physical-space normalization
+        do_rescale = source_pixel_size > 0 and target_pixel_size > 0
+        if do_rescale:
+            target_physical_um = patch_size * target_pixel_size
+            source_extract_size = int(target_physical_um / source_pixel_size)
+            scale_factor = patch_size / source_extract_size
+            logger.info(
+                f"Physical-space normalization: extracting {source_extract_size}px "
+                f"(={target_physical_um:.1f}µm) -> resize to {patch_size}px "
+                f"(scale={scale_factor:.2f}x)"
+            )
+            half = source_extract_size // 2
+        else:
+            source_extract_size = patch_size
+            half = patch_size // 2
         n_cells = df.height
 
         # Open LMDB
@@ -432,15 +513,23 @@ class PatchExtractionStep(PipelineStep):
                     cy = int(row["y"])
                     label = row["label"]
 
-                    # Extract patch
+                    # Extract patch (may be larger/smaller for rescaling)
                     patch = image[
                         cy - half : cy + half,
                         cx - half : cx + half,
                     ]
 
-                    # Validate patch size
-                    if patch.shape != (patch_size, patch_size):
+                    # Validate extraction size
+                    if patch.shape != (source_extract_size, source_extract_size):
                         continue
+
+                    # Resize to target size if using physical-space normalization
+                    if do_rescale:
+                        patch = cv2.resize(
+                            patch,
+                            (patch_size, patch_size),
+                            interpolation=cv2.INTER_LINEAR
+                        )
 
                     # Store patch as raw bytes (safe serialization)
                     key = f"{n_extracted:08d}".encode()
@@ -461,11 +550,17 @@ class PatchExtractionStep(PipelineStep):
                 "patch_size": patch_size,
                 "dtype": str(image.dtype),
                 "class_counts": {str(k): v for k, v in class_counts.items()},
+                "source_pixel_size_um": source_pixel_size if do_rescale else None,
+                "target_pixel_size_um": target_pixel_size if do_rescale else None,
+                "physical_normalized": do_rescale,
             }
             txn.put(b"__metadata__", json.dumps(metadata).encode())
 
         env.close()
-        logger.info(f"Created LMDB with {n_extracted} patches at {output_path}")
+        msg = f"Created LMDB with {n_extracted} patches at {output_path}"
+        if do_rescale:
+            msg += f" (physical-normalized to {target_pixel_size} µm/px)"
+        logger.info(msg)
 
         return {
             "n_extracted": n_extracted,
@@ -473,6 +568,7 @@ class PatchExtractionStep(PipelineStep):
             "class_counts": class_counts,
             "patch_size": patch_size,
             "format": "lmdb",
+            "physical_normalized": do_rescale,
         }
 
     def _extract_to_zarr(

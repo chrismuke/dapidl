@@ -54,6 +54,49 @@ class AnnotationStepConfig:
     filter_category: str | None = None  # Filter to specific category
 
 
+def _compute_class_mapping(annotations_df: pl.DataFrame, fine_grained: bool) -> dict[str, int]:
+    """Compute class mapping from annotations DataFrame.
+
+    Args:
+        annotations_df: DataFrame with predicted_type and/or broad_category columns
+        fine_grained: If True, use predicted_type (fine-grained cell types).
+                     If False, use broad_category (Epithelial/Immune/Stromal/etc).
+
+    Returns:
+        Dictionary mapping category name to integer label
+    """
+    if fine_grained:
+        # Use fine-grained cell types
+        if "predicted_type" in annotations_df.columns:
+            pred_col = "predicted_type"
+        elif "predicted_type_1" in annotations_df.columns:
+            pred_col = "predicted_type_1"
+        else:
+            raise ValueError("No predicted_type column found in annotations")
+
+        cell_types = sorted(annotations_df[pred_col].unique().to_list())
+        # Filter out Unknown if present, add at end
+        if "Unknown" in cell_types:
+            cell_types.remove("Unknown")
+            cell_types.append("Unknown")
+        return {ct: i for i, ct in enumerate(cell_types)}
+    else:
+        # Use broad categories
+        if "broad_category" in annotations_df.columns:
+            broad_col = "broad_category"
+        elif "broad_category_1" in annotations_df.columns:
+            broad_col = "broad_category_1"
+        else:
+            raise ValueError("No broad_category column found in annotations")
+
+        categories = sorted(annotations_df[broad_col].unique().to_list())
+        # Filter out Unknown if present, add at end
+        if "Unknown" in categories:
+            categories.remove("Unknown")
+            categories.append("Unknown")
+        return {cat: i for i, cat in enumerate(categories)}
+
+
 class AnnotationStep(PipelineStep):
     """Cell type annotation step.
 
@@ -231,6 +274,12 @@ class AnnotationStep(PipelineStep):
             )
             logger.info(f"Filtered to {cfg.filter_category}: {annotations_df.height}")
 
+        # Regenerate class_mapping from FILTERED annotations
+        # This ensures class_mapping matches the cell types actually in the filtered data
+        class_mapping = _compute_class_mapping(annotations_df, cfg.fine_grained)
+        index_to_class = {v: k for k, v in class_mapping.items()}
+        logger.info(f"Class mapping regenerated from filtered data: {len(class_mapping)} classes")
+
         # Save outputs
         output_dir = data_path / "pipeline_outputs" / "annotation"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -246,8 +295,8 @@ class AnnotationStep(PipelineStep):
         with open(mapping_path, "w") as f:
             json.dump(
                 {
-                    "class_mapping": result.class_mapping,
-                    "index_to_class": result.index_to_class,
+                    "class_mapping": class_mapping,
+                    "index_to_class": index_to_class,
                 },
                 f,
                 indent=2,
@@ -258,8 +307,8 @@ class AnnotationStep(PipelineStep):
             outputs={
                 **inputs,  # Pass through
                 "annotations_parquet": str(annotations_path),
-                "class_mapping": result.class_mapping,
-                "index_to_class": result.index_to_class,
+                "class_mapping": class_mapping,
+                "index_to_class": index_to_class,
                 "annotation_stats": result.stats,
                 "annotator_used": cfg.annotator,
             },
