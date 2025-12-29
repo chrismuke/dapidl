@@ -206,6 +206,9 @@ class SegmentationConfig:
     tile_overlap: int = 256  # Overlap between tiles
     pixel_size_um: float = 0.0  # Pixel size in microns (0 = auto-detect)
     gpu: bool = True  # Use GPU for Cellpose
+    skip_boundaries: bool = True  # Skip slow boundary extraction (not needed for training)
+    parallel_boundaries: bool = True  # Use parallel processing for boundaries (if extracted)
+    n_boundary_workers: int = 8  # Number of workers for parallel boundary extraction
 
 
 @dataclass
@@ -304,6 +307,7 @@ class AnnotationConfig:
     )
     confidence_threshold: float = 0.5
     majority_voting: bool = True
+    extended_consensus: bool = False  # Use 6 CellTypist models for better coverage
 
     # Ground truth options
     ground_truth_file: str | None = None

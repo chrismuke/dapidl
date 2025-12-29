@@ -41,6 +41,7 @@ class AnnotationStepConfig:
     )
     majority_voting: bool = True
     confidence_threshold: float = 0.5
+    extended_consensus: bool = False  # Use 6 CellTypist models for better coverage
 
     # Ground truth parameters
     ground_truth_file: str | None = None
@@ -172,6 +173,7 @@ class AnnotationStep(PipelineStep):
             ground_truth_sheet=cfg.ground_truth_sheet,
             cell_id_column=cfg.cell_id_column,
             celltype_column=cfg.celltype_column,
+            extended_consensus=cfg.extended_consensus,
         )
 
         # Get annotator

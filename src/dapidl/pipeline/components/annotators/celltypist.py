@@ -56,6 +56,7 @@ class CellTypistAnnotator:
                 majority_voting=self.config.majority_voting,
                 strategy=self.config.strategy,
                 fine_grained=self.config.fine_grained,
+                extended_consensus=self.config.extended_consensus,
             )
         return self._annotator
 

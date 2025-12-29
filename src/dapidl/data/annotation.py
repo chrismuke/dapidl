@@ -24,6 +24,33 @@ from dapidl.data.xenium import XeniumDataReader
 # Default model for breast tissue
 DEFAULT_MODEL = "Cells_Adult_Breast.pkl"
 
+# Extended consensus models for comprehensive cell type annotation
+# These models cover different aspects: breast-specific, pan-immune, vascular, stromal
+EXTENDED_CONSENSUS_MODELS = [
+    # Primary tissue-specific models
+    "Cells_Adult_Breast.pkl",       # Adult breast (primary)
+
+    # Pan-tissue immune models (high granularity)
+    "Immune_All_High.pkl",          # Comprehensive immune subtypes
+    "Immune_All_Low.pkl",           # Broader immune categories
+
+    # Specialized immune models
+    "COVID19_Immune_Landscape.pkl", # Good for T cells, B cells, myeloid
+
+    # Vascular/stromal
+    "Adult_Human_Vascular.pkl",     # Endothelial and vascular cells
+
+    # General healthy tissue reference
+    "Pan_Fetal_Human.pkl",          # Broad coverage across cell types
+]
+
+# Minimal consensus (faster, still effective)
+MINIMAL_CONSENSUS_MODELS = [
+    "Cells_Adult_Breast.pkl",       # Adult breast
+    "Immune_All_High.pkl",          # Immune cells
+    "Adult_Human_Vascular.pkl",     # Endothelial/stromal
+]
+
 
 class AnnotationStrategy(str, Enum):
     """Available annotation strategies."""
@@ -33,6 +60,7 @@ class AnnotationStrategy(str, Enum):
     HIERARCHICAL = "hierarchical"  # Tissue-specific + specialized refinement
     POPV = "popv"  # popV ensemble prediction
     GROUND_TRUTH = "ground_truth"  # Use ground truth annotations from file
+    SINGLER = "singler"  # SingleR reference-based annotation (requires R)
 
 
 # Default strategy
@@ -77,6 +105,30 @@ def is_popv_available() -> bool:
         return True
     except ImportError:
         return False
+
+
+def is_singler_available() -> bool:
+    """Check if rpy2 and SingleR R packages are available."""
+    try:
+        import rpy2.robjects as ro
+        from rpy2.robjects.packages import importr
+        # Try to load the R packages
+        importr('SingleR')
+        importr('celldex')
+        return True
+    except Exception:
+        return False
+
+
+# Available SingleR reference datasets
+SINGLER_REFERENCES = {
+    "blueprint": "BlueprintEncodeData",  # Best for general use (92% accuracy in benchmark)
+    "hpca": "HumanPrimaryCellAtlasData",  # General human cell atlas
+    "monaco": "MonacoImmuneData",  # Detailed immune subtypes
+    "novershtern": "NovershternHematopoieticData",  # Hematopoietic lineages
+}
+
+DEFAULT_SINGLER_REFERENCE = "blueprint"
 
 
 # Mapping from CellTypist and popV cell types to broad categories
@@ -343,6 +395,8 @@ class CellTypeAnnotator:
         filter_category: str | None = None,
         ground_truth_file: str | Path | None = None,
         ground_truth_sheet: str = "Xenium R1 Fig1-5 (supervised)",
+        singler_reference: str = DEFAULT_SINGLER_REFERENCE,
+        extended_consensus: bool = False,
     ) -> None:
         """Initialize annotator.
 
@@ -352,7 +406,7 @@ class CellTypeAnnotator:
             confidence_threshold: Minimum confidence score to accept prediction
             majority_voting: Whether to use majority voting for predictions
             strategy: Annotation strategy to use (single, consensus, hierarchical,
-                popv, ground_truth)
+                popv, ground_truth, singler)
             fine_grained: If True, use fine-grained cell type labels instead of
                 broad categories (e.g., "CD4+ T cells" instead of "Immune")
             filter_category: If set, only include cells from this broad category
@@ -360,6 +414,14 @@ class CellTypeAnnotator:
             ground_truth_file: Path to Excel file with ground truth annotations
                 (required for ground_truth strategy)
             ground_truth_sheet: Sheet name in Excel file (default for Xenium breast)
+            singler_reference: SingleR reference dataset to use. Options:
+                - "blueprint" (default): BlueprintEncodeData - best general performance
+                - "hpca": HumanPrimaryCellAtlasData - general human cell atlas
+                - "monaco": MonacoImmuneData - detailed immune subtypes
+                - "novershtern": NovershternHematopoieticData - hematopoietic cells
+            extended_consensus: If True and using consensus strategy, use 6 CellTypist
+                models covering breast, immune, vascular, and pan-tissue. This provides
+                more robust predictions but is slower.
         """
         # Normalize to list
         if isinstance(model_names, str):
@@ -367,12 +429,16 @@ class CellTypeAnnotator:
         else:
             self.model_names = list(model_names)
 
+        # Store extended_consensus flag
+        self.extended_consensus = extended_consensus
+
         self.confidence_threshold = confidence_threshold
         self.majority_voting = majority_voting
         self.fine_grained = fine_grained
         self.filter_category = filter_category
         self.ground_truth_file = Path(ground_truth_file) if ground_truth_file else None
         self.ground_truth_sheet = ground_truth_sheet
+        self.singler_reference = singler_reference
 
         # Parse strategy
         if isinstance(strategy, str):
@@ -385,16 +451,34 @@ class CellTypeAnnotator:
             logger.warning("Install popV with: pip install popv")
             self.strategy = AnnotationStrategy.CONSENSUS
 
+        if self.strategy == AnnotationStrategy.SINGLER and not is_singler_available():
+            logger.warning("SingleR not available (requires R with SingleR and celldex packages).")
+            logger.warning("Install with: R -e 'BiocManager::install(c(\"SingleR\", \"celldex\"))'")
+            logger.warning("Falling back to consensus strategy.")
+            self.strategy = AnnotationStrategy.CONSENSUS
+
+        if self.strategy == AnnotationStrategy.SINGLER and singler_reference not in SINGLER_REFERENCES:
+            raise ValueError(
+                f"Invalid singler_reference: {singler_reference}. "
+                f"Options: {list(SINGLER_REFERENCES.keys())}"
+            )
+
         if self.strategy == AnnotationStrategy.GROUND_TRUTH and not self.ground_truth_file:
             raise ValueError("ground_truth strategy requires ground_truth_file to be set")
 
         if self.strategy == AnnotationStrategy.GROUND_TRUTH and not self.ground_truth_file.exists():
             raise ValueError(f"Ground truth file not found: {self.ground_truth_file}")
 
-        if self.strategy == AnnotationStrategy.CONSENSUS and len(self.model_names) < 2:
-            logger.warning("Consensus strategy requires at least 2 models. Adding Immune_All_High.pkl")
-            if "Immune_All_High.pkl" not in self.model_names:
-                self.model_names.append("Immune_All_High.pkl")
+        if self.strategy == AnnotationStrategy.CONSENSUS:
+            if self.extended_consensus:
+                # Use full extended consensus models
+                logger.info("Using extended consensus with 6 CellTypist models")
+                self.model_names = EXTENDED_CONSENSUS_MODELS.copy()
+            elif len(self.model_names) < 2:
+                # Add minimal models for basic consensus
+                logger.warning("Consensus strategy requires at least 2 models. Adding Immune_All_High.pkl")
+                if "Immune_All_High.pkl" not in self.model_names:
+                    self.model_names.append("Immune_All_High.pkl")
 
         self._models: dict[str, Any] = {}
         logger.info(f"Annotation strategy: {self.strategy.value}")
@@ -897,12 +981,147 @@ class CellTypeAnnotator:
             return self._annotate_ground_truth(adata)
         elif self.strategy == AnnotationStrategy.POPV:
             return self._annotate_popv(adata)
+        elif self.strategy == AnnotationStrategy.SINGLER:
+            return self._annotate_singler(adata)
         elif self.strategy == AnnotationStrategy.HIERARCHICAL:
             return self._annotate_hierarchical(adata)
         elif self.strategy == AnnotationStrategy.CONSENSUS:
             return self._annotate_consensus(adata)
         else:  # SINGLE
             return self._annotate_single(adata)
+
+    def _annotate_singler(self, adata: ad.AnnData) -> pl.DataFrame:
+        """Run annotation using SingleR via rpy2.
+
+        SingleR is an R-based reference-based annotation method that uses
+        correlation to assign cell types. Benchmark results show Blueprint
+        reference achieves 92% accuracy and 0.907 F1 on Xenium breast data.
+
+        Args:
+            adata: AnnData object with gene expression (raw or normalized counts)
+
+        Returns:
+            DataFrame with cell_id, predicted_type, broad_category, confidence
+        """
+        import rpy2.robjects as ro
+        from rpy2.robjects import numpy2ri, pandas2ri
+        from rpy2.robjects.packages import importr
+
+        # Activate automatic conversion
+        numpy2ri.activate()
+        pandas2ri.activate()
+
+        logger.info(f"Running SingleR annotation with {self.singler_reference} reference...")
+
+        # Import R packages
+        singler = importr('SingleR')
+        celldex = importr('celldex')
+        base = importr('base')
+        stats = importr('stats')
+
+        # Get reference data
+        ref_func_name = SINGLER_REFERENCES[self.singler_reference]
+        ref_func = getattr(celldex, ref_func_name)
+        logger.info(f"Loading reference: {ref_func_name}")
+        ref_data = ref_func()
+
+        # Get expression matrix - use raw counts if available
+        if adata.raw is not None:
+            expr = adata.raw.X
+            genes = list(adata.raw.var_names)
+        else:
+            expr = adata.X
+            genes = list(adata.var_names)
+
+        # Convert sparse to dense if needed
+        if hasattr(expr, 'toarray'):
+            expr = expr.toarray()
+
+        # Log-normalize expression (SingleR expects log-normalized)
+        # Formula: log1p(counts / sum * 10000)
+        lib_sizes = expr.sum(axis=1, keepdims=True)
+        lib_sizes[lib_sizes == 0] = 1  # Avoid division by zero
+        expr_norm = np.log1p(expr / lib_sizes * 10000)
+
+        # Convert to R matrix with gene names as rows, cells as columns
+        # SingleR expects genes x cells
+        expr_r = ro.r.matrix(
+            ro.FloatVector(expr_norm.T.flatten()),
+            nrow=len(genes),
+            ncol=expr_norm.shape[0],
+            dimnames=ro.ListVector({
+                '': ro.StrVector(genes),
+                '': ro.StrVector([str(cid) for cid in adata.obs_names])
+            })
+        )
+
+        # Get reference gene names and find intersection
+        ref_genes = list(ro.r.rownames(ref_data))
+        common_genes = list(set(genes) & set(ref_genes))
+        logger.info(f"Common genes: {len(common_genes)} / {len(genes)} ({100*len(common_genes)/len(genes):.1f}%)")
+
+        if len(common_genes) < 50:
+            logger.warning(f"Low gene overlap ({len(common_genes)} genes). Results may be unreliable.")
+
+        # Subset to common genes
+        gene_indices = [genes.index(g) for g in common_genes]
+        expr_subset = ro.r.matrix(
+            ro.FloatVector(expr_norm[:, gene_indices].T.flatten()),
+            nrow=len(common_genes),
+            ncol=expr_norm.shape[0],
+            dimnames=ro.ListVector({
+                '': ro.StrVector(common_genes),
+                '': ro.StrVector([str(cid) for cid in adata.obs_names])
+            })
+        )
+
+        ref_subset = ro.r['['](ref_data, ro.StrVector(common_genes), True)
+
+        # Get labels from reference
+        labels = ro.r('function(x) x$label.main')(ref_data)
+
+        # Run SingleR with classic DE method (avoids scrapper dependency)
+        logger.info("Running SingleR prediction...")
+        results = singler.SingleR(
+            test=expr_subset,
+            ref=ref_subset,
+            labels=labels,
+            de_method='classic'
+        )
+
+        # Extract predictions
+        pred_labels = list(ro.r('function(x) x$labels')(results))
+        # Get max score as confidence (scores are correlation values)
+        scores = np.array(ro.r('function(x) x$scores')(results))
+        if len(scores.shape) == 1:
+            confidences = scores
+        else:
+            confidences = scores.max(axis=1)
+        # Normalize scores to 0-1 range (correlation can be negative)
+        confidences = (confidences + 1) / 2  # Convert from [-1, 1] to [0, 1]
+
+        # Map to broad categories
+        broad_categories = [map_to_broad_category(label) for label in pred_labels]
+
+        # Create output DataFrame
+        result_df = pl.DataFrame({
+            'cell_id': list(adata.obs_names),
+            'predicted_type': pred_labels,
+            'broad_category': broad_categories,
+            'confidence': confidences.tolist(),
+            'singler_reference': [self.singler_reference] * len(pred_labels),
+        })
+
+        # Log distribution
+        logger.info(f"SingleR annotation complete: {len(result_df)} cells")
+        for cat, count in result_df.group_by('broad_category').len().iter_rows():
+            logger.info(f"  {cat}: {count} ({100*count/len(result_df):.1f}%)")
+
+        # Deactivate conversion
+        numpy2ri.deactivate()
+        pandas2ri.deactivate()
+
+        return result_df
 
     def _annotate_ground_truth(self, adata: ad.AnnData) -> pl.DataFrame:
         """Load ground truth annotations from Excel file.

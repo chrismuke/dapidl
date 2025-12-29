@@ -163,10 +163,17 @@ def list_models(downloaded_only: bool, update: bool) -> None:
 @click.option(
     "--strategy",
     "-s",
-    type=click.Choice(["consensus", "hierarchical", "popv", "single", "ground_truth"], case_sensitive=False),
+    type=click.Choice(["consensus", "hierarchical", "popv", "single", "ground_truth", "singler"], case_sensitive=False),
     default="consensus",
     show_default=True,
-    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy), ground_truth (from file)",
+    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy), ground_truth (from file), singler (R-based reference)",
+)
+@click.option(
+    "--singler-ref",
+    type=click.Choice(["blueprint", "hpca", "monaco", "novershtern"], case_sensitive=False),
+    default="blueprint",
+    show_default=True,
+    help="SingleR reference dataset (only used with --strategy singler). blueprint=BlueprintEncodeData (best), hpca=HumanPrimaryCellAtlas",
 )
 @click.option(
     "--fine-grained/--no-fine-grained",
@@ -208,6 +215,7 @@ def prepare(
     confidence_threshold: float,
     majority_voting: bool,
     strategy: str,
+    singler_ref: str,
     fine_grained: bool,
     filter_category: str | None,
     ground_truth_file: Path | None,
@@ -297,6 +305,7 @@ def prepare(
         filter_category=filter_category,
         ground_truth_file=str(ground_truth_file) if ground_truth_file else None,
         ground_truth_sheet=ground_truth_sheet,
+        singler_reference=singler_ref,
     )
 
     # Extract patches
@@ -356,10 +365,17 @@ def prepare(
 @click.option(
     "--strategy",
     "-s",
-    type=click.Choice(["consensus", "hierarchical", "popv", "single"], case_sensitive=False),
+    type=click.Choice(["consensus", "hierarchical", "popv", "single", "singler"], case_sensitive=False),
     default="consensus",
     show_default=True,
-    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy)",
+    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy), singler (R-based reference)",
+)
+@click.option(
+    "--singler-ref",
+    type=click.Choice(["blueprint", "hpca", "monaco", "novershtern"], case_sensitive=False),
+    default="blueprint",
+    show_default=True,
+    help="SingleR reference dataset (only used with --strategy singler)",
 )
 def annotate(
     xenium_path: Path,
@@ -369,6 +385,7 @@ def annotate(
     majority_voting: bool,
     add_colors: bool,
     strategy: str,
+    singler_ref: str,
 ) -> None:
     """Annotate Xenium dataset and create copy for Xenium Explorer.
 
@@ -416,6 +433,7 @@ def annotate(
         confidence_threshold=0.0,  # Keep all cells for visualization
         majority_voting=majority_voting,
         strategy=strategy,
+        singler_reference=singler_ref,
     )
     annotations = annotator.annotate_from_reader(reader)
 
@@ -1027,10 +1045,17 @@ def predict(
 @click.option(
     "--strategy",
     "-s",
-    type=click.Choice(["consensus", "hierarchical", "popv", "single"], case_sensitive=False),
+    type=click.Choice(["consensus", "hierarchical", "popv", "single", "singler"], case_sensitive=False),
     default="consensus",
     show_default=True,
-    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy)",
+    help="Annotation strategy: consensus (voting), hierarchical (primary+refinement), popv (ensemble), single (legacy), singler (R-based reference)",
+)
+@click.option(
+    "--singler-ref",
+    type=click.Choice(["blueprint", "hpca", "monaco", "novershtern"], case_sensitive=False),
+    default="blueprint",
+    show_default=True,
+    help="SingleR reference dataset (only used with --strategy singler)",
 )
 @click.option(
     "--fine-grained/--no-fine-grained",
@@ -1071,6 +1096,7 @@ def pipeline(
     skip_prepare: bool,
     skip_train: bool,
     strategy: str,
+    singler_ref: str,
     fine_grained: bool,
     filter_category: str | None,
     backbone: str,
@@ -1182,7 +1208,7 @@ def pipeline(
         else:
             reader = create_reader(data_path)
 
-        console.print("[yellow]Initializing CellTypist annotator...[/yellow]")
+        console.print("[yellow]Initializing annotator...[/yellow]")
         annotator = CellTypeAnnotator(
             model_names=list(models),
             confidence_threshold=confidence_threshold,
@@ -1190,6 +1216,7 @@ def pipeline(
             strategy=strategy,
             fine_grained=fine_grained,
             filter_category=filter_category,
+            singler_reference=singler_ref,
         )
 
         console.print("[yellow]Extracting patches and generating labels...[/yellow]")
@@ -1765,6 +1792,26 @@ def clearml_pipeline_group() -> None:
     default="DAPIDL/pipelines",
     help="ClearML project name",
 )
+@click.option(
+    "--validate",
+    is_flag=True,
+    help="Run cross-modal validation after training (Leiden + DAPI + consensus)",
+)
+@click.option(
+    "--extended-consensus",
+    is_flag=True,
+    help="Use 6 CellTypist models for extended consensus (better coverage)",
+)
+@click.option(
+    "--compare-ground-truth",
+    is_flag=True,
+    help="Compare CellTypist annotations to ground truth file",
+)
+@click.option(
+    "--gt-comparison-file",
+    type=click.Path(exists=False, path_type=Path),
+    help="Ground truth file for comparison (Excel/CSV). Different from --ground-truth-file which is for annotation.",
+)
 def run_pipeline(
     dataset_id: str | None,
     local_path: Path | None,
@@ -1777,6 +1824,10 @@ def run_pipeline(
     epochs: int,
     local: bool,
     project: str,
+    validate: bool,
+    extended_consensus: bool,
+    compare_ground_truth: bool,
+    gt_comparison_file: Path | None,
 ) -> None:
     """Run the DAPIDL ClearML pipeline.
 
@@ -1814,15 +1865,22 @@ def run_pipeline(
         backbone=backbone,
         epochs=epochs,
         execute_remotely=not local,
+        run_validation=validate or compare_ground_truth,  # Enable validation for GT comparison
+        extended_consensus=extended_consensus,
+        run_ground_truth_comparison=compare_ground_truth,
+        gt_comparison_file=str(gt_comparison_file) if gt_comparison_file else None,
     )
 
     console.print("[bold blue]DAPIDL ClearML Pipeline[/bold blue]\n")
     console.print(f"  Platform: {platform}")
     console.print(f"  Segmenter: {segmenter}")
     console.print(f"  Annotator: {annotator}")
+    console.print(f"  Extended consensus: {extended_consensus}")
     console.print(f"  Patch size: {patch_size}px")
     console.print(f"  Backbone: {backbone}")
     console.print(f"  Epochs: {epochs}")
+    if compare_ground_truth:
+        console.print(f"  Ground truth comparison: {gt_comparison_file}")
     console.print(f"  Execution: {'local' if local else 'ClearML agents'}")
     console.print()
 

@@ -51,6 +51,7 @@ class PipelineConfig:
     )
     confidence_threshold: float = 0.5
     ground_truth_file: str | None = None
+    extended_consensus: bool = False  # Use 6 CellTypist models instead of 2
 
     # Patch extraction
     patch_size: int = 128
@@ -63,6 +64,33 @@ class PipelineConfig:
     batch_size: int = 128
     learning_rate: float = 3e-4
     fine_grained: bool = False
+
+    # Cross-modal validation (optional step after training)
+    run_validation: bool = False  # Enable cross-modal validation step
+    validation_leiden: bool = True
+    validation_dapi: bool = True
+    validation_consensus: bool = True
+    min_ari_threshold: float = 0.5
+    min_agreement_threshold: float = 0.5
+
+    # Ground truth comparison (optional, requires known cell type labels)
+    run_ground_truth_comparison: bool = False  # Compare CellTypist vs ground truth
+    gt_comparison_file: str | None = None  # Path to ground truth file for comparison
+    gt_comparison_sheet: str | None = None  # Excel sheet name (optional)
+    gt_comparison_cell_id_col: str = "Barcode"  # Cell ID column in ground truth
+    gt_comparison_label_col: str = "Cluster"  # Label column in ground truth
+
+    # Cross-platform transfer testing (optional step after training)
+    run_transfer_test: bool = False  # Enable cross-platform transfer testing
+    transfer_target_dataset_id: str | None = None  # Target platform dataset
+    transfer_target_local_path: str | None = None  # Or local path
+    transfer_target_platform: str = "auto"  # "xenium", "merscope", or "auto"
+
+    # Documentation (optional step at end)
+    run_documentation: bool = False  # Enable documentation generation
+    obsidian_vault_path: str | None = None  # Path to Obsidian vault
+    obsidian_folder: str = "DAPIDL"  # Subfolder within vault
+    doc_template: str = "default"  # "default", "minimal", "detailed"
 
     # Execution
     execute_remotely: bool = True
@@ -252,6 +280,81 @@ class DAPIDLPipelineController:
             cache_executed_step=cfg.cache_training,  # Configurable
         )
 
+        # Step 6 (Optional): Cross-modal Validation (depends on training)
+        if cfg.run_validation:
+            self._pipeline.add_step(
+                name="cross_validation",
+                parents=["training"],
+                base_task_project=cfg.project,
+                base_task_name="step-cross_validation",
+                parameter_override={
+                    "step_config/run_leiden_check": cfg.validation_leiden,
+                    "step_config/run_dapi_check": cfg.validation_dapi,
+                    "step_config/run_consensus_check": cfg.validation_consensus,
+                    "step_config/min_ari_threshold": cfg.min_ari_threshold,
+                    "step_config/min_agreement_threshold": cfg.min_agreement_threshold,
+                    # Pass outputs from parent steps
+                    "step_config/model_path": "${training.artifacts.model_path.url}",
+                    "step_config/patches_path": "${patch_extraction.artifacts.dataset_path.url}",
+                    "step_config/annotations_parquet": "${annotation.artifacts.annotations.url}",
+                    "step_config/class_mapping": "${patch_extraction.artifacts.class_names.url}",
+                    "step_config/expression_path": "${data_loader.artifacts.expression_path.url}",
+                },
+                execution_queue=cfg.gpu_queue if cfg.execute_remotely else None,
+                cache_executed_step=True,
+            )
+            logger.info("Added cross-modal validation step")
+
+        # Step 7 (Optional): Cross-Platform Transfer Testing
+        if cfg.run_transfer_test:
+            # Determine parent step
+            transfer_parent = "cross_validation" if cfg.run_validation else "training"
+            self._pipeline.add_step(
+                name="cross_platform_transfer",
+                parents=[transfer_parent],
+                base_task_project=cfg.project,
+                base_task_name="step-cross_platform_transfer",
+                parameter_override={
+                    "step_config/target_dataset_id": cfg.transfer_target_dataset_id or "",
+                    "step_config/target_local_path": cfg.transfer_target_local_path or "",
+                    "step_config/target_platform": cfg.transfer_target_platform,
+                    "step_config/source_platform": cfg.platform,
+                    "step_config/patch_size": cfg.patch_size,
+                    "step_config/normalize_physical_size": True,
+                    # Pass outputs from training
+                    "step_config/model_path": "${training.artifacts.model_path.url}",
+                },
+                execution_queue=cfg.gpu_queue if cfg.execute_remotely else None,
+                cache_executed_step=True,
+            )
+            logger.info("Added cross-platform transfer step")
+
+        # Step 8 (Optional): Documentation Generation
+        if cfg.run_documentation:
+            # Determine parent step (last step in pipeline)
+            if cfg.run_transfer_test:
+                doc_parent = "cross_platform_transfer"
+            elif cfg.run_validation:
+                doc_parent = "cross_validation"
+            else:
+                doc_parent = "training"
+
+            self._pipeline.add_step(
+                name="documentation",
+                parents=[doc_parent],
+                base_task_project=cfg.project,
+                base_task_name="step-documentation",
+                parameter_override={
+                    "step_config/obsidian_vault_path": cfg.obsidian_vault_path or "",
+                    "step_config/obsidian_folder": cfg.obsidian_folder,
+                    "step_config/template": cfg.doc_template,
+                    "step_config/experiment_name": cfg.name,
+                },
+                execution_queue=cfg.default_queue if cfg.execute_remotely else None,
+                cache_executed_step=True,
+            )
+            logger.info("Added documentation step")
+
         logger.info(f"Created pipeline: {cfg.name} v{cfg.version}")
         return self._pipeline
 
@@ -353,6 +456,7 @@ class DAPIDLPipelineController:
             confidence_threshold=cfg.confidence_threshold,
             ground_truth_file=cfg.ground_truth_file,
             fine_grained=cfg.fine_grained,
+            extended_consensus=cfg.extended_consensus,
         )
         annotation = AnnotationStep(annot_config)
 
@@ -400,6 +504,103 @@ class DAPIDLPipelineController:
         results["training"] = artifacts.outputs
         logger.info(f"Training outputs: {list(artifacts.outputs.keys())}")
 
+        # Step 6 (Optional): Cross-modal Validation
+        if cfg.run_validation:
+            from dapidl.pipeline.steps import CrossValidationStep
+            from dapidl.pipeline.steps.cross_validation import CrossValidationConfig
+
+            logger.info("=" * 50)
+            logger.info("Step 6: Cross-modal Validation")
+            logger.info("=" * 50)
+
+            # Merge all outputs for validation
+            validation_outputs = {
+                **results["data_loader"],
+                **results["patch_extraction"],
+                **results["annotation"],
+                **results["training"],
+            }
+            validation_artifacts = StepArtifacts(inputs={}, outputs=validation_outputs)
+
+            validation_config = CrossValidationConfig(
+                run_leiden_check=cfg.validation_leiden,
+                run_dapi_check=cfg.validation_dapi,
+                run_consensus_check=cfg.validation_consensus,
+                min_ari_threshold=cfg.min_ari_threshold,
+                min_agreement_threshold=cfg.min_agreement_threshold,
+                run_ground_truth_comparison=cfg.run_ground_truth_comparison,
+                ground_truth_file=cfg.gt_comparison_file,
+                ground_truth_sheet=cfg.gt_comparison_sheet,
+                ground_truth_cell_id_col=cfg.gt_comparison_cell_id_col,
+                ground_truth_label_col=cfg.gt_comparison_label_col,
+            )
+            validation_step = CrossValidationStep(validation_config)
+            validation_artifacts = validation_step.execute(validation_artifacts)
+            results["cross_validation"] = validation_artifacts.outputs
+            logger.info(f"Validation outputs: {list(validation_artifacts.outputs.keys())}")
+
+        # Step 7 (Optional): Cross-Platform Transfer Testing
+        if cfg.run_transfer_test:
+            from dapidl.pipeline.steps import CrossPlatformTransferStep
+            from dapidl.pipeline.steps.cross_platform_transfer import CrossPlatformTransferConfig
+
+            logger.info("=" * 50)
+            logger.info("Step 7: Cross-Platform Transfer Testing")
+            logger.info("=" * 50)
+
+            # Merge outputs for transfer testing
+            transfer_outputs = {
+                **results["training"],
+                "platform": results["data_loader"].get("platform", cfg.platform),
+            }
+            transfer_artifacts = StepArtifacts(inputs=transfer_outputs, outputs={})
+
+            transfer_config = CrossPlatformTransferConfig(
+                model_path=results["training"].get("model_path", ""),
+                target_dataset_id=cfg.transfer_target_dataset_id or "",
+                target_local_path=cfg.transfer_target_local_path or "",
+                target_platform=cfg.transfer_target_platform,
+                source_platform=results["data_loader"].get("platform", cfg.platform),
+                patch_size=cfg.patch_size,
+                normalize_physical_size=True,
+            )
+            transfer_step = CrossPlatformTransferStep(transfer_config)
+            transfer_artifacts = transfer_step.execute(transfer_artifacts)
+            results["cross_platform_transfer"] = transfer_artifacts.outputs
+            logger.info(f"Transfer outputs: {list(transfer_artifacts.outputs.keys())}")
+
+        # Step 8 (Optional): Documentation Generation
+        if cfg.run_documentation:
+            from dapidl.pipeline.steps import DocumentationStep
+            from dapidl.pipeline.steps.documentation import DocumentationConfig
+
+            logger.info("=" * 50)
+            logger.info("Step 8: Documentation Generation")
+            logger.info("=" * 50)
+
+            # Merge all outputs for documentation
+            doc_outputs = {
+                **results.get("data_loader", {}),
+                **results.get("training", {}),
+            }
+            if "cross_validation" in results:
+                doc_outputs["cross_modal_validation"] = results["cross_validation"]
+            if "cross_platform_transfer" in results:
+                doc_outputs["transfer_metrics"] = results["cross_platform_transfer"].get("transfer_metrics")
+
+            doc_artifacts = StepArtifacts(inputs=doc_outputs, outputs={})
+
+            doc_config = DocumentationConfig(
+                obsidian_vault_path=cfg.obsidian_vault_path or "",
+                obsidian_folder=cfg.obsidian_folder,
+                template=cfg.doc_template,
+                experiment_name=cfg.name,
+            )
+            doc_step = DocumentationStep(doc_config)
+            doc_artifacts = doc_step.execute(doc_artifacts)
+            results["documentation"] = doc_artifacts.outputs
+            logger.info(f"Documentation outputs: {list(doc_artifacts.outputs.keys())}")
+
         logger.info("=" * 50)
         logger.info("Pipeline completed successfully!")
         logger.info("=" * 50)
@@ -414,7 +615,10 @@ class DAPIDLPipelineController:
         """
         from dapidl.pipeline.steps import (
             AnnotationStep,
+            CrossPlatformTransferStep,
+            CrossValidationStep,
             DataLoaderStep,
+            DocumentationStep,
             PatchExtractionStep,
             SegmentationStep,
             TrainingStep,
@@ -427,6 +631,9 @@ class DAPIDLPipelineController:
             AnnotationStep(),
             PatchExtractionStep(),
             TrainingStep(),
+            CrossValidationStep(),
+            CrossPlatformTransferStep(),
+            DocumentationStep(),
         ]
 
         for step in steps:

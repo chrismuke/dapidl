@@ -51,6 +51,7 @@ class TrainingStepConfig:
 
     # Augmentation
     augmentation: str = "standard"  # "standard", "heavy", "none"
+    cross_platform: bool = False  # Use aggressive scale augmentation for Xenium↔MERSCOPE transfer
 
     # Early stopping
     patience: int = 10
@@ -64,6 +65,13 @@ class TrainingStepConfig:
     output_dir: str | None = None
     save_best: bool = True
     save_final: bool = True
+
+    # S3 upload (iDrive e2 compatible)
+    upload_to_s3: bool = True
+    s3_bucket: str = "dapidl"
+    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
+    s3_region: str = "eu-central-2"
+    s3_models_prefix: str = "models"  # s3://bucket/models/<experiment-name>/
 
 
 class TrainingStep(PipelineStep):
@@ -140,6 +148,11 @@ class TrainingStep(PipelineStep):
                     "enum": ["standard", "heavy", "none"],
                     "default": "standard",
                     "description": "Data augmentation level",
+                },
+                "cross_platform": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Enable aggressive scale augmentation (0.5x-2x) for Xenium↔MERSCOPE transfer",
                 },
                 "patience": {
                     "type": "integer",
@@ -282,6 +295,11 @@ class TrainingStep(PipelineStep):
                 "test_metrics": test_metrics,
             }, f, indent=2)
 
+        # Upload to S3 and register in ClearML
+        s3_urls = {}
+        if cfg.upload_to_s3:
+            s3_urls = self._upload_models_to_s3(output_dir, cfg, test_metrics)
+
         return StepArtifacts(
             inputs=inputs,
             outputs={
@@ -418,7 +436,7 @@ class TrainingStep(PipelineStep):
 
                 return patch, label
 
-        transform = self._get_transform(cfg.augmentation)
+        transform = self._get_transform(cfg.augmentation, cfg.cross_platform)
         return LMDBDataset(path, transform=transform)
 
     def _create_zarr_dataset(self, path: Path, cfg: TrainingStepConfig):
@@ -446,11 +464,18 @@ class TrainingStep(PipelineStep):
 
                 return patch, label
 
-        transform = self._get_transform(cfg.augmentation)
+        transform = self._get_transform(cfg.augmentation, cfg.cross_platform)
         return ZarrDataset(path, transform=transform)
 
-    def _get_transform(self, augmentation: str):
-        """Get augmentation transforms."""
+    def _get_transform(self, augmentation: str, cross_platform: bool = False):
+        """Get augmentation transforms.
+
+        Args:
+            augmentation: Augmentation level ("none", "standard", "heavy")
+            cross_platform: If True, use aggressive scale augmentation (0.5x-2x)
+                           to handle Xenium↔MERSCOPE resolution differences.
+                           Xenium: 0.2125 µm/px, MERSCOPE: 0.108 µm/px (2x diff)
+        """
         import torchvision.transforms as T
 
         if augmentation == "none":
@@ -464,8 +489,13 @@ class TrainingStep(PipelineStep):
             transforms.insert(0, T.RandomRotation(degrees=180))
 
         if augmentation == "heavy":
-            transforms.insert(0, T.RandomAffine(degrees=0, scale=(0.9, 1.1)))
+            # Use aggressive scale for cross-platform, moderate otherwise
+            scale_range = (0.5, 2.0) if cross_platform else (0.9, 1.1)
+            transforms.insert(0, T.RandomAffine(degrees=0, scale=scale_range))
             transforms.insert(0, T.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5)))
+        elif cross_platform:
+            # Add scale augmentation even for standard mode when cross-platform
+            transforms.insert(0, T.RandomAffine(degrees=0, scale=(0.5, 2.0)))
 
         return T.Compose(transforms)
 
@@ -694,7 +724,10 @@ class TrainingStep(PipelineStep):
 
         # Calculate metrics
         index_to_class = {v: k for k, v in class_mapping.items()}
-        target_names = [index_to_class.get(i, f"class_{i}") for i in sorted(index_to_class.keys())]
+
+        # Only include classes that are present in the test set
+        unique_labels = sorted(set(all_labels) | set(all_preds))
+        target_names = [index_to_class.get(i, f"class_{i}") for i in unique_labels]
 
         metrics = {
             "test_loss": test_loss,
@@ -703,13 +736,105 @@ class TrainingStep(PipelineStep):
             "precision": precision_score(all_labels, all_preds, average="macro"),
             "recall": recall_score(all_labels, all_preds, average="macro"),
             "classification_report": classification_report(
-                all_labels, all_preds, target_names=target_names, output_dict=True
+                all_labels, all_preds, labels=unique_labels, target_names=target_names, output_dict=True
             ),
         }
 
         logger.info(f"Test F1: {metrics['f1']:.4f}, Accuracy: {metrics['accuracy']:.4f}")
 
         return metrics
+
+    def _upload_models_to_s3(
+        self,
+        output_dir: Path,
+        cfg: TrainingStepConfig,
+        test_metrics: dict,
+    ) -> dict[str, str]:
+        """Upload trained models to S3 and register in ClearML.
+
+        Args:
+            output_dir: Directory containing trained models
+            cfg: Training configuration with S3 settings
+            test_metrics: Test metrics for tagging
+
+        Returns:
+            Dictionary mapping model names to S3 URLs
+        """
+        import os
+        import subprocess
+        from datetime import datetime
+
+        try:
+            from clearml import Task
+        except ImportError:
+            Task = None
+
+        # Generate experiment name from output directory
+        exp_name = output_dir.parent.name if output_dir.name == "training" else output_dir.name
+        timestamp = datetime.now().strftime("%Y%m%d")
+        s3_prefix = f"s3://{cfg.s3_bucket}/{cfg.s3_models_prefix}/{exp_name}-{timestamp}"
+
+        logger.info(f"Uploading models to S3: {s3_prefix}")
+
+        # Set up AWS credentials from clearml.conf
+        env = os.environ.copy()
+        # These should be set in clearml.conf or environment
+        if "AWS_ACCESS_KEY_ID" not in env:
+            # Try to get from clearml.conf (iDrive e2)
+            env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
+            env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
+
+        s3_urls = {}
+        files_to_upload = ["best_model.pt", "final_model.pt", "training_log.json"]
+
+        for filename in files_to_upload:
+            local_path = output_dir / filename
+            if not local_path.exists():
+                continue
+
+            s3_url = f"{s3_prefix}/{filename}"
+            cmd = [
+                "aws", "s3", "cp", str(local_path), s3_url,
+                "--endpoint-url", cfg.s3_endpoint,
+                "--region", cfg.s3_region,
+            ]
+
+            try:
+                result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
+                if result.returncode == 0:
+                    s3_urls[filename] = s3_url
+                    logger.info(f"Uploaded {filename} to S3")
+                else:
+                    logger.warning(f"Failed to upload {filename}: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Timeout uploading {filename}")
+            except Exception as e:
+                logger.warning(f"Error uploading {filename}: {e}")
+
+        # Register in ClearML if available
+        if Task is not None and s3_urls:
+            try:
+                task = Task.current_task()
+                if task:
+                    # Add S3 URLs as artifacts
+                    for filename, url in s3_urls.items():
+                        task.get_logger().report_text(f"S3: {filename}", url)
+
+                    # Add test metrics
+                    if test_metrics:
+                        task.get_logger().report_scalar("test", "f1", test_metrics.get("f1", 0), 0)
+                        task.get_logger().report_scalar("test", "accuracy", test_metrics.get("accuracy", 0), 0)
+
+                    logger.info("Registered models in ClearML task")
+            except Exception as e:
+                logger.debug(f"Could not register in ClearML: {e}")
+
+        if s3_urls:
+            logger.info(f"Models uploaded to S3: {s3_prefix}")
+        else:
+            logger.warning("No models were uploaded to S3")
+
+        return s3_urls
 
     def create_clearml_task(
         self,
