@@ -41,6 +41,18 @@ from dapidl.pipeline.controller import (
     PipelineConfig,
     create_pipeline,
 )
+from dapidl.pipeline.universal_controller import (
+    UniversalDAPIPipelineController,
+    UniversalPipelineConfig,
+    TissueConfig,
+    create_universal_pipeline,
+)
+from dapidl.pipeline.enhanced_controller import (
+    EnhancedDAPIDLPipelineController,
+    EnhancedPipelineResult,
+    create_step_base_tasks,
+)
+from dapidl.pipeline.gui_pipeline_config import GUIPipelineConfig
 from dapidl.pipeline.registry import (
     get_annotator,
     get_segmenter,
@@ -59,6 +71,16 @@ __all__ = [
     "PipelineConfig",
     "DAPIDLPipelineController",
     "create_pipeline",
+    # Universal Controller
+    "UniversalPipelineConfig",
+    "UniversalDAPIPipelineController",
+    "TissueConfig",
+    "create_universal_pipeline",
+    # Enhanced Controller (GUI-configurable)
+    "GUIPipelineConfig",
+    "EnhancedDAPIDLPipelineController",
+    "EnhancedPipelineResult",
+    "create_step_base_tasks",
     # Base classes
     "PipelineStep",
     "StepArtifacts",

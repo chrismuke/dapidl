@@ -1812,6 +1812,11 @@ def clearml_pipeline_group() -> None:
     type=click.Path(exists=False, path_type=Path),
     help="Ground truth file for comparison (Excel/CSV). Different from --ground-truth-file which is for annotation.",
 )
+@click.option(
+    "--fine-grained",
+    is_flag=True,
+    help="Use fine-grained cell types (~20 classes) instead of broad categories (3 classes)",
+)
 def run_pipeline(
     dataset_id: str | None,
     local_path: Path | None,
@@ -1828,6 +1833,7 @@ def run_pipeline(
     extended_consensus: bool,
     compare_ground_truth: bool,
     gt_comparison_file: Path | None,
+    fine_grained: bool,
 ) -> None:
     """Run the DAPIDL ClearML pipeline.
 
@@ -1869,12 +1875,14 @@ def run_pipeline(
         extended_consensus=extended_consensus,
         run_ground_truth_comparison=compare_ground_truth,
         gt_comparison_file=str(gt_comparison_file) if gt_comparison_file else None,
+        fine_grained=fine_grained,
     )
 
     console.print("[bold blue]DAPIDL ClearML Pipeline[/bold blue]\n")
     console.print(f"  Platform: {platform}")
     console.print(f"  Segmenter: {segmenter}")
     console.print(f"  Annotator: {annotator}")
+    console.print(f"  Fine-grained: {fine_grained}")
     console.print(f"  Extended consensus: {extended_consensus}")
     console.print(f"  Patch size: {patch_size}px")
     console.print(f"  Backbone: {backbone}")
@@ -1944,13 +1952,354 @@ def list_components() -> None:
     console.print(table)
 
 
+@clearml_pipeline_group.command(name="universal")
+@click.option(
+    "--tissue",
+    "-t",
+    multiple=True,
+    nargs=4,
+    type=(str, str, str, int),
+    help="Add tissue: TISSUE DATASET_ID PLATFORM TIER (e.g., 'breast abc123 xenium 1')",
+)
+@click.option(
+    "--tissue-local",
+    multiple=True,
+    nargs=4,
+    type=(str, click.Path(exists=True), str, int),
+    help="Add local tissue: TISSUE PATH PLATFORM TIER (e.g., 'lung /data/lung xenium 2')",
+)
+@click.option(
+    "--sampling",
+    type=click.Choice(["equal", "proportional", "sqrt"]),
+    default="sqrt",
+    help="Tissue sampling strategy",
+)
+@click.option(
+    "--backbone",
+    default="efficientnetv2_rw_s",
+    help="CNN backbone for training",
+)
+@click.option(
+    "--epochs",
+    type=int,
+    default=100,
+    help="Training epochs",
+)
+@click.option(
+    "--batch-size",
+    type=int,
+    default=64,
+    help="Training batch size",
+)
+@click.option(
+    "--local",
+    is_flag=True,
+    help="Run locally (without ClearML agents)",
+)
+@click.option(
+    "--project",
+    default="DAPIDL/universal",
+    help="ClearML project name",
+)
+@click.option(
+    "--name",
+    default="universal-dapi",
+    help="Pipeline name",
+)
+def run_universal_pipeline(
+    tissue: tuple,
+    tissue_local: tuple,
+    sampling: str,
+    backbone: str,
+    epochs: int,
+    batch_size: int,
+    local: bool,
+    project: str,
+    name: str,
+) -> None:
+    """Run universal cross-tissue DAPI training pipeline.
+
+    Combines multiple tissue datasets for training a universal classifier
+    with Cell Ontology standardized labels and tissue-balanced sampling.
+
+    Examples:
+
+        # Train with multiple ClearML datasets
+        dapidl clearml-pipeline universal \\
+            -t breast abc123 xenium 1 \\
+            -t lung def456 xenium 2 \\
+            -t liver ghi789 merscope 2
+
+        # Train locally with multiple local datasets
+        dapidl clearml-pipeline universal --local \\
+            --tissue-local breast /data/breast xenium 1 \\
+            --tissue-local lung /data/lung xenium 2
+
+        # Use equal sampling instead of sqrt-balanced
+        dapidl clearml-pipeline universal \\
+            -t breast abc123 xenium 1 \\
+            -t lung def456 xenium 2 \\
+            --sampling equal
+
+    Confidence tiers:
+        1 = Ground truth labels (highest weight)
+        2 = Consensus annotations (medium weight)
+        3 = Single predictor (lowest weight)
+    """
+    from dapidl.pipeline.universal_controller import (
+        UniversalPipelineConfig,
+        UniversalDAPIPipelineController,
+    )
+
+    # Validate inputs
+    if not tissue and not tissue_local:
+        console.print("[red]Error: At least one tissue dataset required[/red]")
+        console.print("[dim]Use --tissue or --tissue-local to add datasets[/dim]")
+        raise click.Abort()
+
+    # Build configuration
+    config = UniversalPipelineConfig(
+        name=name,
+        project=project,
+        sampling_strategy=sampling,
+        backbone=backbone,
+        epochs=epochs,
+        batch_size=batch_size,
+        execute_remotely=not local,
+    )
+
+    # Add ClearML datasets
+    for tissue_name, dataset_id, platform, tier in tissue:
+        config.add_tissue(
+            tissue=tissue_name,
+            dataset_id=dataset_id,
+            platform=platform,
+            confidence_tier=int(tier),
+        )
+
+    # Add local datasets
+    for tissue_name, path, platform, tier in tissue_local:
+        config.add_tissue(
+            tissue=tissue_name,
+            local_path=str(path),
+            platform=platform,
+            confidence_tier=int(tier),
+        )
+
+    console.print("[bold blue]DAPIDL Universal Cross-Tissue Pipeline[/bold blue]\n")
+    console.print(f"  Name: {name}")
+    console.print(f"  Sampling: {sampling}")
+    console.print(f"  Backbone: {backbone}")
+    console.print(f"  Epochs: {epochs}")
+    console.print(f"  Batch size: {batch_size}")
+    console.print(f"  Tissues: {len(config.tissues)}")
+    for tc in config.tissues:
+        tier_label = {1: "ground truth", 2: "consensus", 3: "predicted"}
+        console.print(f"    - {tc.tissue}/{tc.platform}: tier {tc.confidence_tier} ({tier_label.get(tc.confidence_tier, 'unknown')})")
+    console.print(f"  Execution: {'local' if local else 'ClearML agents'}")
+    console.print()
+
+    controller = UniversalDAPIPipelineController(config)
+
+    if local:
+        console.print("[cyan]Running universal pipeline locally...[/cyan]\n")
+        results = controller.run_locally()
+
+        console.print("\n[green]✓ Universal pipeline completed![/green]")
+        if "universal_training" in results:
+            train_results = results["universal_training"]
+            test_metrics = train_results.get("test_metrics", {})
+            console.print(f"  Test F1 (fine): {test_metrics.get('f1_fine', 'N/A'):.4f}")
+            console.print(f"  Test F1 (coarse): {test_metrics.get('f1_coarse', 'N/A'):.4f}")
+            console.print(f"  Model: {train_results.get('model_path', 'N/A')}")
+
+            # Per-tissue metrics
+            tissue_metrics = train_results.get("tissue_metrics", {})
+            if tissue_metrics:
+                console.print("\n  Per-tissue F1 (fine):")
+                for tissue_key, metrics in tissue_metrics.items():
+                    console.print(f"    {tissue_key}: {metrics.get('f1_fine', 'N/A'):.4f}")
+    else:
+        console.print("[cyan]Creating ClearML universal pipeline...[/cyan]")
+        controller.create_pipeline()
+        console.print("[cyan]Starting remote execution...[/cyan]")
+        pipeline_id = controller.run(wait=False)
+        console.print(f"\n[green]✓ Universal pipeline started: {pipeline_id}[/green]")
+        console.print("  Monitor at: https://app.clear.ml")
+
+
+@clearml_pipeline_group.command(name="enhanced")
+@click.option(
+    "--raw-dataset-id",
+    default=None,
+    help="ClearML Dataset ID for raw data",
+)
+@click.option(
+    "--s3-uri",
+    default=None,
+    help="S3 URI for raw data (e.g., s3://dapidl/raw-data/xenium-breast/)",
+)
+@click.option(
+    "--platform",
+    type=click.Choice(["auto", "xenium", "merscope"]),
+    default="auto",
+    help="Platform type (auto-detected if not specified)",
+)
+@click.option(
+    "--celltypist-models",
+    multiple=True,
+    default=["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
+    help="CellTypist models for ensemble annotation (can specify multiple)",
+)
+@click.option(
+    "--include-singler/--no-singler",
+    default=True,
+    help="Include SingleR in ensemble annotation",
+)
+@click.option(
+    "--patch-sizes",
+    multiple=True,
+    type=int,
+    default=[128],
+    help="Patch sizes to generate (can specify multiple: --patch-sizes 64 --patch-sizes 128)",
+)
+@click.option(
+    "--epochs",
+    type=int,
+    default=100,
+    help="Training epochs",
+)
+@click.option(
+    "--backbone",
+    type=click.Choice(["efficientnetv2_rw_s", "resnet50", "convnext_tiny"]),
+    default="efficientnetv2_rw_s",
+    help="CNN backbone architecture",
+)
+@click.option(
+    "--training-mode",
+    type=click.Choice(["hierarchical", "flat"]),
+    default="hierarchical",
+    help="Training mode (hierarchical uses curriculum learning)",
+)
+@click.option(
+    "--local/--remote",
+    default=False,
+    help="Run locally or on ClearML agents",
+)
+@click.option(
+    "--upload-to-s3/--no-s3",
+    default=True,
+    help="Upload datasets and models to S3",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    default="./enhanced_pipeline_output",
+    help="Local output directory",
+)
+def run_enhanced_pipeline(
+    raw_dataset_id: str | None,
+    s3_uri: str | None,
+    platform: str,
+    celltypist_models: tuple,
+    include_singler: bool,
+    patch_sizes: tuple,
+    epochs: int,
+    backbone: str,
+    training_mode: str,
+    local: bool,
+    upload_to_s3: bool,
+    output_dir: str,
+) -> None:
+    """Run enhanced DAPIDL pipeline with GUI-configurable parameters.
+
+    This pipeline features:
+    - Ensemble annotation with multiple methods (CellTypist, SingleR)
+    - Multi-patch-size LMDB creation
+    - Dataset lineage for space efficiency
+    - Smart step skipping when outputs exist
+
+    Examples:
+
+        # Remote execution on ClearML
+        dapidl clearml-pipeline enhanced --raw-dataset-id abc123 --epochs 100
+
+        # Local execution with S3 data
+        dapidl clearml-pipeline enhanced --s3-uri s3://dapidl/raw-data/xenium-breast/ --local
+
+        # Multiple patch sizes and CellTypist models
+        dapidl clearml-pipeline enhanced \\
+            --raw-dataset-id abc123 \\
+            --celltypist-models Cells_Adult_Breast.pkl \\
+            --celltypist-models Immune_All_High.pkl \\
+            --patch-sizes 64 --patch-sizes 128 --patch-sizes 256 \\
+            --local
+    """
+    from dapidl.pipeline import GUIPipelineConfig, EnhancedDAPIDLPipelineController
+
+    # Build configuration
+    config = GUIPipelineConfig(
+        raw_dataset_id=raw_dataset_id,
+        s3_data_uri=s3_uri,
+        platform=platform,
+        celltypist_models=list(celltypist_models),
+        include_singler=include_singler,
+        patch_sizes=list(patch_sizes),
+        epochs=epochs,
+        backbone=backbone,
+        training_mode=training_mode,
+        upload_to_s3=upload_to_s3,
+        output_dir=output_dir,
+    )
+
+    controller = EnhancedDAPIDLPipelineController(config)
+
+    console.print("[bold blue]Enhanced DAPIDL Pipeline[/bold blue]\n")
+    console.print(f"Platform: {platform}")
+    console.print(f"Annotation: Ensemble with {len(celltypist_models)} CellTypist models")
+    if include_singler:
+        console.print("  + SingleR (blueprint reference)")
+    console.print(f"Patch sizes: {list(patch_sizes)}")
+    console.print(f"Training: {training_mode} mode, {epochs} epochs")
+    console.print(f"Backbone: {backbone}")
+    console.print()
+
+    if local:
+        console.print("[cyan]Running locally...[/cyan]\n")
+        result = controller.run_locally()
+
+        if result.success:
+            console.print("\n[green]✓ Pipeline complete![/green]")
+            console.print(f"  Model: {result.model_path}")
+            if result.training_metrics:
+                console.print("  Test metrics:")
+                for key, value in result.training_metrics.items():
+                    if isinstance(value, float):
+                        console.print(f"    {key}: {value:.4f}")
+        else:
+            console.print(f"\n[red]✗ Pipeline failed: {result.error}[/red]")
+            raise click.Abort()
+    else:
+        console.print("[cyan]Creating ClearML enhanced pipeline...[/cyan]")
+        controller.create_pipeline()
+        console.print("[cyan]Starting remote execution...[/cyan]")
+        pipeline_id = controller.run(wait=False)
+        console.print(f"\n[green]✓ Enhanced pipeline started: {pipeline_id}[/green]")
+        console.print("  Monitor at: https://app.clear.ml")
+
+
 @clearml_pipeline_group.command(name="create-base-tasks")
 @click.option(
     "--project",
     default="DAPIDL/pipelines",
     help="ClearML project name",
 )
-def create_base_tasks(project: str) -> None:
+@click.option(
+    "--include-universal",
+    is_flag=True,
+    help="Include universal training step tasks",
+)
+def create_base_tasks(project: str, include_universal: bool) -> None:
     """Create ClearML base tasks for pipeline steps.
 
     This registers each pipeline step as a ClearML Task, which is required

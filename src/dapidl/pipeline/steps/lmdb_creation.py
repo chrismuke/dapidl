@@ -1,0 +1,572 @@
+"""LMDB Dataset Creation Pipeline Step.
+
+Step 3: Create LMDB training dataset from annotated data.
+
+This step:
+1. Checks if matching LMDB dataset already exists (skip logic)
+2. Extracts nucleus-centered patches
+3. Saves to LMDB format for fast DALI loading
+4. Registers as ClearML Dataset with lineage to parent
+5. Uploads to S3 if configured
+
+Key features:
+- Skip logic: Avoids recreating existing datasets
+- Dataset lineage: Uses parent_datasets for space efficiency
+- Multi-patch-size support: Can be called for different sizes
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import polars as pl
+from loguru import logger
+
+from dapidl.pipeline.base import PipelineStep, StepArtifacts, resolve_artifact_path
+
+
+@dataclass
+class LMDBCreationConfig:
+    """Configuration for LMDB dataset creation."""
+
+    # Patch parameters
+    patch_size: int = 128
+    output_format: str = "lmdb"  # "lmdb" or "zarr"
+
+    # Physical-space normalization (cross-platform compatibility)
+    normalize_physical_size: bool = True
+    target_pixel_size_um: float = 0.2125  # Xenium default
+
+    # Normalization
+    normalization_method: str = "adaptive"  # "adaptive", "percentile", "minmax"
+
+    # Filtering
+    min_confidence: float = 0.0
+    exclude_edge_cells: bool = True
+    edge_margin_px: int = 64
+
+    # Skip logic
+    skip_if_exists: bool = True
+    existing_lmdb_dataset_id: str | None = None  # Pre-check
+
+    # Dataset registration
+    create_clearml_dataset: bool = True
+    parent_dataset_id: str | None = None  # For lineage
+
+    # S3 settings
+    upload_to_s3: bool = True
+    s3_bucket: str = "dapidl"
+    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
+
+
+class LMDBCreationStep(PipelineStep):
+    """Step 3: Create LMDB Dataset from Annotated Data.
+
+    Supports skipping if LMDB dataset already exists with matching parameters.
+    Uses parent_datasets for lineage to avoid re-uploading raw data.
+
+    Queue: default (CPU - I/O bound)
+    """
+
+    name = "lmdb_creation"
+    description = "Create LMDB training dataset with skip logic"
+
+    def __init__(self, config: LMDBCreationConfig | None = None):
+        """Initialize LMDB creation step.
+
+        Args:
+            config: LMDB creation configuration
+        """
+        self.config = config or LMDBCreationConfig()
+        self._task = None
+
+    def get_parameter_schema(self) -> dict[str, Any]:
+        """Return JSON schema for ClearML UI parameters."""
+        return {
+            "type": "object",
+            "properties": {
+                "patch_size": {
+                    "type": "integer",
+                    "enum": [32, 64, 128, 256],
+                    "default": 128,
+                    "description": "Patch size in pixels",
+                },
+                "normalization_method": {
+                    "type": "string",
+                    "enum": ["adaptive", "percentile", "minmax"],
+                    "default": "adaptive",
+                    "description": "Image normalization method",
+                },
+                "normalize_physical_size": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Normalize to consistent physical size (cross-platform)",
+                },
+                "skip_if_exists": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Skip if matching LMDB dataset exists",
+                },
+                "create_clearml_dataset": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Register as ClearML Dataset",
+                },
+                "upload_to_s3": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Upload to S3 storage",
+                },
+            },
+        }
+
+    def validate_inputs(self, artifacts: StepArtifacts) -> bool:
+        """Validate step inputs.
+
+        Requires:
+        - data_path (DAPI image)
+        - annotations_parquet (cell types + coordinates)
+        """
+        outputs = artifacts.outputs
+        required = ["data_path", "annotations_parquet"]
+        return all(key in outputs for key in required)
+
+    def execute(self, artifacts: StepArtifacts) -> StepArtifacts:
+        """Execute LMDB dataset creation.
+
+        Args:
+            artifacts: Input artifacts from annotation step
+
+        Returns:
+            Output artifacts containing:
+            - lmdb_path: Path to LMDB dataset
+            - lmdb_dataset_id: ClearML Dataset ID (if registered)
+            - skipped: Boolean indicating if step was skipped
+            - extraction_stats: Dict with statistics
+        """
+        cfg = self.config
+        inputs = artifacts.outputs
+
+        # 1. Check if we should skip
+        if cfg.skip_if_exists:
+            existing_id = self._check_existing_lmdb(inputs, cfg)
+            if existing_id:
+                logger.info(f"Skipping LMDB creation - existing dataset: {existing_id}")
+
+                # Get path from existing dataset
+                lmdb_path = self._get_dataset_path(existing_id)
+
+                return StepArtifacts(
+                    inputs=inputs,
+                    outputs={
+                        **inputs,
+                        "lmdb_path": str(lmdb_path) if lmdb_path else None,
+                        "lmdb_dataset_id": existing_id,
+                        "patch_size": cfg.patch_size,
+                        "skipped": True,
+                        "extraction_stats": {"skipped": True, "existing_dataset_id": existing_id},
+                    },
+                )
+
+        # 2. Resolve input paths
+        data_path = resolve_artifact_path(inputs["data_path"], "data_path")
+        annotations_path = resolve_artifact_path(
+            inputs["annotations_parquet"], "annotations_parquet"
+        )
+
+        if data_path is None:
+            raise ValueError("data_path artifact is required")
+        if annotations_path is None:
+            raise ValueError("annotations_parquet artifact is required")
+
+        # Load annotations
+        annotations_df = pl.read_parquet(annotations_path)
+        logger.info(f"Loaded {len(annotations_df)} annotations")
+
+        # Load class mapping
+        class_mapping_path = resolve_artifact_path(
+            inputs.get("class_mapping"), "class_mapping"
+        )
+        if class_mapping_path and class_mapping_path.exists():
+            with open(class_mapping_path) as f:
+                mapping_data = json.load(f)
+                class_mapping = mapping_data.get("class_mapping", mapping_data)
+        else:
+            # Use from artifacts if available
+            class_mapping = inputs.get("class_mapping", {})
+
+        # Get platform for pixel size detection
+        platform = self._resolve_platform(inputs)
+
+        # 3. Create LMDB
+        lmdb_path, stats = self._create_lmdb(
+            data_path,
+            annotations_df,
+            class_mapping,
+            platform,
+            cfg,
+        )
+        logger.info(f"Created LMDB at {lmdb_path}: {stats['n_patches']} patches")
+
+        # 4. Register dataset with lineage
+        dataset_id = None
+        if cfg.create_clearml_dataset:
+            try:
+                dataset_id = self._register_lmdb_dataset(
+                    lmdb_path, inputs, stats, cfg
+                )
+                logger.info(f"Registered LMDB dataset: {dataset_id}")
+            except Exception as e:
+                logger.warning(f"Failed to register ClearML dataset: {e}")
+
+        return StepArtifacts(
+            inputs=inputs,
+            outputs={
+                **inputs,
+                "lmdb_path": str(lmdb_path),
+                "lmdb_dataset_id": dataset_id,
+                "patch_size": cfg.patch_size,
+                "skipped": False,
+                "extraction_stats": stats,
+            },
+        )
+
+    def _resolve_platform(self, inputs: dict) -> str:
+        """Resolve platform from inputs."""
+        platform_value = inputs.get("platform", "xenium")
+        platform_path = resolve_artifact_path(platform_value, "platform")
+        if platform_path and platform_path.exists() and platform_path.is_file():
+            return platform_path.read_text().strip()
+        return str(platform_value)
+
+    def _check_existing_lmdb(
+        self, inputs: dict, cfg: LMDBCreationConfig
+    ) -> str | None:
+        """Check if matching LMDB dataset already exists."""
+        try:
+            from clearml import Dataset
+        except ImportError:
+            return None
+
+        # Generate expected dataset name
+        platform = inputs.get("platform", "unknown")
+        annotated_id = inputs.get("annotated_dataset_id", "")
+        id_suffix = annotated_id[:8] if annotated_id else "local"
+
+        expected_name = f"lmdb-{platform}-p{cfg.patch_size}-{id_suffix}"
+
+        try:
+            datasets = Dataset.list_datasets(
+                dataset_project="DAPIDL/lmdb",
+                partial_name=expected_name,
+            )
+
+            for ds in datasets:
+                # Check metadata matches
+                meta = ds.get("metadata", {})
+                if (
+                    meta.get("patch_size") == cfg.patch_size
+                    and meta.get("parent_annotated_id") == annotated_id
+                    and meta.get("normalization") == cfg.normalization_method
+                ):
+                    logger.info(f"Found matching LMDB dataset: {ds['id']}")
+                    return ds["id"]
+        except Exception as e:
+            logger.debug(f"Error checking existing datasets: {e}")
+
+        return None
+
+    def _get_dataset_path(self, dataset_id: str) -> Path | None:
+        """Get local path to ClearML Dataset."""
+        try:
+            from clearml import Dataset
+
+            ds = Dataset.get(dataset_id=dataset_id)
+            local_path = ds.get_local_copy()
+            return Path(local_path) if local_path else None
+        except Exception as e:
+            logger.warning(f"Failed to get dataset path: {e}")
+            return None
+
+    def _create_lmdb(
+        self,
+        data_path: Path,
+        annotations_df: pl.DataFrame,
+        class_mapping: dict,
+        platform: str,
+        cfg: LMDBCreationConfig,
+    ) -> tuple[Path, dict]:
+        """Create LMDB dataset from patches.
+
+        Returns:
+            Tuple of (lmdb_path, stats_dict)
+        """
+        import lmdb
+
+        # Load DAPI image
+        dapi_image = self._load_dapi_image(data_path, platform)
+        logger.info(f"Loaded DAPI image: {dapi_image.shape}, dtype={dapi_image.dtype}")
+
+        # Get cell coordinates
+        if "x_centroid" in annotations_df.columns:
+            x_col, y_col = "x_centroid", "y_centroid"
+        elif "x" in annotations_df.columns:
+            x_col, y_col = "x", "y"
+        else:
+            # Need to join with cells data
+            cells_path = data_path / "cells.parquet"
+            if cells_path.exists():
+                cells_df = pl.read_parquet(cells_path)
+                annotations_df = annotations_df.join(
+                    cells_df.select(["cell_id", "x_centroid", "y_centroid"]),
+                    on="cell_id",
+                    how="left",
+                )
+                x_col, y_col = "x_centroid", "y_centroid"
+            else:
+                raise ValueError("No cell coordinates available")
+
+        # Filter edge cells
+        img_h, img_w = dapi_image.shape
+        half_patch = cfg.patch_size // 2
+        margin = cfg.edge_margin_px
+
+        if cfg.exclude_edge_cells:
+            annotations_df = annotations_df.filter(
+                (pl.col(x_col) >= half_patch + margin)
+                & (pl.col(x_col) < img_w - half_patch - margin)
+                & (pl.col(y_col) >= half_patch + margin)
+                & (pl.col(y_col) < img_h - half_patch - margin)
+            )
+            logger.info(f"After edge filtering: {len(annotations_df)} cells")
+
+        # Normalize image
+        dapi_normalized = self._normalize_image(dapi_image, cfg.normalization_method)
+
+        # Determine label column
+        if cfg.output_format == "lmdb":
+            # Use fine-grained or broad category based on class_mapping
+            if "predicted_type" in annotations_df.columns and any(
+                k not in ["Epithelial", "Immune", "Stromal", "Endothelial", "Other"]
+                for k in class_mapping.keys()
+            ):
+                label_col = "predicted_type"
+            else:
+                label_col = "broad_category"
+
+        # Output path
+        output_dir = data_path / "pipeline_outputs" / "lmdb"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        lmdb_path = output_dir / f"patches_p{cfg.patch_size}.lmdb"
+
+        # Create LMDB
+        env = lmdb.open(str(lmdb_path), map_size=10 * 1024**3)  # 10GB
+
+        n_patches = 0
+        class_counts = {}
+
+        with env.begin(write=True) as txn:
+            for row in annotations_df.iter_rows(named=True):
+                x = int(row[x_col])
+                y = int(row[y_col])
+
+                # Extract patch
+                x1 = x - half_patch
+                y1 = y - half_patch
+                x2 = x + half_patch
+                y2 = y + half_patch
+
+                if x1 < 0 or y1 < 0 or x2 > img_w or y2 > img_h:
+                    continue
+
+                patch = dapi_normalized[y1:y2, x1:x2]
+
+                # Get label
+                label_str = row.get(label_col, row.get("broad_category", "Unknown"))
+                label_idx = class_mapping.get(label_str, -1)
+
+                if label_idx == -1:
+                    continue
+
+                # Serialize
+                cell_id = row.get("cell_id", str(n_patches))
+                key = f"{cell_id}".encode()
+
+                # Pack as bytes: label (int32) + patch (float32)
+                patch_bytes = np.array([label_idx], dtype=np.int32).tobytes()
+                patch_bytes += patch.astype(np.float32).tobytes()
+
+                txn.put(key, patch_bytes)
+                n_patches += 1
+
+                # Count classes
+                class_counts[label_str] = class_counts.get(label_str, 0) + 1
+
+            # Store metadata
+            metadata = {
+                "n_patches": n_patches,
+                "patch_size": cfg.patch_size,
+                "class_mapping": class_mapping,
+                "class_counts": class_counts,
+                "normalization": cfg.normalization_method,
+                "platform": platform,
+            }
+            txn.put(b"__metadata__", json.dumps(metadata).encode())
+
+        env.close()
+
+        stats = {
+            "n_patches": n_patches,
+            "patch_size": cfg.patch_size,
+            "class_counts": class_counts,
+            "n_classes": len(class_counts),
+            "lmdb_path": str(lmdb_path),
+        }
+
+        return lmdb_path, stats
+
+    def _load_dapi_image(self, data_path: Path, platform: str) -> np.ndarray:
+        """Load DAPI image from Xenium or MERSCOPE output."""
+        import tifffile
+
+        # Try various paths
+        dapi_paths = [
+            data_path / "morphology_focus" / "morphology_focus_0000.ome.tif",
+            data_path / "morphology.ome.tif",
+            data_path / "morphology_focus.ome.tif",
+            data_path / "images" / "mosaic_DAPI_z0.tif",  # MERSCOPE
+            data_path / "images" / "DAPI.tif",
+        ]
+
+        for dapi_path in dapi_paths:
+            if dapi_path.exists():
+                logger.info(f"Loading DAPI from {dapi_path}")
+                return tifffile.imread(str(dapi_path))
+
+        raise FileNotFoundError(f"No DAPI image found in {data_path}")
+
+    def _normalize_image(self, image: np.ndarray, method: str) -> np.ndarray:
+        """Normalize image to 0-1 range."""
+        img_float = image.astype(np.float32)
+
+        if method == "adaptive":
+            # Per-image adaptive normalization
+            p_low, p_high = np.percentile(img_float, [1, 99.5])
+            img_norm = (img_float - p_low) / (p_high - p_low + 1e-8)
+        elif method == "percentile":
+            p_low, p_high = np.percentile(img_float, [1, 99])
+            img_norm = (img_float - p_low) / (p_high - p_low + 1e-8)
+        elif method == "minmax":
+            img_min, img_max = img_float.min(), img_float.max()
+            img_norm = (img_float - img_min) / (img_max - img_min + 1e-8)
+        else:
+            img_norm = img_float / 65535.0  # Assume uint16
+
+        return np.clip(img_norm, 0, 1)
+
+    def _register_lmdb_dataset(
+        self,
+        lmdb_path: Path,
+        inputs: dict,
+        stats: dict,
+        cfg: LMDBCreationConfig,
+    ) -> str | None:
+        """Register LMDB dataset with ClearML.
+
+        Uses parent_datasets for lineage to save space.
+        """
+        try:
+            from clearml import Dataset
+        except ImportError:
+            logger.warning("ClearML not available, skipping dataset registration")
+            return None
+
+        # Determine parent dataset
+        parent_ids = []
+        if cfg.parent_dataset_id:
+            parent_ids.append(cfg.parent_dataset_id)
+        elif inputs.get("annotated_dataset_id"):
+            parent_ids.append(inputs["annotated_dataset_id"])
+
+        # Determine output URI
+        output_uri = None
+        if cfg.upload_to_s3:
+            output_uri = f"s3://{cfg.s3_bucket}/datasets/lmdb/"
+
+        # Create dataset name
+        platform = inputs.get("platform", "unknown")
+        annotated_id = inputs.get("annotated_dataset_id", "")
+        id_suffix = annotated_id[:8] if annotated_id else "local"
+
+        dataset_name = f"lmdb-{platform}-p{cfg.patch_size}-{id_suffix}"
+
+        try:
+            dataset = Dataset.create(
+                dataset_project="DAPIDL/lmdb",
+                dataset_name=dataset_name,
+                parent_datasets=parent_ids if parent_ids else None,
+                output_uri=output_uri,
+            )
+
+            # Add LMDB files
+            dataset.add_files(str(lmdb_path))
+
+            # Metadata
+            dataset.set_metadata({
+                "patch_size": cfg.patch_size,
+                "n_patches": stats["n_patches"],
+                "n_classes": stats["n_classes"],
+                "class_counts": stats["class_counts"],
+                "normalization": cfg.normalization_method,
+                "parent_annotated_id": inputs.get("annotated_dataset_id"),
+                "platform": platform,
+                "normalize_physical_size": cfg.normalize_physical_size,
+            })
+
+            dataset.finalize()
+            dataset.upload()
+
+            logger.info(f"Created ClearML dataset: {dataset.id}")
+            return dataset.id
+
+        except Exception as e:
+            logger.warning(f"Failed to create ClearML dataset: {e}")
+            return None
+
+    def get_queue(self) -> str:
+        """Return queue name for this step."""
+        return "default"  # CPU queue for I/O
+
+    def create_clearml_task(
+        self,
+        project: str = "DAPIDL/pipeline",
+        task_name: str | None = None,
+    ):
+        """Create ClearML Task for this step."""
+        from clearml import Task
+
+        task_name = task_name or f"step-{self.name}"
+
+        self._task = Task.create(
+            project_name=project,
+            task_name=task_name,
+            task_type=Task.TaskTypes.data_processing,
+        )
+
+        # Connect parameters
+        params = {
+            "step_name": self.name,
+            "patch_size": self.config.patch_size,
+            "normalization_method": self.config.normalization_method,
+            "normalize_physical_size": self.config.normalize_physical_size,
+            "skip_if_exists": self.config.skip_if_exists,
+            "create_clearml_dataset": self.config.create_clearml_dataset,
+            "upload_to_s3": self.config.upload_to_s3,
+        }
+        self._task.set_parameters(params, __parameters_prefix="step_config")
+
+        return self._task
