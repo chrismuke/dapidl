@@ -23,6 +23,65 @@ from dapidl.pipeline.base import SegmentationConfig, SegmentationResult
 from dapidl.pipeline.registry import register_segmenter
 
 
+def _extract_batch_boundaries(batch_regions: list) -> list:
+    """Worker function for parallel boundary extraction.
+
+    Runs in a separate process to extract boundaries from mask regions.
+
+    Args:
+        batch_regions: List of (region, slice_x_start, slice_y_start, cell_ids, pixel_size)
+
+    Returns:
+        List of polygon vertex dictionaries
+    """
+    polygons_data = []
+
+    for region, x_offset, y_offset, cell_ids, pixel_size in batch_regions:
+        # Find contours using OpenCV
+        contours, _ = cv2.findContours(
+            region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        if not contours:
+            continue
+
+        # Get the largest contour (outer boundary)
+        contour = max(contours, key=cv2.contourArea)
+
+        # Simplify contour to reduce vertices
+        epsilon = 0.02 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+
+        # If still too many points, subsample to ~13 vertices
+        if len(approx) > 20:
+            indices = np.linspace(0, len(approx) - 1, 13, dtype=int)
+            approx = approx[indices]
+
+        # Add vertices for each cell_id
+        for cell_id in cell_ids:
+            for point in approx:
+                x_local, y_local = point[0]
+                x_global = x_local + x_offset
+                y_global = y_local + y_offset
+                polygons_data.append({
+                    "cell_id": cell_id,
+                    "vertex_x": x_global * pixel_size,
+                    "vertex_y": y_global * pixel_size,
+                })
+
+            # Close the polygon
+            x_local, y_local = approx[0][0]
+            x_global = x_local + x_offset
+            y_global = y_local + y_offset
+            polygons_data.append({
+                "cell_id": cell_id,
+                "vertex_x": x_global * pixel_size,
+                "vertex_y": y_global * pixel_size,
+            })
+
+    return polygons_data
+
+
 @register_segmenter
 class CellposeSegmenter:
     """Nucleus segmentation using Cellpose deep learning model.
@@ -115,8 +174,15 @@ class CellposeSegmenter:
         # Fast centroid-to-mask matching
         matches_df = self._match_centroids_to_masks(cells_df, masks, pixel_size)
 
-        # Extract boundaries only for matched nuclei
-        boundaries_df = self._extract_matched_boundaries(masks, matches_df, pixel_size)
+        # Extract boundaries only if needed (skip for training - saves ~5 hours!)
+        boundaries_df = None
+        if not cfg.skip_boundaries:
+            if cfg.parallel_boundaries:
+                boundaries_df = self._extract_matched_boundaries_parallel(
+                    masks, matches_df, pixel_size, cfg.n_boundary_workers
+                )
+            else:
+                boundaries_df = self._extract_matched_boundaries(masks, matches_df, pixel_size)
 
         # Build centroids DataFrame with matching info
         centroids_df = self._build_centroids_df(matches_df, pixel_size)
@@ -388,6 +454,69 @@ class CellposeSegmenter:
                         "vertex_y": y_global * pixel_size,
                     }
                 )
+
+        return pl.DataFrame(polygons_data)
+
+    def _extract_matched_boundaries_parallel(
+        self,
+        masks: np.ndarray,
+        matches_df: pl.DataFrame,
+        pixel_size: float,
+        n_workers: int = 8,
+    ) -> pl.DataFrame:
+        """Extract polygon boundaries using parallel processing.
+
+        Uses multiprocessing to speed up boundary extraction by ~8x.
+        Processes nuclei in batches across multiple workers.
+        """
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        # Get unique matched cellpose IDs
+        matched = matches_df.filter(pl.col("matched"))
+        cellpose_ids = matched["cellpose_id"].unique().to_numpy()
+
+        # Create mapping from cellpose_id to cell_id(s)
+        cp_to_cells = (
+            matched.group_by("cellpose_id")
+            .agg(pl.col("cell_id"))
+            .to_pandas()
+            .set_index("cellpose_id")["cell_id"]
+            .to_dict()
+        )
+
+        # Find bounding boxes for each label
+        slices = ndimage.find_objects(masks)
+
+        # Prepare work items
+        work_items = []
+        for cp_id in cellpose_ids:
+            if cp_id == 0 or slices[cp_id - 1] is None:
+                continue
+            slice_y, slice_x = slices[cp_id - 1]
+            cell_ids = cp_to_cells.get(cp_id, [])
+            if cell_ids:
+                work_items.append((cp_id, slice_y, slice_x, cell_ids))
+
+        # Process in parallel batches
+        polygons_data = []
+        batch_size = max(1, len(work_items) // (n_workers * 4))
+
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            futures = []
+            for i in range(0, len(work_items), batch_size):
+                batch = work_items[i : i + batch_size]
+                # Extract mask regions for this batch
+                batch_regions = []
+                for cp_id, slice_y, slice_x, cell_ids in batch:
+                    region = (masks[slice_y, slice_x] == cp_id).astype(np.uint8)
+                    batch_regions.append((region, slice_x.start, slice_y.start, cell_ids, pixel_size))
+                future = executor.submit(_extract_batch_boundaries, batch_regions)
+                futures.append(future)
+
+            # Collect results with progress
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Extracting boundaries (parallel)"):
+                batch_polygons = future.result()
+                polygons_data.extend(batch_polygons)
 
         return pl.DataFrame(polygons_data)
 

@@ -40,19 +40,57 @@ def compute_dataset_stats(
             logger.info(f"Loaded cached normalization stats: {stats}")
             return stats
 
-    # Compute stats from patches
-    patches = zarr.open(data_path / "patches.zarr", mode="r")
-    n_total = patches.shape[0]
-    n_samples = min(n_samples, n_total)
+    # Check for LMDB or Zarr format
+    lmdb_path = data_path / "patches.lmdb"
+    zarr_path = data_path / "patches.zarr"
 
-    # Random sample indices
-    rng = np.random.default_rng(42)
-    indices = rng.choice(n_total, size=n_samples, replace=False)
+    if lmdb_path.exists():
+        # Compute from LMDB
+        import lmdb as lmdb_lib
 
-    # Load samples
-    samples = np.array([patches[int(i)] for i in indices])
+        env = lmdb_lib.open(str(lmdb_path), readonly=True, lock=False)
+        with env.begin() as txn:
+            # Get metadata for patch size
+            metadata_bytes = txn.get(b"__metadata__")
+            if metadata_bytes:
+                metadata = json.loads(metadata_bytes.decode())
+                patch_size = metadata.get("patch_size", 128)
+            else:
+                patch_size = 128
 
-    # Compute percentiles
+            # Sample patches
+            cursor = txn.cursor()
+            samples = []
+            for key, value in cursor:
+                if key == b"__metadata__":
+                    continue
+                # Format: 8-byte int64 label + uint16 patch data
+                # (matches MultiTissueDataset expectations)
+                patch = np.frombuffer(value[8:], dtype=np.uint16)
+                patch = patch.reshape(patch_size, patch_size)
+                # Convert to float for stats computation
+                samples.append(patch.astype(np.float32))
+                if len(samples) >= n_samples:
+                    break
+        env.close()
+        samples = np.array(samples)
+    elif zarr_path.exists():
+        patches = zarr.open(zarr_path, mode="r")
+        n_total = patches.shape[0]
+        n_sample = min(n_samples, n_total)
+
+        # Random sample indices
+        rng = np.random.default_rng(42)
+        indices = rng.choice(n_total, size=n_sample, replace=False)
+
+        # Load samples
+        samples = np.array([patches[int(i)] for i in indices])
+    else:
+        raise FileNotFoundError(
+            f"No patches.lmdb or patches.zarr found in {data_path}"
+        )
+
+    # Compute percentiles from samples
     p_low = float(np.percentile(samples, percentile_low))
     p_high = float(np.percentile(samples, percentile_high))
 
@@ -118,6 +156,7 @@ class PercentileNormalize(A.ImageOnlyTransform):
 def get_train_transforms(
     patch_size: int = 128,
     stats: dict[str, float] | None = None,
+    cross_platform: bool = False,
 ) -> A.Compose:
     """Get training augmentation pipeline.
 
@@ -125,10 +164,18 @@ def get_train_transforms(
         patch_size: Expected input patch size
         stats: Dataset normalization stats (p_low, p_high, mean, std).
                If None, uses legacy fixed normalization for backward compatibility.
+        cross_platform: If True, use aggressive scale augmentation (±50%) for
+                       cross-platform transfer. Xenium (0.2125 µm/px) and MERSCOPE
+                       (0.108 µm/px) have 2x resolution difference, so a nucleus
+                       appears 2x larger on MERSCOPE. This augmentation helps the
+                       model become scale-invariant.
 
     Returns:
         Albumentations Compose transform
     """
+    # Scale limit: 0.1 for single-platform, 0.5 for cross-platform (2x range)
+    scale_limit = 0.5 if cross_platform else 0.1
+
     # Build normalization based on whether stats are provided
     if stats is not None:
         # Adaptive normalization using dataset-specific percentiles
@@ -148,7 +195,7 @@ def get_train_transforms(
                 A.VerticalFlip(p=0.5),
                 A.ShiftScaleRotate(
                     shift_limit=0.1,
-                    scale_limit=0.1,
+                    scale_limit=scale_limit,  # 0.1 single-platform, 0.5 cross-platform
                     rotate_limit=15,
                     border_mode=0,
                     p=0.5,
@@ -186,7 +233,7 @@ def get_train_transforms(
                 A.VerticalFlip(p=0.5),
                 A.ShiftScaleRotate(
                     shift_limit=0.1,
-                    scale_limit=0.1,
+                    scale_limit=scale_limit,  # 0.1 single-platform, 0.5 cross-platform
                     rotate_limit=15,
                     border_mode=0,
                     p=0.5,

@@ -14,7 +14,6 @@ from typing import Any
 
 import numpy as np
 import polars as pl
-import pandas as pd
 from loguru import logger
 from scipy.sparse import issparse
 
@@ -344,23 +343,19 @@ class ScTypeAnnotator:
 
         # Calculate statistics
         n_annotated = annotations_df.height
-        class_dist = (
+        class_dist = dict(
             annotations_df.group_by("broad_category")
-            .count()
-            .to_pandas()
-            .set_index("broad_category")["count"]
-            .to_dict()
+            .agg(pl.len().alias("count"))
+            .iter_rows()
         )
 
-        # Type distribution
-        type_dist = (
+        # Type distribution (top 10)
+        type_dist = dict(
             annotations_df.group_by("predicted_type")
-            .count()
+            .agg(pl.len().alias("count"))
             .sort("count", descending=True)
             .head(10)
-            .to_pandas()
-            .set_index("predicted_type")["count"]
-            .to_dict()
+            .iter_rows()
         )
 
         logger.info(f"scType annotation complete: {n_annotated} cells annotated")

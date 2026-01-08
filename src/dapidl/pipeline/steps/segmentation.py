@@ -306,8 +306,17 @@ class SegmentationStep(PipelineStep):
         else:  # merscope
             # MERSCOPE uses center_x, center_y (in µm, need to convert to pixels)
             pixel_size = self._get_pixel_size(platform)
+            # Handle different MERSCOPE column naming conventions:
+            # - Some have "EntityID", others have unnamed first column ""
+            if "EntityID" in cells_df.columns:
+                cell_id_col = "EntityID"
+            elif "" in cells_df.columns:
+                cell_id_col = ""
+            else:
+                # Fall back to first column
+                cell_id_col = cells_df.columns[0]
             cells_df = cells_df.select([
-                pl.col("EntityID").alias("cell_id"),
+                pl.col(cell_id_col).alias("cell_id"),
                 (pl.col("center_x") / pixel_size).alias("x"),
                 (pl.col("center_y") / pixel_size).alias("y"),
             ])

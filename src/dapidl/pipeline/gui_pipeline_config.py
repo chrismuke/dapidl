@@ -71,6 +71,25 @@ class GUIPipelineConfig:
     fine_grained: bool = True  # Use detailed cell types
 
     # ═══════════════════════════════════════════════════════════════════════
+    # GROUP: Cell Ontology Standardization
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # Enable CL standardization (maps all labels to Cell Ontology IDs)
+    use_cell_ontology: bool = True
+
+    # Target hierarchy level for classification
+    cl_target_level: str = "coarse"  # "broad", "coarse", "fine"
+
+    # Mapping confidence threshold (lower = more permissive)
+    cl_min_confidence: float = 0.5
+
+    # Include cells with unmapped labels (as "Unknown")
+    cl_include_unmapped: bool = False
+
+    # Fuzzy matching threshold for label mapping
+    cl_fuzzy_threshold: float = 0.85
+
+    # ═══════════════════════════════════════════════════════════════════════
     # GROUP: LMDB Dataset Configuration
     # ═══════════════════════════════════════════════════════════════════════
 
@@ -150,6 +169,12 @@ class GUIPipelineConfig:
             "annotation/confidence_threshold": str(self.confidence_threshold),
             "annotation/use_confidence_weighting": str(self.use_confidence_weighting),
             "annotation/fine_grained": str(self.fine_grained),
+            # Cell Ontology Configuration
+            "ontology/use_cell_ontology": str(self.use_cell_ontology),
+            "ontology/target_level": self.cl_target_level,
+            "ontology/min_confidence": str(self.cl_min_confidence),
+            "ontology/include_unmapped": str(self.cl_include_unmapped),
+            "ontology/fuzzy_threshold": str(self.cl_fuzzy_threshold),
             # LMDB Configuration
             "lmdb/patch_sizes": ",".join(str(p) for p in self.patch_sizes),
             "lmdb/normalization": self.normalization,
@@ -219,6 +244,12 @@ class GUIPipelineConfig:
                 params.get("annotation/use_confidence_weighting", "True")
             ),
             fine_grained=parse_bool(params.get("annotation/fine_grained", "True")),
+            # Cell Ontology Configuration
+            use_cell_ontology=parse_bool(params.get("ontology/use_cell_ontology", "True")),
+            cl_target_level=params.get("ontology/target_level", "coarse"),
+            cl_min_confidence=float(params.get("ontology/min_confidence", "0.5")),
+            cl_include_unmapped=parse_bool(params.get("ontology/include_unmapped", "False")),
+            cl_fuzzy_threshold=float(params.get("ontology/fuzzy_threshold", "0.85")),
             # LMDB Configuration
             patch_sizes=parse_list_int(params.get("lmdb/patch_sizes", "128")),
             normalization=params.get("lmdb/normalization", "adaptive"),

@@ -1,12 +1,15 @@
 """Data Loader Pipeline Step.
 
-Step 1: Load raw spatial transcriptomics data from ClearML Dataset.
+Step 1: Load raw spatial transcriptomics data with smart source detection.
 
-This step:
-1. Downloads the specified ClearML Dataset (Xenium or MERSCOPE)
-2. Validates required files exist
-3. Extracts metadata (platform, sample info)
-4. Passes data path and metadata to downstream steps
+This step uses a **local-first fallback** strategy:
+1. Check local dataset registry (fastest)
+2. Check S3 cache if S3 URI provided
+3. Download from ClearML Dataset if dataset_id provided
+4. Download from S3 if s3_uri provided
+
+This allows you to specify remote URIs while automatically using
+local copies when available.
 """
 
 from __future__ import annotations
@@ -18,6 +21,26 @@ from typing import Any
 from loguru import logger
 
 from dapidl.pipeline.base import PipelineStep, StepArtifacts
+
+
+# ============================================================================
+# LOCAL DATA REGISTRY
+# ============================================================================
+# Maps S3 URIs and dataset names to known local paths.
+# Add your local datasets here to avoid re-downloading.
+# The loader checks these paths FIRST before downloading.
+
+LOCAL_DATA_REGISTRY: dict[str, str] = {
+    # S3 URIs -> local paths
+    "s3://dapidl/raw-data/xenium-breast-cancer-rep1/": "/mnt/work/datasets/raw/xenium/breast_tumor_rep1/outs",
+    "s3://dapidl/raw-data/xenium-lung-2fov/": "/mnt/work/datasets/raw/xenium/lung_2fov/outs",
+    "s3://dapidl/raw-data/xenium-ovarian-cancer/": "/mnt/work/datasets/raw/xenium/ovarian_cancer/outs",
+    # Dataset names -> local paths (for ClearML datasets)
+    "xenium-breast-cancer-rep1": "/mnt/work/datasets/raw/xenium/breast_tumor_rep1/outs",
+    "xenium-lung-2fov": "/mnt/work/datasets/raw/xenium/lung_2fov/outs",
+    "xenium-ovarian-cancer": "/mnt/work/datasets/raw/xenium/ovarian_cancer/outs",
+    "merscope-breast": "/mnt/work/datasets/raw/merscope/breast",
+}
 
 
 @dataclass
@@ -35,6 +58,9 @@ class DataLoaderConfig:
 
     # Local path override (for debugging)
     local_path: str | None = None
+
+    # S3 URI (e.g., s3://dapidl/raw-data/xenium-breast/)
+    s3_uri: str | None = None
 
     # Validation options
     validate_files: bool = True
@@ -94,6 +120,10 @@ class DataLoaderStep(PipelineStep):
                     "type": "string",
                     "description": "Local path override (debugging)",
                 },
+                "s3_uri": {
+                    "type": "string",
+                    "description": "S3 URI for data (e.g., s3://dapidl/raw-data/xenium-breast/)",
+                },
             },
         }
 
@@ -103,11 +133,15 @@ class DataLoaderStep(PipelineStep):
         For DataLoaderStep, we need either:
         - dataset_id or dataset_name in config
         - local_path in config
+        - s3_uri in config
         """
         cfg = self.config
 
         if cfg.local_path:
             return Path(cfg.local_path).exists()
+
+        if cfg.s3_uri:
+            return cfg.s3_uri.startswith("s3://")
 
         return bool(cfg.dataset_id or cfg.dataset_name)
 
@@ -127,12 +161,8 @@ class DataLoaderStep(PipelineStep):
         """
         cfg = self.config
 
-        # Get data path
-        if cfg.local_path:
-            data_path = Path(cfg.local_path)
-            logger.info(f"Using local path: {data_path}")
-        else:
-            data_path = self._download_dataset()
+        # Get data path with LOCAL-FIRST fallback strategy
+        data_path = self._get_data_path_with_fallback()
 
         # Resolve effective data path (handle outs/ subdirectory)
         data_path = self._resolve_data_path(data_path)
@@ -163,6 +193,62 @@ class DataLoaderStep(PipelineStep):
             },
         )
 
+    def _get_data_path_with_fallback(self) -> Path:
+        """Get data path using local-first fallback strategy.
+
+        Priority order:
+        1. Explicit local_path in config
+        2. Registry lookup for s3_uri or dataset_name
+        3. S3 cache directory
+        4. Download from S3 (if s3_uri provided)
+        5. Download from ClearML (if dataset_id/name provided)
+        """
+        cfg = self.config
+
+        # 1. Explicit local path always wins
+        if cfg.local_path:
+            local = Path(cfg.local_path)
+            if local.exists():
+                logger.info(f"✓ Using explicit local path: {local}")
+                return local
+            raise FileNotFoundError(f"Local path not found: {local}")
+
+        # 2. Check registry for S3 URI
+        if cfg.s3_uri:
+            registry_path = LOCAL_DATA_REGISTRY.get(cfg.s3_uri.rstrip("/") + "/")
+            if registry_path and Path(registry_path).exists():
+                logger.info(f"✓ Found local copy via registry: {registry_path}")
+                return Path(registry_path)
+
+            # 3. Check S3 cache directory
+            parts = cfg.s3_uri.rstrip("/").split("/")
+            dataset_name = parts[-1]
+            cache_dir = Path.home() / ".cache" / "dapidl" / "s3_downloads" / dataset_name
+            if cache_dir.exists() and any(cache_dir.iterdir()):
+                logger.info(f"✓ Using S3 cache: {cache_dir}")
+                return cache_dir
+
+            # 4. Download from S3
+            logger.info(f"⬇ Downloading from S3: {cfg.s3_uri}")
+            return self._download_from_s3()
+
+        # 2b. Check registry for dataset name
+        if cfg.dataset_name:
+            registry_path = LOCAL_DATA_REGISTRY.get(cfg.dataset_name)
+            if registry_path and Path(registry_path).exists():
+                logger.info(f"✓ Found local copy via registry: {registry_path}")
+                return Path(registry_path)
+
+        # 5. Download from ClearML
+        if cfg.dataset_id or cfg.dataset_name:
+            logger.info(f"⬇ Downloading from ClearML...")
+            return self._download_dataset()
+
+        raise ValueError(
+            "No data source specified. Provide one of: "
+            "local_path, s3_uri, dataset_id, or dataset_name"
+        )
+
     def _download_dataset(self) -> Path:
         """Download ClearML Dataset."""
         from clearml import Dataset
@@ -183,6 +269,57 @@ class DataLoaderStep(PipelineStep):
         logger.info(f"Downloaded dataset to: {data_path}")
 
         return data_path
+
+    def _download_from_s3(self) -> Path:
+        """Download data from S3 URI.
+
+        Uses AWS CLI with iDrive e2 configuration from CLAUDE.md.
+        Downloads to a local cache directory.
+        """
+        import subprocess
+        import tempfile
+        import os
+
+        cfg = self.config
+        s3_uri = cfg.s3_uri
+
+        # Parse S3 URI to get dataset name for cache dir
+        # s3://dapidl/raw-data/xenium-breast/ -> xenium-breast
+        parts = s3_uri.rstrip("/").split("/")
+        dataset_name = parts[-1]
+
+        # Use persistent cache directory
+        cache_dir = Path.home() / ".cache" / "dapidl" / "s3_downloads" / dataset_name
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Check if already downloaded (simple existence check)
+        if any(cache_dir.iterdir()):
+            logger.info(f"Using cached S3 download: {cache_dir}")
+            return cache_dir
+
+        logger.info(f"Downloading from S3: {s3_uri}")
+
+        # S3 configuration for iDrive e2
+        env = os.environ.copy()
+        env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
+        env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
+
+        # Download using AWS CLI
+        cmd = [
+            "aws", "s3", "sync",
+            s3_uri, str(cache_dir),
+            "--endpoint-url", "https://s3.eu-central-2.idrivee2.com",
+            "--region", "eu-central-2",
+        ]
+
+        try:
+            result = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
+            logger.info(f"Downloaded to: {cache_dir}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"S3 download failed: {e.stderr}")
+            raise RuntimeError(f"Failed to download from S3: {e.stderr}") from e
+
+        return cache_dir
 
     def _resolve_data_path(self, data_path: Path) -> Path:
         """Resolve the effective data path, handling outs/ subdirectory.

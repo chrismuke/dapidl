@@ -220,12 +220,10 @@ class AzimuthAnnotator:
 
         # Stats
         n_annotated = annotations_df.height
-        class_dist = (
+        class_dist = dict(
             annotations_df.group_by("broad_category")
-            .count()
-            .to_pandas()
-            .set_index("broad_category")["count"]
-            .to_dict()
+            .agg(pl.len().alias("count"))
+            .iter_rows()
         )
 
         logger.info(f"Azimuth annotation complete: {n_annotated} cells annotated")

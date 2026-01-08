@@ -8,6 +8,11 @@ from dapidl.models.multitask import (
     MultiTaskCellTypeClassifier,
     SegmentationDecoder,
 )
+from dapidl.models.hierarchical import (
+    HierarchicalClassifier,
+    HierarchyConfig,
+    HierarchicalOutput,
+)
 
 __all__ = [
     "create_backbone",
@@ -17,4 +22,7 @@ __all__ = [
     "MultiTaskClassifier",
     "MultiTaskCellTypeClassifier",
     "SegmentationDecoder",
+    "HierarchicalClassifier",
+    "HierarchyConfig",
+    "HierarchicalOutput",
 ]

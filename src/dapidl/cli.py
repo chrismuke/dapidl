@@ -2182,6 +2182,18 @@ def run_universal_pipeline(
     help="Training mode (hierarchical uses curriculum learning)",
 )
 @click.option(
+    "--coarse-only-epochs",
+    type=int,
+    default=20,
+    help="Epochs for Phase 1 (coarse only) in hierarchical mode",
+)
+@click.option(
+    "--coarse-medium-epochs",
+    type=int,
+    default=50,
+    help="Epochs for Phase 2 (coarse + medium) in hierarchical mode",
+)
+@click.option(
     "--local/--remote",
     default=False,
     help="Run locally or on ClearML agents",
@@ -2207,6 +2219,8 @@ def run_enhanced_pipeline(
     epochs: int,
     backbone: str,
     training_mode: str,
+    coarse_only_epochs: int,
+    coarse_medium_epochs: int,
     local: bool,
     upload_to_s3: bool,
     output_dir: str,
@@ -2248,6 +2262,8 @@ def run_enhanced_pipeline(
         epochs=epochs,
         backbone=backbone,
         training_mode=training_mode,
+        coarse_only_epochs=coarse_only_epochs,
+        coarse_medium_epochs=coarse_medium_epochs,
         upload_to_s3=upload_to_s3,
         output_dir=output_dir,
     )
@@ -2318,6 +2334,296 @@ def create_base_tasks(project: str, include_universal: bool) -> None:
     console.print("\n[green]✓ Base tasks created![/green]")
     console.print(f"  Project: {project}")
     console.print("  You can now run the pipeline with: dapidl clearml-pipeline run")
+
+
+# =============================================================================
+# PopV Commands
+# =============================================================================
+
+
+@main.group(name="popv")
+def popv_group() -> None:
+    """PopV annotation commands for universal cell type prediction.
+
+    PopV uses 8+ annotation methods with ontology-based voting for
+    high-confidence, tissue-agnostic cell type annotation.
+    """
+    pass
+
+
+@popv_group.command(name="annotate")
+@click.option(
+    "--input",
+    "-i",
+    "input_path",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Path to expression data (H5AD, H5, or directory)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output directory for annotation results",
+)
+@click.option(
+    "--organ",
+    type=click.Choice([
+        "auto", "Mammary", "Lung", "Liver", "Heart", "Kidney", "Brain",
+        "Pancreas", "Spleen", "Small_Intestine", "Large_Intestine",
+        "Bladder", "Eye", "Skin", "Fat", "Prostate", "Uterus",
+        "Muscle", "Bone_Marrow", "Blood", "Thymus"
+    ]),
+    default="auto",
+    show_default=True,
+    help="Organ-specific Tabula Sapiens reference (auto-detected by default)",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["fast", "inference", "retrain"]),
+    default="fast",
+    show_default=True,
+    help="Annotation mode: fast (5min), inference (30min), retrain (1hr)",
+)
+@click.option(
+    "--min-consensus",
+    type=int,
+    default=6,
+    show_default=True,
+    help="Minimum methods agreeing (0-8). 6=90%%, 7=95%% accuracy",
+)
+@click.option(
+    "--n-top-genes",
+    type=int,
+    default=2000,
+    show_default=True,
+    help="Number of highly variable genes to use",
+)
+@click.option(
+    "--fine-grained/--coarse",
+    default=True,
+    help="Output fine-grained cell types (default) or coarse categories",
+)
+@click.option(
+    "--include-methods/--no-methods",
+    default=True,
+    help="Include per-method prediction columns in output",
+)
+@click.option(
+    "--wandb/--no-wandb",
+    default=False,
+    help="Log to Weights & Biases",
+)
+@click.option(
+    "--clearml/--no-clearml",
+    default=False,
+    help="Log to ClearML",
+)
+@click.option(
+    "--project",
+    default="dapidl-popv",
+    help="Project name for WandB/ClearML logging",
+)
+def popv_annotate(
+    input_path: Path,
+    output: Path,
+    organ: str,
+    mode: str,
+    min_consensus: int,
+    n_top_genes: int,
+    fine_grained: bool,
+    include_methods: bool,
+    wandb: bool,
+    clearml: bool,
+    project: str,
+) -> None:
+    """Annotate cells using popV ensemble prediction.
+
+    PopV combines 8+ annotation methods with Tabula Sapiens reference
+    for universal, high-confidence cell type prediction.
+
+    Methods include: Random Forest, SVM, XGBoost, CellTypist, OnClass,
+    scVI+kNN, scANVI, BBKNN+kNN, Scanorama+kNN, Harmony+kNN.
+
+    Examples:
+
+        # Quick annotation with auto organ detection
+        dapidl popv annotate -i expression.h5ad -o ./results
+
+        # Breast-specific annotation with high confidence filter
+        dapidl popv annotate -i expression.h5ad -o ./results \\
+            --organ Mammary --min-consensus 7
+
+        # Full retraining mode with WandB logging
+        dapidl popv annotate -i expression.h5ad -o ./results \\
+            --mode retrain --wandb --project my-project
+    """
+    # Check popV availability
+    try:
+        from dapidl.pipeline.components.annotators.popv import (
+            annotate_with_popv,
+            is_popv_available,
+        )
+    except ImportError:
+        console.print("[red]Error: popV annotator module not found[/red]")
+        console.print("[yellow]This may be an installation issue.[/yellow]")
+        raise click.Abort()
+
+    if not is_popv_available():
+        console.print("[red]Error: popV package is not installed[/red]")
+        console.print("[yellow]Install with: pip install popv[/yellow]")
+        raise click.Abort()
+
+    console.print("[bold blue]DAPIDL PopV Annotation[/bold blue]\n")
+    console.print(f"Input: {input_path}")
+    console.print(f"Output: {output}")
+    console.print(f"Organ: {organ}")
+    console.print(f"Mode: {mode}")
+    console.print(f"Min consensus: {min_consensus}/8")
+    console.print(f"HVGs: {n_top_genes}")
+    console.print(f"Fine-grained: {fine_grained}")
+    console.print(f"Include methods: {include_methods}")
+    if wandb:
+        console.print(f"WandB project: {project}")
+    if clearml:
+        console.print(f"ClearML project: {project}")
+    console.print()
+
+    # Create output directory
+    output.mkdir(parents=True, exist_ok=True)
+
+    console.print("[cyan]Running popV annotation...[/cyan]")
+    console.print("[dim]This may take 5-60 minutes depending on mode and data size[/dim]\n")
+
+    try:
+        result = annotate_with_popv(
+            expression_path=input_path,
+            output_path=output,
+            organ=organ,
+            mode=mode,
+            min_consensus=min_consensus,
+            use_wandb=wandb,
+            use_clearml=clearml,
+            project_name=project,
+        )
+
+        console.print(f"\n[green]✓ Annotation complete![/green]")
+        console.print(f"  Cells annotated: {result.stats.get('n_cells', 'N/A')}")
+        console.print(f"  High-confidence cells: {result.stats.get('n_high_confidence', 'N/A')}")
+        console.print(f"  Cell types: {len(result.class_mapping)}")
+        console.print(f"  Output: {output}")
+
+    except Exception as e:
+        console.print(f"\n[red]Error: {e}[/red]")
+        raise click.Abort()
+
+
+@popv_group.command(name="list-references")
+def popv_list_references() -> None:
+    """List available Tabula Sapiens organ references.
+
+    Shows all pre-trained popV models available from Tabula Sapiens.
+    These references cover 20+ human organs without manual tuning.
+    """
+    console.print("[bold blue]Available PopV References (Tabula Sapiens)[/bold blue]\n")
+
+    # Tabula Sapiens organs with popV models
+    organs = {
+        "Mammary": "Breast/mammary tissue (recommended for breast cancer)",
+        "Lung": "Lung tissue",
+        "Liver": "Liver tissue",
+        "Heart": "Heart/cardiac tissue",
+        "Kidney": "Kidney tissue",
+        "Brain": "Brain tissue",
+        "Pancreas": "Pancreatic tissue",
+        "Spleen": "Spleen tissue",
+        "Small_Intestine": "Small intestine",
+        "Large_Intestine": "Large intestine/colon",
+        "Bladder": "Bladder tissue",
+        "Eye": "Eye/ocular tissue",
+        "Skin": "Skin tissue",
+        "Fat": "Adipose tissue",
+        "Prostate": "Prostate tissue",
+        "Uterus": "Uterine tissue",
+        "Muscle": "Muscle tissue",
+        "Bone_Marrow": "Bone marrow",
+        "Blood": "Blood/PBMCs",
+        "Thymus": "Thymus tissue",
+    }
+
+    table = Table(title="Organ References")
+    table.add_column("Organ", style="cyan", no_wrap=True)
+    table.add_column("Description", style="white")
+
+    for organ, desc in organs.items():
+        table.add_row(organ, desc)
+
+    console.print(table)
+    console.print(f"\n[green]Total: {len(organs)} organ references[/green]")
+    console.print("\n[dim]Use --organ <name> with 'dapidl popv annotate'[/dim]")
+    console.print("[dim]Use --organ auto for automatic tissue detection[/dim]")
+
+
+@popv_group.command(name="info")
+def popv_info() -> None:
+    """Show popV package information and availability.
+
+    Displays popV installation status, version, and available methods.
+    """
+    console.print("[bold blue]PopV Package Information[/bold blue]\n")
+
+    # Check installation
+    try:
+        import popv
+        console.print(f"[green]✓ popV installed[/green]: version {popv.__version__}")
+    except ImportError:
+        console.print("[red]✗ popV not installed[/red]")
+        console.print("  Install with: [cyan]pip install popv[/cyan]")
+        console.print("  Or: [cyan]uv add popv[/cyan]")
+        return
+
+    # Check dependencies
+    console.print("\n[bold]Dependencies:[/bold]")
+    deps = {
+        "scvi-tools": "scVI/scANVI methods",
+        "celltypist": "CellTypist method",
+        "scanpy": "Data processing",
+        "anndata": "Data format",
+    }
+
+    for pkg, desc in deps.items():
+        try:
+            mod = __import__(pkg.replace("-", "_"))
+            version = getattr(mod, "__version__", "unknown")
+            console.print(f"  [green]✓[/green] {pkg}: {version} ({desc})")
+        except ImportError:
+            console.print(f"  [yellow]✗[/yellow] {pkg}: not installed ({desc})")
+
+    # Show available methods
+    console.print("\n[bold]Available Methods:[/bold]")
+    methods = [
+        ("Random Forest", "Classical ML classifier"),
+        ("SVM", "Support Vector Machine"),
+        ("XGBoost", "Gradient boosting"),
+        ("CellTypist", "Logistic regression"),
+        ("OnClass", "Cell Ontology-aware"),
+        ("scVI + kNN", "VAE embedding + neighbors"),
+        ("scANVI", "Semi-supervised VAE"),
+        ("BBKNN + kNN", "Batch-balanced neighbors"),
+        ("Scanorama + kNN", "MNN integration"),
+        ("Harmony + kNN", "Harmony integration"),
+    ]
+
+    for method, desc in methods:
+        console.print(f"  • {method}: {desc}")
+
+    console.print("\n[bold]Consensus Score Interpretation:[/bold]")
+    console.print("  8/8: 98% accuracy (perfect agreement)")
+    console.print("  7/8: 95% accuracy (near-perfect)")
+    console.print("  6/8: 90% accuracy (strong)")
+    console.print("  5/8: 80% accuracy (moderate)")
+    console.print("  ≤4/8: <65% accuracy (low confidence)")
 
 
 if __name__ == "__main__":

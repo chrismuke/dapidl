@@ -5,6 +5,7 @@ Each step is a standalone ClearML Task with UI-configurable parameters:
 - SegmentationStep: Detect nuclei using configurable method
 - AnnotationStep: Assign cell type labels (single method)
 - EnsembleAnnotationStep: Ensemble annotation with multiple methods
+- PopVAnnotationStep: Universal annotation with popV ensemble (8+ methods)
 - CLStandardizationStep: Standardize annotations to Cell Ontology
 - PatchExtractionStep: Create LMDB patches for training
 - LMDBCreationStep: Create LMDB with skip logic and lineage
@@ -24,6 +25,8 @@ __all__ = [
     "AnnotationStep",
     "EnsembleAnnotationStep",
     "EnsembleAnnotationConfig",
+    "PopVAnnotationStep",
+    "PopVAnnotationConfig",
     "CLStandardizationStep",
     "CLStandardizationConfig",
     "PatchExtractionStep",
@@ -58,6 +61,12 @@ def __getattr__(name: str):
     elif name == "EnsembleAnnotationConfig":
         from dapidl.pipeline.steps.ensemble_annotation import EnsembleAnnotationConfig
         return EnsembleAnnotationConfig
+    elif name == "PopVAnnotationStep":
+        from dapidl.pipeline.steps.popv_annotation import PopVAnnotationStep
+        return PopVAnnotationStep
+    elif name == "PopVAnnotationConfig":
+        from dapidl.pipeline.steps.popv_annotation import PopVAnnotationConfig
+        return PopVAnnotationConfig
     elif name == "CLStandardizationStep":
         from dapidl.pipeline.steps.cl_standardization import CLStandardizationStep
         return CLStandardizationStep

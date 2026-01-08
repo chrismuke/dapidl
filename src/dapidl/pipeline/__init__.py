@@ -12,7 +12,29 @@ processes spatial transcriptomics data (Xenium/MERSCOPE) through:
 Each step is a standalone ClearML Task with UI-configurable parameters.
 Components (segmenters, annotators) are swappable via registry.
 
-Example:
+**NEW: Unified Configuration (v2.0)**
+The unified configuration system consolidates 4 overlapping configs into one:
+
+    ```python
+    from dapidl.pipeline import DAPIDLPipelineConfig, UnifiedPipelineController
+    from dapidl.pipeline.unified_config import InputConfig, TrainingConfig, Platform
+
+    # Single dataset mode
+    config = DAPIDLPipelineConfig(
+        input=InputConfig(dataset_id="abc123", platform=Platform.XENIUM),
+        training=TrainingConfig(epochs=100),
+    )
+
+    # Multi-tissue mode
+    config = DAPIDLPipelineConfig()
+    config.input.add_tissue("breast", dataset_id="abc123", confidence_tier=1)
+    config.input.add_tissue("lung", dataset_id="def456", confidence_tier=2)
+
+    controller = UnifiedPipelineController(config)
+    controller.run_locally()
+    ```
+
+**Legacy Example** (still supported):
     ```python
     from dapidl.pipeline import PipelineConfig, create_pipeline
 
@@ -53,6 +75,24 @@ from dapidl.pipeline.enhanced_controller import (
     create_step_base_tasks,
 )
 from dapidl.pipeline.gui_pipeline_config import GUIPipelineConfig
+# Unified configuration (v2.0) - consolidates all 4 configs
+from dapidl.pipeline.unified_config import (
+    DAPIDLPipelineConfig,
+    InputConfig,
+    AnnotationConfig as UnifiedAnnotationConfig,
+    LMDBConfig,
+    TrainingConfig,
+    OutputConfig,
+    Platform,
+    AnnotationStrategy,
+    BackboneType,
+    TrainingMode,
+)
+from dapidl.pipeline.unified_controller import (
+    UnifiedPipelineController,
+    PipelineResult,
+    create_unified_pipeline,
+)
 from dapidl.pipeline.registry import (
     get_annotator,
     get_segmenter,
@@ -67,16 +107,30 @@ from dapidl.pipeline.registry import (
 from dapidl.pipeline.components import segmenters, annotators  # noqa: F401
 
 __all__ = [
-    # Controller
+    # NEW: Unified Configuration (v2.0) - recommended
+    "DAPIDLPipelineConfig",
+    "InputConfig",
+    "UnifiedAnnotationConfig",
+    "LMDBConfig",
+    "TrainingConfig",
+    "OutputConfig",
+    "Platform",
+    "AnnotationStrategy",
+    "BackboneType",
+    "TrainingMode",
+    "UnifiedPipelineController",
+    "PipelineResult",
+    "create_unified_pipeline",
+    # Legacy Controller (still supported)
     "PipelineConfig",
     "DAPIDLPipelineController",
     "create_pipeline",
-    # Universal Controller
+    # Legacy Universal Controller (still supported)
     "UniversalPipelineConfig",
     "UniversalDAPIPipelineController",
     "TissueConfig",
     "create_universal_pipeline",
-    # Enhanced Controller (GUI-configurable)
+    # Legacy Enhanced Controller (still supported)
     "GUIPipelineConfig",
     "EnhancedDAPIDLPipelineController",
     "EnhancedPipelineResult",

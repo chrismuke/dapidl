@@ -53,6 +53,13 @@ dependencies = [
     "cellpose>=4.0.8",
     # ClearML experiment tracking and remote execution
     "clearml[s3]>=1.16",
+    "mygene>=3.2.2",
+    "rpy2>=3.6.4",
+    "optuna>=4.6.0",
+    "obonet>=1.1.1",
+    "networkx>=3.6",
+    "rapidfuzz>=3.14.3",
+    "popv>=0.6.0",
 ]
 
 [project.optional-dependencies]
@@ -99,8 +106,25 @@ line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "TID"]
 ignore = ["E501"]
+
+# Prefer polars over pandas - see CLAUDE.md "DataFrame Library Standard"
+# TID251 checks for banned module imports
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"pandas".msg = "Prefer polars for DataFrame operations. Use pandas only at external library boundaries (scanpy, anndata, celltypist). See CLAUDE.md 'DataFrame Library Standard'."
+
+# Files that legitimately need pandas for external library boundaries
+[tool.ruff.lint.per-file-ignores]
+# These files interface with external libs (scanpy, anndata, celltypist, R) that require pandas
+"src/dapidl/cli.py" = ["TID251"]  # pd.read_excel, anndata creation
+"src/dapidl/data/annotation.py" = ["TID251"]
+"src/dapidl/pipeline/steps/annotation.py" = ["TID251"]
+"src/dapidl/pipeline/steps/cross_validation.py" = ["TID251"]
+"src/dapidl/pipeline/steps/ensemble_annotation.py" = ["TID251"]
+"src/dapidl/pipeline/steps/popv_annotation.py" = ["TID251"]
+"src/dapidl/pipeline/components/annotators/ground_truth.py" = ["TID251"]
+"src/dapidl/pipeline/components/annotators/azimuth.py" = ["TID251"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -116,3 +140,8 @@ pythonpath = ["src"]
 [tool.uv.extra-build-dependencies]
 torch-scatter = ["torch"]
 torch-sparse = ["torch"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

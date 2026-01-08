@@ -27,6 +27,51 @@ Plan a buffer of at least 2-4GB free memory. If memory is tight:
 - Wait for other GPU tasks to complete
 - Kill unnecessary background processes
 
+## DataFrame Library Standard
+
+**PRIMARY**: Use `polars` for all new code and internal data processing.
+
+**BOUNDARY**: At external library interfaces (scanpy, anndata, celltypist, R), convert at the boundary:
+- `df.to_pandas()` when passing to external libs
+- `pl.from_pandas(pd_df)` when receiving from external libs
+
+**LEGACY**: Some files still use pandas unnecessarily. When modifying these files, migrate to polars.
+
+### Common Polars Patterns
+
+```python
+# Instead of: df.groupby('col').count().to_pandas().set_index('col')['count'].to_dict()
+# Use:
+dict(df.group_by("col").agg(pl.len().alias("count")).iter_rows())
+
+# Instead of: pd.read_csv(path)
+# Use:
+pl.read_csv(path)
+
+# Instead of: df.to_csv(path)
+# Use:
+df.write_csv(path)
+
+# Instead of: pd.read_parquet(path)
+# Use:
+pl.read_parquet(path)
+```
+
+### Files Requiring Pandas (External Library Boundaries)
+
+These files MUST use pandas at the boundary because external libraries require it:
+- `data/annotation.py` - celltypist, anndata (AnnData.obs is pandas DataFrame)
+- `pipeline/steps/annotation.py` - anndata, scanpy
+- `pipeline/steps/cross_validation.py` - scanpy, anndata
+- `pipeline/steps/ensemble_annotation.py` - anndata, scanpy
+- `pipeline/steps/popv_annotation.py` - anndata, scanpy
+- `pipeline/components/annotators/ground_truth.py` - pd.read_excel (polars Excel support is limited)
+- `pipeline/components/annotators/azimuth.py` - R interface (CSV exchange)
+
+### Files Successfully Migrated to Polars-Only
+
+- `pipeline/components/annotators/sctype.py` - Pure polars (no pandas import)
+
 ## Project Overview
 
 DAPIDL predicts cell types from DAPI nuclear staining using Xenium spatial transcriptomics as automatic training data. The system uses CellTypist to annotate cells from gene expression, then trains a CNN to predict those labels from DAPI patches alone.
@@ -113,6 +158,34 @@ DAPIDLDataset → transforms (ToFloat → augment → Normalize → ToTensor)
 
 **Multi-model support**: CellTypeAnnotator accepts list of model names. When using multiple models, columns are suffixed (_1, _2, etc.).
 
+## Cross-Modal Validation (No Ground Truth Required)
+
+DAPIDL includes a validation framework to verify CellTypist predictions using orthogonal approaches:
+
+### Validation Methods:
+1. **Leiden Clustering** - Compare unsupervised clusters with supervised labels (ARI, NMI)
+2. **DAPI Morphology** - Use trained DAPI model as independent validation (agreement rate)
+3. **Multi-Method Consensus** - Check agreement between multiple annotation methods
+
+### Usage:
+```bash
+# Run pipeline with validation step
+uv run dapidl clearml-pipeline run --dataset-id abc123 --validate
+
+# Or run locally
+uv run dapidl clearml-pipeline run --local-path /path/to/data --local --validate
+```
+
+### Interpretation:
+- **Leiden ARI > 0.8**: Excellent agreement with transcriptomic structure
+- **DAPI Agreement > 70%**: Strong cross-modal validation
+- **Consensus Score >= 0.5**: Majority of methods agree
+
+### Key Files:
+- `validation/cross_modal.py`: Core validation functions
+- `pipeline/steps/cross_validation.py`: ClearML pipeline step
+- `docs/CROSS_MODAL_VALIDATION.md`: Full research documentation
+
 ## Cross-Platform Compatibility (Xenium ↔ MERSCOPE)
 
 ### Gene Panel Comparison (Dec 2024)
@@ -195,4 +268,180 @@ max_weight_ratio=10.0  # Rare classes get at most 10x the weight of common class
 - Training samples: 151,479 (high-confidence consensus)
 - Classes after filtering (min 20 samples): 17 fine-grained types
 - Filtered classes: DC1, DC3, Fibro-myofibro, pDC, NK cells (< 20 samples each)
+
+## Available Datasets (Dec 2024)
+
+### Dataset Organization
+
+All datasets are organized under `~/datasets/` (symlink to `/mnt/work/datasets/`):
+
+```
+~/datasets/
+├── raw/
+│   ├── xenium/           # Raw Xenium spatial transcriptomics data
+│   │   ├── breast_tumor_rep1/   # Main dataset with ground truth
+│   │   ├── breast_tumor_rep2/   # Second replicate
+│   │   ├── lung_2fov/           # Small test dataset
+│   │   └── ovarian_cancer/      # Large Xenium Prime dataset
+│   └── merscope/         # Raw MERSCOPE data
+│       └── breast/              # MERSCOPE breast cancer
+├── processed/            # Intermediate processed outputs
+│   └── xenium_breast_cellpose/  # Cellpose nucleus segmentation
+└── derived/              # Training-ready LMDB datasets (18 datasets, 66 GB)
+    ├── xenium-breast-cellpose-{coarse,finegrained}-p{32,64,128,256}/
+    └── xenium-breast-xenium-{coarse,finegrained}-p{32,64,128,256}/
+```
+
+### Local Xenium Datasets
+
+| Dataset | Location | Size | Cells | Notes |
+|---------|----------|------|-------|-------|
+| **Breast Tumor Rep1** | `~/datasets/raw/xenium/breast_tumor_rep1/` | 19 GB | 167,780 | Ground truth (Janesick + supervised) |
+| **Breast Tumor Rep2** | `~/datasets/raw/xenium/breast_tumor_rep2/` | 18 GB | 118,752 | Second replicate |
+| **Lung 2fov** | `~/datasets/raw/xenium/lung_2fov/` | 537 MB | 11,898 | Small test dataset |
+| **Ovarian Cancer** | `~/datasets/raw/xenium/ovarian_cancer/` | 50 GB | 407,124 | Xenium Prime, 5K panel |
+
+### Local MERSCOPE Datasets
+
+| Dataset | Location | Size | Cells | Notes |
+|---------|----------|------|-------|-------|
+| **Breast** | `~/datasets/raw/merscope/breast/` | 22 GB | 713,121 | MERSCOPE breast cancer |
+
+### Xenium Download URLs (for additional datasets)
+
+```bash
+# Small test datasets (2 FOV)
+curl -O https://cf.10xgenomics.com/samples/xenium/2.0.0/Xenium_V1_human_Lung_2fov/Xenium_V1_human_Lung_2fov_outs.zip
+curl -O https://cf.10xgenomics.com/samples/xenium/2.0.0/Xenium_V1_human_Breast_2fov/Xenium_V1_human_Breast_2fov_outs.zip
+
+# Full datasets
+curl -O https://cf.10xgenomics.com/samples/xenium/1.0.1/Xenium_FFPE_Human_Breast_Cancer_Rep1/Xenium_FFPE_Human_Breast_Cancer_Rep1_outs.zip
+wget https://s3-us-west-2.amazonaws.com/10x.files/samples/xenium/3.0.0/Xenium_Prime_Ovarian_Cancer_FFPE_XRrun/Xenium_Prime_Ovarian_Cancer_FFPE_XRrun_outs.zip
+```
+
+### MERSCOPE Data Access
+
+MERSCOPE/Vizgen data with DAPI images requires registration at:
+- https://info.vizgen.com/merscope-ffpe-solution
+- Available: 16 FFPE datasets, 8 tumor types, ~9M cells total
+
+### S3/ClearML Storage
+
+**iDrive e2 S3 Configuration**:
+- Endpoint: `https://s3.eu-central-2.idrivee2.com`
+- Region: `eu-central-2`
+- Bucket: `dapidl`
+- Access Key: `evkizOGyflbhx5uSi4oV`
+- Secret Key: `zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9`
+
+**S3 Dataset Paths** (28.7 GB total, uploaded Dec 2024):
+
+| Dataset | S3 Path | Size | Cells |
+|---------|---------|------|-------|
+| Lung 2fov | `s3://dapidl/raw-data/xenium-lung-2fov/` | 247 MB | 11,898 |
+| Breast Rep1 | `s3://dapidl/raw-data/xenium-breast-cancer-rep1/` | 8.2 GB | 167,780 |
+| Ovarian Cancer | `s3://dapidl/raw-data/xenium-ovarian-cancer/` | 20.3 GB | 407,124 |
+
+**AWS CLI Usage**:
+```bash
+export AWS_ACCESS_KEY_ID=evkizOGyflbhx5uSi4oV
+export AWS_SECRET_ACCESS_KEY=zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9
+
+# List bucket contents
+aws s3 ls s3://dapidl/ --endpoint-url https://s3.eu-central-2.idrivee2.com --region eu-central-2
+
+# Download a dataset
+aws s3 sync s3://dapidl/raw-data/xenium-lung-2fov/ ./xenium-lung-2fov/ \
+    --endpoint-url https://s3.eu-central-2.idrivee2.com --region eu-central-2
+```
+
+**Note**: ClearML hosted quota fully exhausted (artifacts_storage). Cannot create new datasets/tasks until quota freed. Use S3 directly for data access.
+
+## Annotation Benchmark Results (Jan 2025)
+
+### PopV-Style Ensemble - Coarse Classification (3 classes)
+
+Comprehensive evaluation of popV-inspired ensemble voting on Xenium breast cancer (rep1 + rep2):
+
+**Rep1 (167,780 cells) - with HPCA + Blueprint SingleR:**
+
+| Method | Voting | Accuracy | Macro F1 | Epi | Imm | Str |
+|--------|--------|----------|----------|-----|-----|-----|
+| **5 CellTypist + SingleR** | unweighted | **88.9%** | **0.844** | 0.98 | 0.81 | 0.75 |
+| 3 CellTypist + SingleR | unweighted | 88.2% | 0.840 | 0.97 | 0.81 | 0.74 |
+| 2 CellTypist + SingleR | unweighted | 87.0% | 0.839 | 0.95 | 0.80 | 0.76 |
+| 5 CellTypist only | unweighted | 84.3% | 0.737 | 0.95 | 0.75 | 0.52 |
+
+**Rep2 (118,752 cells):**
+
+| Method | Voting | Accuracy | Macro F1 | Epi | Imm | Str |
+|--------|--------|----------|----------|-----|-----|-----|
+| **5 CellTypist + SingleR** | unweighted | **86.8%** | **0.843** | 0.97 | 0.78 | 0.77 |
+| 3 CellTypist + SingleR | unweighted | 86.0% | 0.837 | 0.96 | 0.78 | 0.77 |
+| 2 CellTypist + SingleR | unweighted | 84.8% | 0.832 | 0.93 | 0.78 | 0.78 |
+
+**Key Insights:**
+- **Unweighted voting always wins** (popV style) - beats confidence-weighted by 15-22%
+- **SingleR (HPCA + Blueprint) is essential** - adds +0.10 to +0.27 F1
+- **Both replicates show consistent ~0.84 F1** - when given equal SingleR coverage
+- **Stromal F1 requires Blueprint reference** - jumps from 0.35 → 0.76 (+117%)
+
+### Cell Ontology-Normalized Evaluation (Jan 2025)
+
+Using CL mapping to standardize vocabulary between predictions and ground truth:
+
+| Level | Classes (T/P) | Accuracy | F1 Macro | Notes |
+|-------|---------------|----------|----------|-------|
+| **BROAD** | 4/4 | **85.2%** | **0.622** | 3 categories + Unknown |
+| COARSE | 10/15 | 70.4% | 0.306 | ~10 cell types |
+| CL_NAME | 12/25 | 67.8% | 0.192 | Semantic match |
+| CL_ID | 12/31 | 67.8% | 0.158 | Exact CL match |
+
+**Per-Class Performance (COARSE level):**
+| Cell Type | F1 | Notes |
+|-----------|-----|-------|
+| Epithelial_Luminal | 0.922 | Excellent |
+| T_Cell | 0.804 | Great |
+| B_Cell | 0.769 | Good |
+| Vascular_Endothelial | 0.756 | Good |
+| Macrophage | 0.580 | Moderate |
+| Fibroblast | 0.356 | Poor - often Unknown/Adipocyte |
+| Mast_Cell | 0.353 | Moderate |
+| Dendritic_Cell | 0.348 | Confused with NK |
+| Epithelial_Basal | 0.004 | 73% → Luminal (myoepithelial confusion) |
+
+**Key Confusion Patterns:**
+- Fibroblast: Only 14% correct (37% Unknown, 16% Adipocyte)
+- Epithelial_Basal: 73% misclassified as Luminal (myoepithelial vs luminal)
+- Pericyte: 58% Unknown (stromal challenge)
+
+**Insight**: Fine-grained stromal classification is the main challenge. Immune cells (T, B, Macrophage) perform well.
+
+### Legacy Benchmark Results (Dec 2024)
+
+| Method | Accuracy | Macro F1 | Notes |
+|--------|----------|----------|-------|
+| SingleR-Blueprint | 92.0% | 0.907 | Standalone R-based |
+| scType-Markers | 87.6% | 0.854 | Marker-based |
+| CellTypist-Breast | 90.7% | 0.737 | Single model |
+
+### PopV Ensemble Annotator Usage
+
+```python
+from dapidl.pipeline.components.annotators.popv_ensemble import (
+    PopVStyleEnsembleAnnotator,
+    PopVEnsembleConfig,
+    VotingStrategy,
+)
+
+config = PopVEnsembleConfig(
+    celltypist_models=["Cells_Adult_Breast.pkl", "Immune_All_High.pkl", "Immune_All_Low.pkl"],
+    include_singler_hpca=True,
+    include_singler_blueprint=True,
+    voting_strategy=VotingStrategy.UNWEIGHTED,
+)
+annotator = PopVStyleEnsembleAnnotator(config)
+result = annotator.annotate(adata)
+```
+
 - in your obsidian brain is a file Dear Claude where I can write something to you to ingest. each note is ended by Done checkbox. when you read this inform me and mark it

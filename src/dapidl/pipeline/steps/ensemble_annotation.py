@@ -397,11 +397,15 @@ class EnsembleAnnotationStep(PipelineStep):
 
         sh.rmtree(temp_dir)
 
+        # Convert cell_ids to strings to match CellTypist format
+        # (pandas reads numeric strings from CSV as integers)
+        cell_ids = [str(cid) for cid in results_df["cell_id"].to_list()]
+
         return {
             "source": f"singler_{reference}",
             "predictions": results_df["labels"].to_list(),
             "confidence": results_df["delta.next"].to_list(),
-            "cell_ids": results_df["cell_id"].to_list(),
+            "cell_ids": cell_ids,
         }
 
     def _get_singler_script(self) -> str:
@@ -461,8 +465,16 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
         """Build consensus from multiple annotation methods.
 
         Uses confidence-weighted voting when available.
+        For single-annotator cases, uses predictions directly.
         """
         from collections import defaultdict
+
+        # Adjust min_agreement if we have fewer annotators than required
+        num_annotators = len(all_predictions)
+        effective_min_agreement = min(cfg.min_agreement, num_annotators)
+        if num_annotators == 1:
+            logger.info("Single annotator mode: using predictions directly")
+            effective_min_agreement = 1
 
         # Create cell_id to prediction mapping
         cell_votes = defaultdict(list)
@@ -487,7 +499,7 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
         n_insufficient = 0
 
         for cell_id, votes in cell_votes.items():
-            if len(votes) < cfg.min_agreement:
+            if len(votes) < effective_min_agreement:
                 n_insufficient += 1
                 continue
 

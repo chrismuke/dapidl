@@ -835,6 +835,53 @@ class CrossValidationStep(PipelineStep):
 
         print("\n" + "=" * 60)
 
+    def create_clearml_task(
+        self,
+        project: str = "DAPIDL/pipeline",
+        task_name: str | None = None,
+    ):
+        """Create ClearML Task for this step.
+
+        This allows the step to be executed as a standalone ClearML task
+        or as part of a pipeline.
+        """
+        from pathlib import Path
+
+        from clearml import Task
+
+        task_name = task_name or f"step-{self.name}"
+
+        # Use the runner script for remote execution (avoids uv entry point issues)
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+
+        self._task = Task.create(
+            project_name=project,
+            task_name=task_name,
+            task_type=Task.TaskTypes.custom,  # validation is a custom task type
+            script=str(runner_script),
+            argparse_args=[f"--step={self.name}"],
+            add_task_init_call=False,
+            packages=["-e ."],
+        )
+
+        # Set configuration parameters for ClearML UI
+        params = {
+            "step_name": self.name,
+            "run_leiden_check": self.config.run_leiden_check,
+            "run_dapi_check": self.config.run_dapi_check,
+            "run_consensus_check": self.config.run_consensus_check,
+            "run_unsupervised_check": self.config.run_unsupervised_check,
+            "unsupervised_backbone": self.config.unsupervised_backbone,
+            "min_ari_threshold": self.config.min_ari_threshold,
+            "min_unsupervised_ari": self.config.min_unsupervised_ari,
+            "min_agreement_threshold": self.config.min_agreement_threshold,
+            "high_confidence_threshold": self.config.high_confidence_threshold,
+            "run_ground_truth_comparison": self.config.run_ground_truth_comparison,
+        }
+        self._task.set_parameters(params, __parameters_prefix="step_config")
+
+        return self._task
+
     def _run_ground_truth_comparison(
         self,
         annotations_df: pl.DataFrame,

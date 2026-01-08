@@ -146,8 +146,21 @@ class CellTypeClassifier(nn.Module):
 
         # Extract hyperparameters
         hparams = checkpoint.get("hparams", {})
+        state_dict = checkpoint.get("model_state_dict", checkpoint)
+
+        # Infer num_classes from state_dict if not in hparams
+        if "num_classes" not in hparams:
+            # Look for classification head bias shape
+            for key in ["head.1.bias", "head.bias", "classifier.bias", "fc.bias"]:
+                if key in state_dict:
+                    hparams["num_classes"] = state_dict[key].shape[0]
+                    logger.info(f"Inferred num_classes={hparams['num_classes']} from {key}")
+                    break
+            else:
+                hparams["num_classes"] = 3  # Default for DAPIDL
+
         model = cls(
-            num_classes=hparams.get("num_classes", 5),
+            num_classes=hparams.get("num_classes", 3),
             backbone_name=hparams.get("backbone_name", "efficientnetv2_rw_s"),
             pretrained=False,
             dropout=hparams.get("dropout", 0.3),
@@ -155,7 +168,7 @@ class CellTypeClassifier(nn.Module):
         )
 
         # Load state dict
-        model.load_state_dict(checkpoint["model_state_dict"])
+        model.load_state_dict(state_dict)
         logger.info(f"Loaded model from {checkpoint_path}")
 
         return model

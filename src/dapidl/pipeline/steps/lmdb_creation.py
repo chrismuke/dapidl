@@ -18,6 +18,7 @@ Key features:
 from __future__ import annotations
 
 import json
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -174,30 +175,66 @@ class LMDBCreationStep(PipelineStep):
 
         # 2. Resolve input paths
         data_path = resolve_artifact_path(inputs["data_path"], "data_path")
+
+        # Prefer CL-standardized annotations if available, otherwise fall back to raw
+        annotations_key = "cl_annotations_parquet" if "cl_annotations_parquet" in inputs else "annotations_parquet"
         annotations_path = resolve_artifact_path(
-            inputs["annotations_parquet"], "annotations_parquet"
+            inputs[annotations_key], annotations_key
         )
+        logger.info(f"Using annotations from: {annotations_key}")
 
         if data_path is None:
             raise ValueError("data_path artifact is required")
         if annotations_path is None:
-            raise ValueError("annotations_parquet artifact is required")
+            raise ValueError(f"{annotations_key} artifact is required")
 
         # Load annotations
         annotations_df = pl.read_parquet(annotations_path)
         logger.info(f"Loaded {len(annotations_df)} annotations")
 
-        # Load class mapping
-        class_mapping_path = resolve_artifact_path(
-            inputs.get("class_mapping"), "class_mapping"
-        )
-        if class_mapping_path and class_mapping_path.exists():
-            with open(class_mapping_path) as f:
-                mapping_data = json.load(f)
-                class_mapping = mapping_data.get("class_mapping", mapping_data)
+        # Load class mapping - prefer CL mapping for CL annotations
+        # Priority: cl_class_mapping > class_mapping > build from annotations
+        using_cl_annotations = "cl_annotations_parquet" in inputs
+        raw_class_mapping = inputs.get("cl_class_mapping") if using_cl_annotations else None
+        if raw_class_mapping is None:
+            raw_class_mapping = inputs.get("class_mapping")
+
+        if isinstance(raw_class_mapping, dict):
+            # Already a dict - use directly
+            class_mapping = raw_class_mapping
+            logger.info(f"Using class mapping dict with {len(class_mapping)} classes")
+        elif isinstance(raw_class_mapping, (str, Path)):
+            # It's a path - load from file
+            class_mapping_path = resolve_artifact_path(raw_class_mapping, "class_mapping")
+            if class_mapping_path and class_mapping_path.exists():
+                with open(class_mapping_path) as f:
+                    mapping_data = json.load(f)
+                    class_mapping = mapping_data.get("class_mapping", mapping_data)
+                logger.info(f"Loaded class mapping from {class_mapping_path}")
+            else:
+                class_mapping = {}
+                logger.warning("Class mapping path not found, building from annotations")
         else:
-            # Use from artifacts if available
-            class_mapping = inputs.get("class_mapping", {})
+            class_mapping = {}
+            logger.warning("No class mapping provided, building from annotations")
+
+        # If class_mapping is empty or we're using CL annotations, build from unique labels
+        if not class_mapping or using_cl_annotations:
+            # Determine label column for building mapping
+            if "cl_name" in annotations_df.columns:
+                label_col_for_mapping = "cl_name"
+            elif "cl_category" in annotations_df.columns:
+                label_col_for_mapping = "cl_category"
+            elif "predicted_type" in annotations_df.columns:
+                label_col_for_mapping = "predicted_type"
+            else:
+                label_col_for_mapping = "broad_category"
+
+            unique_labels = sorted(annotations_df[label_col_for_mapping].unique().to_list())
+            # Remove None/Unknown if present
+            unique_labels = [l for l in unique_labels if l and l not in ("Unknown", "Unmapped")]
+            class_mapping = {label: idx for idx, label in enumerate(unique_labels)}
+            logger.info(f"Built class mapping from {label_col_for_mapping}: {len(class_mapping)} classes")
 
         # Get platform for pixel size detection
         platform = self._resolve_platform(inputs)
@@ -321,6 +358,24 @@ class LMDBCreationStep(PipelineStep):
             cells_path = data_path / "cells.parquet"
             if cells_path.exists():
                 cells_df = pl.read_parquet(cells_path)
+                # Ensure cell_id types match for join
+                # CellTypist outputs string cell_ids, Xenium uses int32
+                if annotations_df.schema["cell_id"] != cells_df.schema["cell_id"]:
+                    # Cast annotations cell_id to match cells_df type
+                    target_type = cells_df.schema["cell_id"]
+                    if target_type == pl.Int32 or target_type == pl.Int64:
+                        annotations_df = annotations_df.with_columns(
+                            pl.col("cell_id").cast(pl.Int64)
+                        )
+                        cells_df = cells_df.with_columns(
+                            pl.col("cell_id").cast(pl.Int64)
+                        )
+                    else:
+                        # Cast cells to string if annotations are strings
+                        cells_df = cells_df.with_columns(
+                            pl.col("cell_id").cast(pl.Utf8)
+                        )
+                    logger.debug(f"Aligned cell_id types for join")
                 annotations_df = annotations_df.join(
                     cells_df.select(["cell_id", "x_centroid", "y_centroid"]),
                     on="cell_id",
@@ -329,6 +384,12 @@ class LMDBCreationStep(PipelineStep):
                 x_col, y_col = "x_centroid", "y_centroid"
             else:
                 raise ValueError("No cell coordinates available")
+
+        # Handle multi-Z images (e.g., morphology.ome.tif with focus stacking)
+        if dapi_image.ndim == 3:
+            n_z = dapi_image.shape[0]
+            logger.info(f"Multi-Z image detected ({n_z} levels), using max intensity projection")
+            dapi_image = dapi_image.max(axis=0)
 
         # Filter edge cells
         img_h, img_w = dapi_image.shape
@@ -347,10 +408,16 @@ class LMDBCreationStep(PipelineStep):
         # Normalize image
         dapi_normalized = self._normalize_image(dapi_image, cfg.normalization_method)
 
-        # Determine label column
+        # Determine label column - prefer CL-standardized columns
         if cfg.output_format == "lmdb":
-            # Use fine-grained or broad category based on class_mapping
-            if "predicted_type" in annotations_df.columns and any(
+            # Priority: cl_name (standardized) > cl_category > predicted_type > broad_category
+            if "cl_name" in annotations_df.columns:
+                label_col = "cl_name"
+                logger.info("Using CL-standardized labels (cl_name)")
+            elif "cl_category" in annotations_df.columns:
+                label_col = "cl_category"
+                logger.info("Using CL category labels (cl_category)")
+            elif "predicted_type" in annotations_df.columns and any(
                 k not in ["Epithelial", "Immune", "Stromal", "Endothelial", "Other"]
                 for k in class_mapping.keys()
             ):
@@ -358,16 +425,21 @@ class LMDBCreationStep(PipelineStep):
             else:
                 label_col = "broad_category"
 
-        # Output path
-        output_dir = data_path / "pipeline_outputs" / "lmdb"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        lmdb_path = output_dir / f"patches_p{cfg.patch_size}.lmdb"
+        # Output path - create directory structure compatible with MultiTissueDataset
+        # Structure: {output}/lmdb_p{size}/patches.lmdb/, labels.npy, class_mapping.json
+        dataset_dir = data_path / "pipeline_outputs" / f"lmdb_p{cfg.patch_size}"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        lmdb_path = dataset_dir / "patches.lmdb"
 
-        # Create LMDB
-        env = lmdb.open(str(lmdb_path), map_size=10 * 1024**3)  # 10GB
+        # Create LMDB - estimate size based on patch count
+        # Each 128x128 float32 patch ≈ 64KB, add 50% overhead for LMDB
+        estimated_size = len(annotations_df) * cfg.patch_size * cfg.patch_size * 4 * 1.5
+        map_size = max(50 * 1024**3, int(estimated_size * 2))  # At least 50GB or 2x estimated
+        env = lmdb.open(str(lmdb_path), map_size=map_size)
 
         n_patches = 0
         class_counts = {}
+        all_labels = []
 
         with env.begin(write=True) as txn:
             for row in annotations_df.iter_rows(named=True):
@@ -392,16 +464,23 @@ class LMDBCreationStep(PipelineStep):
                 if label_idx == -1:
                     continue
 
-                # Serialize
-                cell_id = row.get("cell_id", str(n_patches))
-                key = f"{cell_id}".encode()
+                # Serialize using format expected by MultiTissueDataset:
+                # - Key: big-endian uint64 (sequential index)
+                # - Value: int64 label (8 bytes) + uint16 patch data
+                key = struct.pack(">Q", n_patches)
 
-                # Pack as bytes: label (int32) + patch (float32)
-                patch_bytes = np.array([label_idx], dtype=np.int32).tobytes()
-                patch_bytes += patch.astype(np.float32).tobytes()
+                # Pack as bytes: label (int64) + patch (uint16)
+                # Note: MultiTissueDataset expects uint16 raw patches, not normalized
+                label_bytes = np.array([label_idx], dtype=np.int64).tobytes()
+                # Convert back from normalized float32 to uint16
+                # Undo normalization: patch_raw = patch * (p_high - p_low) + p_low
+                # For simplicity, scale [0,1] float32 to [0, 65535] uint16
+                patch_uint16 = (patch * 65535).clip(0, 65535).astype(np.uint16)
+                patch_bytes = label_bytes + patch_uint16.tobytes()
 
                 txn.put(key, patch_bytes)
                 n_patches += 1
+                all_labels.append(label_idx)
 
                 # Count classes
                 class_counts[label_str] = class_counts.get(label_str, 0) + 1
@@ -419,15 +498,37 @@ class LMDBCreationStep(PipelineStep):
 
         env.close()
 
+        # Save additional files for MultiTissueDataset compatibility
+        # 1. labels.npy - integer label for each patch
+        labels_array = np.array(all_labels, dtype=np.int64)
+        np.save(dataset_dir / "labels.npy", labels_array)
+        logger.info(f"Saved labels.npy: {len(labels_array)} labels")
+
+        # 2. class_mapping.json - flat dict of class_name -> index
+        with open(dataset_dir / "class_mapping.json", "w") as f:
+            json.dump(class_mapping, f, indent=2)
+
+        # 3. metadata.json
+        metadata_out = {
+            "n_samples": n_patches,
+            "n_classes": len(class_mapping),
+            "patch_size": cfg.patch_size,
+            "normalization": cfg.normalization_method,
+            "platform": platform,
+            "class_counts": class_counts,
+        }
+        with open(dataset_dir / "metadata.json", "w") as f:
+            json.dump(metadata_out, f, indent=2)
+
         stats = {
             "n_patches": n_patches,
             "patch_size": cfg.patch_size,
             "class_counts": class_counts,
             "n_classes": len(class_counts),
-            "lmdb_path": str(lmdb_path),
+            "lmdb_path": str(dataset_dir),  # Return dataset directory, not LMDB subdirectory
         }
 
-        return lmdb_path, stats
+        return dataset_dir, stats  # Return dataset_dir for compatibility
 
     def _load_dapi_image(self, data_path: Path, platform: str) -> np.ndarray:
         """Load DAPI image from Xenium or MERSCOPE output."""

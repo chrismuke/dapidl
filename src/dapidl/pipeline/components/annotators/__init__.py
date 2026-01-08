@@ -59,10 +59,29 @@ from dapidl.pipeline.components.annotators.auto_selector import (
 
 # PopV annotator is optional (heavy dependencies)
 try:
-    from dapidl.pipeline.components.annotators.popv import PopVAnnotator
+    from dapidl.pipeline.components.annotators.popv import (
+        PopVAnnotator,
+        PopVConfig,
+        annotate_with_popv,
+        is_popv_available,
+    )
     _has_popv = True
 except ImportError:
     _has_popv = False
+
+# PopV-style ensemble annotator (lighter weight - uses CellTypist + SingleR)
+try:
+    from dapidl.pipeline.components.annotators.popv_ensemble import (
+        PopVStyleEnsembleAnnotator,
+        PopVEnsembleConfig,
+        EnsembleResult,
+        VotingStrategy,
+        GranularityLevel,
+        run_popv_ensemble,
+    )
+    _has_popv_ensemble = True
+except ImportError:
+    _has_popv_ensemble = False
 
 # SingleR annotator is optional (requires R with SingleR package)
 try:
@@ -116,7 +135,17 @@ __all__ = [
 ]
 
 if _has_popv:
-    __all__.append("PopVAnnotator")
+    __all__.extend(["PopVAnnotator", "PopVConfig", "annotate_with_popv", "is_popv_available"])
+
+if _has_popv_ensemble:
+    __all__.extend([
+        "PopVStyleEnsembleAnnotator",
+        "PopVEnsembleConfig",
+        "EnsembleResult",
+        "VotingStrategy",
+        "GranularityLevel",
+        "run_popv_ensemble",
+    ])
 
 if _has_singler:
     __all__.append("SingleRAnnotator")

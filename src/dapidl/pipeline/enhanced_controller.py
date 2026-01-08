@@ -87,6 +87,7 @@ class EnhancedDAPIDLPipelineController:
         # Add all parameters organized by groups
         self._add_input_parameters()
         self._add_annotation_parameters()
+        self._add_ontology_parameters()
         self._add_lmdb_parameters()
         self._add_training_parameters()
         self._add_output_parameters()
@@ -235,6 +236,37 @@ class EnhancedDAPIDLPipelineController:
             description="Train on all patch sizes together",
         )
 
+    def _add_ontology_parameters(self):
+        """Add Cell Ontology standardization parameters."""
+        cfg = self.config
+        p = self._pipeline
+
+        p.add_parameter(
+            name="ontology/use_cell_ontology",
+            default=str(cfg.use_cell_ontology),
+            description="Enable Cell Ontology label standardization",
+        )
+        p.add_parameter(
+            name="ontology/target_level",
+            default=cfg.cl_target_level,
+            description="Hierarchy level: broad, coarse, or fine",
+        )
+        p.add_parameter(
+            name="ontology/min_confidence",
+            default=str(cfg.cl_min_confidence),
+            description="Minimum mapping confidence (0-1)",
+        )
+        p.add_parameter(
+            name="ontology/include_unmapped",
+            default=str(cfg.cl_include_unmapped),
+            description="Include cells with unmapped labels",
+        )
+        p.add_parameter(
+            name="ontology/fuzzy_threshold",
+            default=str(cfg.cl_fuzzy_threshold),
+            description="Fuzzy matching threshold for label mapping",
+        )
+
     def _add_output_parameters(self):
         """Add output configuration parameters."""
         cfg = self.config
@@ -304,7 +336,25 @@ class EnhancedDAPIDLPipelineController:
             cache_executed_step=True,
         )
 
-        # Step 3: LMDB Creation (one per patch size)
+        # Step 3: Cell Ontology Standardization (optional)
+        # This step normalizes all labels to Cell Ontology IDs
+        p.add_step(
+            name="cl_standardization",
+            parents=["ensemble_annotation"],
+            base_task_project="DAPIDL/pipelines",
+            base_task_name="step-cl_standardization",
+            parameter_override={
+                "step_config/use_cell_ontology": "${pipeline.ontology/use_cell_ontology}",
+                "step_config/target_level": "${pipeline.ontology/target_level}",
+                "step_config/min_confidence": "${pipeline.ontology/min_confidence}",
+                "step_config/include_unmapped": "${pipeline.ontology/include_unmapped}",
+                "step_config/fuzzy_threshold": "${pipeline.ontology/fuzzy_threshold}",
+                "step_config/annotations_path": "${ensemble_annotation.artifacts.annotations_parquet.url}",
+            },
+            cache_executed_step=True,
+        )
+
+        # Step 4: LMDB Creation (one per patch size)
         lmdb_step_names = []
         for patch_size in cfg.patch_sizes:
             step_name = f"lmdb_p{patch_size}"
@@ -312,7 +362,7 @@ class EnhancedDAPIDLPipelineController:
 
             p.add_step(
                 name=step_name,
-                parents=["ensemble_annotation"],
+                parents=["cl_standardization"],  # Changed from ensemble_annotation
                 base_task_project="DAPIDL/pipelines",
                 base_task_name="step-lmdb_creation",
                 parameter_override={
@@ -321,7 +371,7 @@ class EnhancedDAPIDLPipelineController:
                     "step_config/normalize_physical_size": "${pipeline.lmdb/normalize_physical_size}",
                     "step_config/skip_if_exists": "${pipeline.lmdb/skip_if_exists}",
                     "step_config/parent_dataset_id": "${ensemble_annotation.artifacts.annotated_dataset_id.url}",
-                    "step_config/annotations_path": "${ensemble_annotation.artifacts.annotations_parquet.url}",
+                    "step_config/annotations_path": "${cl_standardization.artifacts.standardized_annotations.url}",
                     "step_config/data_path": "${data_loader.artifacts.data_path.url}",
                     "step_config/upload_to_s3": "${pipeline.output/upload_to_s3}",
                     "step_config/s3_bucket": "${pipeline.output/s3_bucket}",
@@ -422,8 +472,30 @@ class EnhancedDAPIDLPipelineController:
             annot_step = EnsembleAnnotationStep(annot_config)
             annot_artifacts = annot_step.execute(data_artifacts)
 
-            # Step 3: LMDB Creation (for each patch size)
-            logger.info("Step 3: Creating LMDB datasets...")
+            # Step 3: Cell Ontology Standardization (if enabled)
+            if cfg.use_cell_ontology:
+                logger.info("Step 3: Standardizing labels with Cell Ontology...")
+                from dapidl.pipeline.steps.cl_standardization import (
+                    CLStandardizationStep,
+                    CLStandardizationConfig,
+                )
+
+                cl_config = CLStandardizationConfig(
+                    target_level=cfg.cl_target_level,
+                    min_confidence=cfg.cl_min_confidence,
+                    include_unmapped=cfg.cl_include_unmapped,
+                    fuzzy_threshold=cfg.cl_fuzzy_threshold,
+                )
+                cl_step = CLStandardizationStep(cl_config)
+                cl_artifacts = cl_step.execute(annot_artifacts)
+                # Use CL-standardized annotations for LMDB
+                lmdb_input_artifacts = cl_artifacts
+            else:
+                logger.info("Step 3: Skipping Cell Ontology standardization...")
+                lmdb_input_artifacts = annot_artifacts
+
+            # Step 4: LMDB Creation (for each patch size)
+            logger.info("Step 4: Creating LMDB datasets...")
             lmdb_results = {}
             for patch_size in cfg.patch_sizes:
                 logger.info(f"  Creating LMDB for patch size {patch_size}...")
@@ -437,11 +509,11 @@ class EnhancedDAPIDLPipelineController:
                     s3_bucket=cfg.s3_bucket,
                 )
                 lmdb_step = LMDBCreationStep(lmdb_config)
-                lmdb_artifacts = lmdb_step.execute(annot_artifacts)
+                lmdb_artifacts = lmdb_step.execute(lmdb_input_artifacts)
                 lmdb_results[patch_size] = lmdb_artifacts
 
-            # Step 4: Training
-            logger.info("Step 4: Training model...")
+            # Step 5: Training
+            logger.info("Step 5: Training model...")
             primary_patch_size = cfg.primary_patch_size or cfg.patch_sizes[0]
             primary_lmdb = lmdb_results[primary_patch_size]
 
@@ -473,7 +545,9 @@ class EnhancedDAPIDLPipelineController:
                     ],
                 )
                 train_step = UniversalDAPITrainingStep(train_config)
-                test_metrics, tissue_metrics = train_step.execute(primary_lmdb)
+                train_artifacts = train_step.execute(primary_lmdb)
+                test_metrics = train_artifacts.outputs.get("test_metrics", {})
+                tissue_metrics = train_artifacts.outputs.get("tissue_metrics", {})
             else:
                 from dapidl.pipeline.steps.training import TrainingStep, TrainingConfig
 

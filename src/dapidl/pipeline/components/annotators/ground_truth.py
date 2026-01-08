@@ -146,22 +146,18 @@ class GroundTruthAnnotator:
 
         # Calculate statistics
         n_annotated = annotations_df.height
-        class_dist = (
+        class_dist = dict(
             annotations_df.group_by("broad_category")
-            .count()
-            .to_pandas()
-            .set_index("broad_category")["count"]
-            .to_dict()
+            .agg(pl.len().alias("count"))
+            .iter_rows()
         )
 
         fine_dist = {}
         if cfg.fine_grained:
-            fine_dist = (
+            fine_dist = dict(
                 annotations_df.group_by("predicted_type")
-                .count()
-                .to_pandas()
-                .set_index("predicted_type")["count"]
-                .to_dict()
+                .agg(pl.len().alias("count"))
+                .iter_rows()
             )
 
         return AnnotationResult(
