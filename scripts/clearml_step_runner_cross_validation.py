@@ -51,8 +51,13 @@ if worker_id and not task_id:
         traceback.print_exc()
 
     if found_task_id:
-        # Connect to the correct task
-        task = Task.init()
+        # Connect to the correct task - must use reuse_last_task_id=False
+        # Otherwise Task.init() ignores CLEARML_TASK_ID and reuses based on script history
+        task = Task.init(reuse_last_task_id=False)
+        if task.id != found_task_id:
+            print(f"[step_runner] WARNING: Expected task {found_task_id} but connected to {task.id}")
+            print("[step_runner] Attempting to get correct task directly...")
+            task = Task.get_task(task_id=found_task_id)
         print(f"[step_runner] Connected to task: {task.id}")
     else:
         # CRITICAL: Do NOT call Task.init() without task ID - it will connect to wrong task!
