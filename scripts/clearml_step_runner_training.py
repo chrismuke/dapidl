@@ -20,32 +20,30 @@ task_id = os.environ.get("CLEARML_TASK_ID")
 if worker_id and not task_id:
     # Running under agent but CLEARML_TASK_ID not set
     # Query the workers API to find what task this worker is executing
-    from clearml.backend_api.session import Session
+    from clearml.backend_api.session.client import APIClient
     from clearml import Task
 
     try:
-        session = Session()
-        # Get worker info - use data= parameter (not req=)
-        response = session.send_request(
-            service='workers',
-            action='get_all',
-            version='2.23',
-            data={'last_seen': 60}  # Workers seen in last 60 seconds
-        )
-        # Response may have workers at top level or under 'data'
-        workers = response.get('workers', []) or response.get('data', {}).get('workers', [])
+        client = APIClient()
+        # Get all workers using the proper client API
+        response = client.workers.get_all(last_seen=60)
+        # Response is a list of worker objects
+        workers = response.workers if hasattr(response, 'workers') else []
         print(f"[step_runner] Found {len(workers)} workers, looking for {worker_id}")
         for w in workers:
-            if w.get('id') == worker_id:
-                task_info = w.get('task')
+            w_id = w.id if hasattr(w, 'id') else w.get('id')
+            if w_id == worker_id:
+                task_info = w.task if hasattr(w, 'task') else w.get('task')
                 if task_info:
-                    current_task_id = task_info.get('id')
+                    current_task_id = task_info.id if hasattr(task_info, 'id') else task_info.get('id')
                     print(f"[step_runner] Found task for worker {worker_id}: {current_task_id}")
                     # Set the environment variable so Task.init() will use it
                     os.environ['CLEARML_TASK_ID'] = current_task_id
                     break
     except Exception as e:
         print(f"[step_runner] Warning: Could not query worker API: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Now init the task - should connect to the correct one if we found it
     task = Task.init()
