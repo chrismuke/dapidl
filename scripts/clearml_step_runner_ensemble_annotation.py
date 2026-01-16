@@ -53,14 +53,27 @@ if worker_id and not task_id:
         traceback.print_exc()
 
     if found_task_id:
-        # NOW import Task - after CLEARML_TASK_ID is set
+        # Use Task.get_task() to fetch the specific task, then set it as current
+        # Task.init() ignores CLEARML_TASK_ID in some cases due to task reuse logic
         from clearml import Task
-        task = Task.init()
-        if task.id != found_task_id:
-            print(f"[step_runner] ERROR: Expected task {found_task_id} but connected to {task.id}")
-            print("[step_runner] CLEARML_TASK_ID environment variable was not respected!")
+
+        # Get the task directly by ID
+        task = Task.get_task(task_id=found_task_id)
+        if task is None:
+            print(f"[step_runner] ERROR: Could not get task {found_task_id}")
             sys.exit(1)
-        print(f"[step_runner] Connected to task: {task.id}")
+
+        # Manually set it as the current/main task so Task.current_task() returns it
+        # This is necessary because Task.get_task() doesn't set the singleton
+        Task._Task__main_task = task
+
+        # Verify it worked
+        current = Task.current_task()
+        if current is None or current.id != found_task_id:
+            print(f"[step_runner] ERROR: Failed to set current task. Expected {found_task_id}, got {current.id if current else None}")
+            sys.exit(1)
+
+        print(f"[step_runner] Connected to task: {task.id} (set as current task)")
     else:
         # CRITICAL: Do NOT call Task.init() without task ID - it will connect to wrong task!
         print(f"[step_runner] ERROR: Could not find task ID for worker {worker_id}")
