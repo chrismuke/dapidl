@@ -852,7 +852,7 @@ class CrossValidationStep(PipelineStep):
         task_name = task_name or f"step-{self.name}"
 
         # Use the runner script for remote execution (avoids uv entry point issues)
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
 
         self._task = Task.create(
             project_name=project,
@@ -860,7 +860,9 @@ class CrossValidationStep(PipelineStep):
             task_type=Task.TaskTypes.custom,  # validation is a custom task type
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
-            add_task_init_call=False,
+            # Disable auto Task.init() injection - our script handles task connection
+            # via CLEARML_TASK_ID environment variable to avoid creating a new task
+            add_task_init_call=False,  # Handle task init in step runner
             packages=["-e ."],
         )
 

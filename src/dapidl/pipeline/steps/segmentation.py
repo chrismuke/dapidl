@@ -338,7 +338,7 @@ class SegmentationStep(PipelineStep):
 
         # Use the runner script for remote execution (avoids uv entry point issues)
         # Path: src/dapidl/pipeline/steps -> 5 parents to reach repo root
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
 
         self._task = Task.create(
             project_name=project,
@@ -346,8 +346,9 @@ class SegmentationStep(PipelineStep):
             task_type=Task.TaskTypes.data_processing,
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
-            add_task_init_call=False,
-            # Install dapidl from the cloned repo
+            # Disable auto Task.init() injection - our script handles task connection
+            # via CLEARML_TASK_ID environment variable to avoid creating a new task
+            add_task_init_call=False,  # Handle task init in step runner
             packages=["-e ."],
         )
 

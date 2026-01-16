@@ -17,6 +17,7 @@ The ensemble approach improves annotation quality by:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +61,9 @@ class EnsembleAnnotationConfig:
     fine_grained: bool = True  # Use detailed cell types
     create_derived_dataset: bool = True
     parent_dataset_id: str | None = None  # For lineage
+
+    # Skip logic - check for existing annotations before running
+    skip_if_exists: bool = True
 
     # S3 settings
     upload_to_s3: bool = True
@@ -133,6 +137,11 @@ class EnsembleAnnotationStep(PipelineStep):
                     "default": True,
                     "description": "Use detailed cell types (vs 3 broad categories)",
                 },
+                "skip_if_exists": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Skip if matching annotations exist in ClearML",
+                },
             },
         }
 
@@ -144,6 +153,89 @@ class EnsembleAnnotationStep(PipelineStep):
         - data_path: Path to Xenium/MERSCOPE output directory
         """
         return "expression_path" in artifacts.outputs and "data_path" in artifacts.outputs
+
+    def _get_config_hash(self, cfg: EnsembleAnnotationConfig, raw_dataset_id: str) -> str:
+        """Generate deterministic hash of annotation configuration.
+
+        This hash is used to identify cached annotations with matching settings.
+        """
+        # Sort models for consistent hashing
+        models_str = ",".join(sorted(cfg.celltypist_models))
+
+        config_str = (
+            f"models={models_str}|"
+            f"singler={cfg.include_singler}|"
+            f"singler_ref={cfg.singler_reference}|"
+            f"sctype={cfg.include_sctype}|"
+            f"min_agree={cfg.min_agreement}|"
+            f"conf={cfg.confidence_threshold}|"
+            f"fine={cfg.fine_grained}|"
+            f"raw={raw_dataset_id}"
+        )
+
+        return hashlib.sha256(config_str.encode()).hexdigest()[:12]
+
+    def _check_existing_annotations(
+        self, cfg: EnsembleAnnotationConfig, raw_dataset_id: str, platform: str
+    ) -> str | None:
+        """Check if matching annotation dataset already exists in ClearML.
+
+        Returns dataset ID if found, None otherwise.
+        """
+        try:
+            from clearml import Dataset
+        except ImportError:
+            logger.debug("ClearML not available, skipping cache check")
+            return None
+
+        config_hash = self._get_config_hash(cfg, raw_dataset_id)
+        expected_name = f"annotated-{platform}-{config_hash}"
+
+        try:
+            datasets = Dataset.list_datasets(
+                dataset_project="DAPIDL/annotated",
+                partial_name=expected_name,
+            )
+
+            for ds in datasets:
+                meta = ds.get("metadata", {})
+                # Verify configuration matches
+                if (
+                    meta.get("config_hash") == config_hash
+                    and meta.get("raw_dataset_id") == raw_dataset_id
+                    and meta.get("celltypist_models") == sorted(cfg.celltypist_models)
+                ):
+                    logger.info(f"Found cached annotations: {ds['id']} ({ds['name']})")
+                    return ds["id"]
+
+        except Exception as e:
+            logger.debug(f"Error checking existing annotations: {e}")
+
+        return None
+
+    def _get_cached_annotations(self, dataset_id: str) -> tuple[Path, dict] | None:
+        """Get cached annotations from ClearML dataset.
+
+        Returns (annotations_path, class_mapping) or None if failed.
+        """
+        try:
+            from clearml import Dataset
+
+            ds = Dataset.get(dataset_id=dataset_id)
+            local_path = Path(ds.get_local_copy())
+
+            annotations_path = local_path / "annotations.parquet"
+            mapping_path = local_path / "class_mapping.json"
+
+            if annotations_path.exists() and mapping_path.exists():
+                with open(mapping_path) as f:
+                    mapping_data = json.load(f)
+                return annotations_path, mapping_data
+
+        except Exception as e:
+            logger.warning(f"Failed to get cached annotations: {e}")
+
+        return None
 
     def execute(self, artifacts: StepArtifacts) -> StepArtifacts:
         """Execute ensemble annotation.
@@ -174,6 +266,49 @@ class EnsembleAnnotationStep(PipelineStep):
 
         # Get platform
         platform = self._resolve_platform(inputs)
+
+        # Get raw dataset ID for cache key
+        raw_dataset_id = inputs.get("raw_dataset_id", cfg.parent_dataset_id or "local")
+
+        # Check for existing annotations (skip logic)
+        if cfg.skip_if_exists:
+            existing_id = self._check_existing_annotations(cfg, raw_dataset_id, platform)
+            if existing_id:
+                cached = self._get_cached_annotations(existing_id)
+                if cached:
+                    annotations_path, mapping_data = cached
+                    logger.info(f"Using cached annotations from dataset: {existing_id}")
+
+                    # Copy cached files to local output directory
+                    output_dir = data_path / "pipeline_outputs" / "ensemble_annotation"
+                    output_dir.mkdir(parents=True, exist_ok=True)
+
+                    local_annotations = output_dir / "annotations.parquet"
+                    local_mapping = output_dir / "class_mapping.json"
+
+                    # Copy or link cached files
+                    import shutil
+                    if not local_annotations.exists():
+                        shutil.copy2(annotations_path, local_annotations)
+                    if not local_mapping.exists():
+                        with open(local_mapping, "w") as f:
+                            json.dump(mapping_data, f, indent=2)
+
+                    return StepArtifacts(
+                        inputs=inputs,
+                        outputs={
+                            **inputs,
+                            "annotations_parquet": str(local_annotations),
+                            "class_mapping": mapping_data.get("class_mapping", {}),
+                            "index_to_class": mapping_data.get("index_to_class", {}),
+                            "annotated_dataset_id": existing_id,
+                            "skipped": True,
+                            "annotation_stats": {
+                                "skipped": True,
+                                "cached_dataset_id": existing_id,
+                            },
+                        },
+                    )
 
         # Load expression data
         adata = self._load_expression(expression_path, data_path, platform)
@@ -660,7 +795,11 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
 
         # Create dataset with lineage
         platform = inputs.get("platform", "unknown")
-        dataset_name = f"annotated-{platform}-ensemble-{len(stats['methods_used'])}m"
+        raw_dataset_id = inputs.get("raw_dataset_id", cfg.parent_dataset_id or "local")
+        config_hash = self._get_config_hash(cfg, raw_dataset_id)
+
+        # Use config hash in name for cache lookup
+        dataset_name = f"annotated-{platform}-{config_hash}"
 
         try:
             dataset = Dataset.create(
@@ -674,8 +813,17 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
             dataset.add_files(str(output_dir / "annotations.parquet"))
             dataset.add_files(str(output_dir / "class_mapping.json"))
 
-            # Metadata
+            # Metadata - include config hash and details for skip logic
             dataset.set_metadata({
+                "config_hash": config_hash,
+                "raw_dataset_id": raw_dataset_id,
+                "celltypist_models": sorted(cfg.celltypist_models),
+                "include_singler": cfg.include_singler,
+                "singler_reference": cfg.singler_reference,
+                "include_sctype": cfg.include_sctype,
+                "min_agreement": cfg.min_agreement,
+                "confidence_threshold": cfg.confidence_threshold,
+                "fine_grained": cfg.fine_grained,
                 "annotation_methods": stats["methods_used"],
                 "n_cells": len(consensus_df),
                 "n_classes": len(consensus_df["predicted_type"].unique()),
@@ -706,14 +854,25 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
         task_name: str | None = None,
     ):
         """Create ClearML Task for this step."""
+        from pathlib import Path
+
         from clearml import Task
 
         task_name = task_name or f"step-{self.name}"
+
+        # Use the runner script for remote execution (avoids uv entry point issues)
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
 
         self._task = Task.create(
             project_name=project,
             task_name=task_name,
             task_type=Task.TaskTypes.data_processing,
+            script=str(runner_script),
+            argparse_args=[f"--step={self.name}"],
+            # Disable auto Task.init() injection - our script handles task connection
+            # via CLEARML_TASK_ID environment variable to avoid creating a new task
+            add_task_init_call=False,  # Handle task init in step runner
+            packages=["-e ."],
         )
 
         # Connect parameters

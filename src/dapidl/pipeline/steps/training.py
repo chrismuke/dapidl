@@ -166,11 +166,12 @@ class TrainingStep(PipelineStep):
         """Validate step inputs.
 
         Requires:
-        - patches_path: Path to LMDB/Zarr dataset
+        - patches_path or lmdb_path: Path to LMDB/Zarr dataset
         - class_mapping: Dict mapping class names to indices
         """
         outputs = artifacts.outputs
-        return "patches_path" in outputs and "class_mapping" in outputs
+        has_dataset = "patches_path" in outputs or "lmdb_path" in outputs
+        return has_dataset and "class_mapping" in outputs
 
     def execute(self, artifacts: StepArtifacts) -> StepArtifacts:
         """Execute training step.
@@ -191,9 +192,13 @@ class TrainingStep(PipelineStep):
         inputs = artifacts.outputs
 
         # Resolve artifact URLs to local paths
-        patches_path = resolve_artifact_path(inputs["patches_path"], "patches_path")
+        # Support both 'lmdb_path' (from LMDB creation step) and 'patches_path' (legacy)
+        patches_path_str = inputs.get("lmdb_path") or inputs.get("patches_path")
+        if not patches_path_str:
+            raise ValueError("patches_path or lmdb_path artifact is required")
+        patches_path = resolve_artifact_path(patches_path_str, "patches_path")
         if patches_path is None:
-            raise ValueError("patches_path artifact is required")
+            raise ValueError("Could not resolve patches_path artifact")
 
         # class_mapping can be a URL to a JSON file or a dict directly
         class_mapping_raw = inputs["class_mapping"]
@@ -850,7 +855,7 @@ class TrainingStep(PipelineStep):
 
         # Use the runner script for remote execution (avoids uv entry point issues)
         # Path: src/dapidl/pipeline/steps -> 5 parents to reach repo root
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
 
         self._task = Task.create(
             project_name=project,
@@ -858,8 +863,9 @@ class TrainingStep(PipelineStep):
             task_type=Task.TaskTypes.training,
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
-            add_task_init_call=False,
-            # Install dapidl from the cloned repo
+            # Disable auto Task.init() injection - our script handles task connection
+            # via CLEARML_TASK_ID environment variable to avoid creating a new task
+            add_task_init_call=False,  # Handle task init in step runner
             packages=["-e ."],
         )
 

@@ -478,9 +478,10 @@ class DataLoaderStep(PipelineStep):
 
         task_name = task_name or f"step-{self.name}"
 
-        # Use the runner script for remote execution (avoids uv entry point issues)
+        # Use step-specific runner script for remote execution (avoids uv entry point issues)
+        # The step-specific script name ensures ClearML creates unique tasks per step
         # Path: src/dapidl/pipeline/steps -> 5 parents to reach repo root
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
 
         self._task = Task.create(
             project_name=project,
@@ -488,8 +489,7 @@ class DataLoaderStep(PipelineStep):
             task_type=Task.TaskTypes.data_processing,
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
-            add_task_init_call=False,
-            # Install dapidl from the cloned repo
+            add_task_init_call=False,  # Handle task init in step runner
             packages=["-e ."],
         )
 

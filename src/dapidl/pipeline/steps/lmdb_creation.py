@@ -353,37 +353,88 @@ class LMDBCreationStep(PipelineStep):
             x_col, y_col = "x_centroid", "y_centroid"
         elif "x" in annotations_df.columns:
             x_col, y_col = "x", "y"
+        elif "center_x" in annotations_df.columns:
+            # MERSCOPE format
+            x_col, y_col = "center_x", "center_y"
         else:
             # Need to join with cells data
             cells_path = data_path / "cells.parquet"
+            cell_metadata_path = data_path / "cell_metadata.csv"
+
             if cells_path.exists():
+                # Xenium format: cells.parquet with x_centroid, y_centroid
                 cells_df = pl.read_parquet(cells_path)
-                # Ensure cell_id types match for join
-                # CellTypist outputs string cell_ids, Xenium uses int32
-                if annotations_df.schema["cell_id"] != cells_df.schema["cell_id"]:
-                    # Cast annotations cell_id to match cells_df type
-                    target_type = cells_df.schema["cell_id"]
-                    if target_type == pl.Int32 or target_type == pl.Int64:
-                        annotations_df = annotations_df.with_columns(
-                            pl.col("cell_id").cast(pl.Int64)
-                        )
-                        cells_df = cells_df.with_columns(
-                            pl.col("cell_id").cast(pl.Int64)
-                        )
-                    else:
-                        # Cast cells to string if annotations are strings
-                        cells_df = cells_df.with_columns(
-                            pl.col("cell_id").cast(pl.Utf8)
-                        )
-                    logger.debug(f"Aligned cell_id types for join")
-                annotations_df = annotations_df.join(
-                    cells_df.select(["cell_id", "x_centroid", "y_centroid"]),
-                    on="cell_id",
-                    how="left",
-                )
+                coord_cols = ["cell_id", "x_centroid", "y_centroid"]
                 x_col, y_col = "x_centroid", "y_centroid"
+            elif cell_metadata_path.exists():
+                # MERSCOPE format: cell_metadata.csv with center_x, center_y
+                logger.info(f"Loading MERSCOPE cell coordinates from {cell_metadata_path}")
+                cells_df = pl.read_csv(cell_metadata_path)
+                # MERSCOPE uses unnamed first column as cell_id (index)
+                if "" in cells_df.columns:
+                    cells_df = cells_df.rename({"": "cell_id"})
+                coord_cols = ["cell_id", "center_x", "center_y"]
+                x_col, y_col = "center_x", "center_y"
             else:
                 raise ValueError("No cell coordinates available")
+
+            # Ensure cell_id types match for join
+            # CellTypist outputs string cell_ids, Xenium uses int32, MERSCOPE uses int64
+            if annotations_df.schema["cell_id"] != cells_df.schema["cell_id"]:
+                # Cast annotations cell_id to match cells_df type
+                target_type = cells_df.schema["cell_id"]
+                if target_type == pl.Int32 or target_type == pl.Int64:
+                    annotations_df = annotations_df.with_columns(
+                        pl.col("cell_id").cast(pl.Int64)
+                    )
+                    cells_df = cells_df.with_columns(
+                        pl.col("cell_id").cast(pl.Int64)
+                    )
+                else:
+                    # Cast cells to string if annotations are strings
+                    cells_df = cells_df.with_columns(
+                        pl.col("cell_id").cast(pl.Utf8)
+                    )
+                logger.debug(f"Aligned cell_id types for join")
+
+            annotations_df = annotations_df.join(
+                cells_df.select(coord_cols),
+                on="cell_id",
+                how="left",
+            )
+            logger.info(f"Joined coordinates: {len(annotations_df)} cells with {x_col}, {y_col}")
+
+        # Apply MERSCOPE coordinate transformation (microns to pixels)
+        if x_col == "center_x" or platform == "merscope":
+            transform_path = data_path / "images" / "micron_to_mosaic_pixel_transform.csv"
+            if not transform_path.exists():
+                # Also check parent directory
+                transform_path = data_path / "micron_to_mosaic_pixel_transform.csv"
+            if transform_path.exists():
+                logger.info(f"Applying MERSCOPE coordinate transform from {transform_path}")
+                transform = np.loadtxt(transform_path).reshape(3, 3)
+                # Affine transform: pixel = transform @ [micron_x, micron_y, 1]
+                scale_x, offset_x = transform[0, 0], transform[0, 2]
+                scale_y, offset_y = transform[1, 1], transform[1, 2]
+                logger.info(
+                    f"Transform: scale=({scale_x:.4f}, {scale_y:.4f}), "
+                    f"offset=({offset_x:.2f}, {offset_y:.2f})"
+                )
+                # Convert coordinates
+                annotations_df = annotations_df.with_columns(
+                    (pl.col(x_col) * scale_x + offset_x).alias("x_pixel"),
+                    (pl.col(y_col) * scale_y + offset_y).alias("y_pixel"),
+                )
+                x_col, y_col = "x_pixel", "y_pixel"
+                logger.info(
+                    f"Transformed coords: x=[{annotations_df[x_col].min():.1f}, {annotations_df[x_col].max():.1f}], "
+                    f"y=[{annotations_df[y_col].min():.1f}, {annotations_df[y_col].max():.1f}]"
+                )
+            else:
+                logger.warning(
+                    f"MERSCOPE transform file not found at {transform_path}, "
+                    "assuming coordinates are already in pixels"
+                )
 
         # Handle multi-Z images (e.g., morphology.ome.tif with focus stacking)
         if dapi_image.ndim == 3:
@@ -405,8 +456,11 @@ class LMDBCreationStep(PipelineStep):
             )
             logger.info(f"After edge filtering: {len(annotations_df)} cells")
 
-        # Normalize image
+        # Normalize image (memory-efficient for large images like MERSCOPE)
+        logger.info(f"Normalizing image ({dapi_image.nbytes / 1024**3:.1f} GB)...")
         dapi_normalized = self._normalize_image(dapi_image, cfg.normalization_method)
+        # Note: _normalize_image frees original for large images internally
+        logger.info(f"Normalized to float32 ({dapi_normalized.nbytes / 1024**3:.1f} GB)")
 
         # Determine label column - prefer CL-standardized columns
         if cfg.output_format == "lmdb":
@@ -472,10 +526,11 @@ class LMDBCreationStep(PipelineStep):
                 # Pack as bytes: label (int64) + patch (uint16)
                 # Note: MultiTissueDataset expects uint16 raw patches, not normalized
                 label_bytes = np.array([label_idx], dtype=np.int64).tobytes()
-                # Convert back from normalized float32 to uint16
-                # Undo normalization: patch_raw = patch * (p_high - p_low) + p_low
-                # For simplicity, scale [0,1] float32 to [0, 65535] uint16
-                patch_uint16 = (patch * 65535).clip(0, 65535).astype(np.uint16)
+                # Convert back from normalized to uint16
+                # IMPORTANT: Must convert float16 to float32 BEFORE multiplying by 65535
+                # because float16 max is 65504 < 65535, causing overflow
+                # For simplicity, scale [0,1] to [0, 65535] uint16
+                patch_uint16 = (patch.astype(np.float32) * 65535).clip(0, 65535).astype(np.uint16)
                 patch_bytes = label_bytes + patch_uint16.tobytes()
 
                 txn.put(key, patch_bytes)
@@ -551,23 +606,56 @@ class LMDBCreationStep(PipelineStep):
         raise FileNotFoundError(f"No DAPI image found in {data_path}")
 
     def _normalize_image(self, image: np.ndarray, method: str) -> np.ndarray:
-        """Normalize image to 0-1 range."""
-        img_float = image.astype(np.float32)
+        """Normalize image to 0-1 range.
 
+        For large images, uses memory-efficient approach:
+        - Computes percentiles on original dtype (faster, less memory)
+        - Converts to float32 AFTER freeing original
+        """
+        import gc
+
+        # Compute percentiles on original dtype (memory efficient)
         if method == "adaptive":
-            # Per-image adaptive normalization
-            p_low, p_high = np.percentile(img_float, [1, 99.5])
-            img_norm = (img_float - p_low) / (p_high - p_low + 1e-8)
+            p_low, p_high = np.percentile(image, [1, 99.5])
         elif method == "percentile":
-            p_low, p_high = np.percentile(img_float, [1, 99])
-            img_norm = (img_float - p_low) / (p_high - p_low + 1e-8)
+            p_low, p_high = np.percentile(image, [1, 99])
         elif method == "minmax":
-            img_min, img_max = img_float.min(), img_float.max()
-            img_norm = (img_float - img_min) / (img_max - img_min + 1e-8)
+            p_low, p_high = float(image.min()), float(image.max())
         else:
-            img_norm = img_float / 65535.0  # Assume uint16
+            p_low, p_high = 0, 65535  # Assume uint16
 
-        return np.clip(img_norm, 0, 1)
+        # For large images (>1GB), use float16 to halve memory usage
+        # Peak memory: original (uint16 = 2 bytes) + normalized (float16 = 2 bytes) = 4 bytes/pixel
+        # vs float32 which would be 2 + 4 = 6 bytes/pixel
+        if image.nbytes > 1 * 1024**3:
+            logger.info(
+                f"Large image ({image.nbytes / 1024**3:.1f} GB), "
+                f"using float16 to reduce memory (saves {image.nbytes / 1024**3:.1f} GB)"
+            )
+
+            # Allocate output as float16 (half the memory of float32)
+            img_norm = np.empty(image.shape, dtype=np.float16)
+
+            # Process in row chunks to limit memory spike during conversion
+            chunk_rows = max(1, 2 * 1024**3 // (image.shape[1] * 4))  # ~2GB chunks
+            for start in range(0, image.shape[0], chunk_rows):
+                end = min(start + chunk_rows, image.shape[0])
+                # Convert chunk to float32 for precision, normalize, then back to float16
+                chunk = image[start:end].astype(np.float32)
+                chunk = (chunk - p_low) / (p_high - p_low + 1e-8)
+                img_norm[start:end] = np.clip(chunk, 0, 1).astype(np.float16)
+                del chunk
+
+            # Free original
+            del image
+            gc.collect()
+
+            return img_norm
+        else:
+            # Small image - standard approach
+            img_float = image.astype(np.float32)
+            img_norm = (img_float - p_low) / (p_high - p_low + 1e-8)
+            return np.clip(img_norm, 0, 1)
 
     def _register_lmdb_dataset(
         self,
@@ -648,14 +736,25 @@ class LMDBCreationStep(PipelineStep):
         task_name: str | None = None,
     ):
         """Create ClearML Task for this step."""
+        from pathlib import Path
+
         from clearml import Task
 
         task_name = task_name or f"step-{self.name}"
+
+        # Use the runner script for remote execution (avoids uv entry point issues)
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
 
         self._task = Task.create(
             project_name=project,
             task_name=task_name,
             task_type=Task.TaskTypes.data_processing,
+            script=str(runner_script),
+            argparse_args=[f"--step={self.name}"],
+            # Disable auto Task.init() injection - our script handles task connection
+            # via CLEARML_TASK_ID environment variable to avoid creating a new task
+            add_task_init_call=False,  # Handle task init in step runner
+            packages=["-e ."],
         )
 
         # Connect parameters
