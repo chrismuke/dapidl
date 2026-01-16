@@ -237,11 +237,31 @@ def run_step(step_name: str):
     result = step.execute(artifacts)
 
     # Upload output artifacts
+    # IMPORTANT: Never upload large data (datasets, models) directly to ClearML
+    # Only upload: metrics, small configs, and path references
+    # Large data should go to S3 and only the URI stored in ClearML
     for key, value in result.outputs.items():
         if isinstance(value, (dict, list)):
+            # Small JSON data - OK to upload
             task.upload_artifact(key, json.dumps(value))
-        elif isinstance(value, (str, Path)) and Path(value).exists():
-            task.upload_artifact(key, str(value))
+        elif isinstance(value, (str, Path)):
+            path = Path(value)
+            if path.exists():
+                if path.is_dir():
+                    # Directory path - store as path reference, NOT upload
+                    # This prevents uploading large datasets to ClearML
+                    logger.info(f"Storing local path reference for {key}: {path}")
+                    task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
+                elif path.stat().st_size > 10 * 1024 * 1024:  # > 10MB
+                    # Large file - store path reference, should be uploaded to S3 separately
+                    logger.warning(f"Large file {key} ({path.stat().st_size / 1024 / 1024:.1f}MB) - storing path reference only")
+                    task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
+                else:
+                    # Small file - OK to upload
+                    task.upload_artifact(key, str(value))
+            else:
+                # Non-existent path or string value - store as-is
+                task.upload_artifact(key, str(value))
         else:
             task.upload_artifact(key, str(value))
 

@@ -31,24 +31,60 @@ from loguru import logger
 def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> Path | None:
     """Resolve an artifact value to a local path.
 
-    ClearML pipelines pass artifact URLs like:
-    https://files.clear.ml/.../artifacts/data_path/outs.zip
-
-    This function detects URLs and downloads them to a local cache.
+    Handles multiple artifact formats:
+    1. Local path string/Path - returns directly
+    2. Path reference JSON - extracts local_path from {"local_path": ..., "type": "path_reference"}
+    3. ClearML URL - downloads from ClearML file server
+    4. S3 URI - downloads from S3
 
     Args:
-        value: Path string, URL string, or Path object
+        value: Path string, URL string, JSON string, or Path object
         artifact_name: Name for logging (optional)
 
     Returns:
         Local Path object, or None if value is None/empty
     """
+    import json as json_module
+
     if value is None or value == "":
         return None
 
     value_str = str(value)
 
-    # Check if it's a URL
+    # Check if it's a path reference JSON (our local path format)
+    if value_str.startswith("{") and "local_path" in value_str:
+        try:
+            ref = json_module.loads(value_str)
+            if ref.get("type") == "path_reference" and "local_path" in ref:
+                local_path = Path(ref["local_path"])
+                if local_path.exists():
+                    logger.info(f"Using local path reference: {local_path}")
+                    return local_path
+                else:
+                    logger.warning(f"Local path reference does not exist: {local_path}")
+                    # Fall through to try other methods
+        except json_module.JSONDecodeError:
+            pass  # Not valid JSON, try other methods
+
+    # Check if it's already a valid local path
+    potential_path = Path(value_str)
+    if potential_path.exists():
+        logger.info(f"Using existing local path: {potential_path}")
+        return potential_path
+
+    # Check if it's an S3 URI
+    if value_str.startswith("s3://"):
+        logger.info(f"Resolving S3 URI: {artifact_name or value_str[:80]}...")
+        try:
+            from dapidl.utils.s3 import download_from_s3
+            local_path = download_from_s3(value_str)
+            logger.info(f"Downloaded from S3 to: {local_path}")
+            return local_path
+        except ImportError:
+            logger.warning("S3 utils not available")
+            raise ValueError(f"Cannot resolve S3 URI without S3 utils: {value_str}")
+
+    # Check if it's a ClearML URL
     if value_str.startswith("http://") or value_str.startswith("https://"):
         logger.info(f"Resolving artifact URL: {artifact_name or value_str[:80]}...")
 
@@ -90,7 +126,7 @@ def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> 
             logger.warning("ClearML not available, treating URL as path")
             return Path(value_str)
 
-    # Already a local path
+    # Treat as a path (might not exist yet)
     return Path(value_str)
 
 
