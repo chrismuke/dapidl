@@ -349,8 +349,10 @@ class TrainingStep(PipelineStep):
 
         if cfg.stratified:
             # Stratified split based on labels
+            # Look for pre-saved labels.npy for fast loading
+            labels_path = patches_path / "labels.npy"
             train_dataset, val_dataset, test_dataset = self._stratified_split(
-                dataset, n_train, n_val, n_test
+                dataset, n_train, n_val, n_test, labels_path=labels_path
             )
         else:
             train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
@@ -413,7 +415,18 @@ class TrainingStep(PipelineStep):
         from torch.utils.data import Dataset
 
         class LMDBDataset(Dataset):
+            """LMDB dataset reader matching lmdb_creation.py format.
+
+            Storage format (from lmdb_creation.py):
+            - Key: struct.pack(">Q", idx) - 8-byte big-endian uint64
+            - Value: label (8 bytes int64) + patch data (uint16)
+            - Patch is uint16 [0, 65535] scaled from normalized [0, 1]
+            """
+
             def __init__(self, lmdb_path, transform=None):
+                import struct
+                self.struct = struct
+
                 self.env = lmdb.open(
                     str(lmdb_path),
                     readonly=True,
@@ -423,9 +436,9 @@ class TrainingStep(PipelineStep):
                 )
                 with self.env.begin(write=False) as txn:
                     metadata = json.loads(txn.get(b"__metadata__").decode())
-                    self.length = metadata["length"]
+                    # Support both old ('length') and new ('n_patches') metadata keys
+                    self.length = metadata.get("length") or metadata.get("n_patches")
                     self.patch_size = metadata["patch_size"]
-                    self.dtype = np.dtype(metadata["dtype"])
 
                 self.transform = transform
 
@@ -434,21 +447,27 @@ class TrainingStep(PipelineStep):
 
             def __getitem__(self, idx):
                 with self.env.begin(write=False) as txn:
-                    key = f"{idx:08d}".encode()
-                    patch_bytes = txn.get(key)
-                    patch = np.frombuffer(
-                        patch_bytes, dtype=self.dtype
-                    ).reshape(self.patch_size, self.patch_size)
+                    # Key is big-endian uint64 (matching lmdb_creation.py)
+                    key = self.struct.pack(">Q", idx)
+                    data = txn.get(key)
 
-                    label_key = f"label_{idx:08d}".encode()
-                    label = int(txn.get(label_key).decode())
+                    if data is None:
+                        raise KeyError(f"LMDB key not found for index {idx}")
+
+                    # Value format: label (8 bytes int64) + patch (uint16)
+                    label = np.frombuffer(data[:8], dtype=np.int64)[0]
+                    patch_uint16 = np.frombuffer(data[8:], dtype=np.uint16)
+                    patch = patch_uint16.reshape(self.patch_size, self.patch_size)
+
+                    # Convert uint16 [0, 65535] back to float [0, 1]
+                    patch = patch.astype(np.float32) / 65535.0
 
                 patch = torch.from_numpy(patch.copy()).float().unsqueeze(0)
 
                 if self.transform:
                     patch = self.transform(patch)
 
-                return patch, label
+                return patch, int(label)
 
         transform = self._get_transform(cfg.augmentation, cfg.cross_platform)
         return LMDBDataset(path, transform=transform)
@@ -513,13 +532,27 @@ class TrainingStep(PipelineStep):
 
         return T.Compose(transforms)
 
-    def _stratified_split(self, dataset, n_train, n_val, n_test):
-        """Stratified train/val/test split."""
+    def _stratified_split(self, dataset, n_train, n_val, n_test, labels_path=None):
+        """Stratified train/val/test split.
+
+        Args:
+            dataset: PyTorch dataset
+            n_train: Number of training samples
+            n_val: Number of validation samples
+            n_test: Number of test samples
+            labels_path: Optional path to pre-saved labels.npy (much faster)
+        """
         import numpy as np
         from torch.utils.data import Subset
 
-        # Get all labels
-        labels = np.array([dataset[i][1] for i in range(len(dataset))])
+        # Get all labels - prefer pre-saved labels.npy for speed
+        if labels_path and labels_path.exists():
+            logger.info(f"Loading labels from {labels_path} (fast path)")
+            labels = np.load(labels_path)
+        else:
+            logger.info("Loading labels by iterating dataset (slow path)")
+            labels = np.array([dataset[i][1] for i in range(len(dataset))])
+
         indices = np.arange(len(dataset))
 
         # Shuffle within each class
