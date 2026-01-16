@@ -213,9 +213,18 @@ def run_step(step_name: str):
 
     # Extract parent outputs from step_config (set by pipeline parameter_override)
     parent_output_keys = [
+        # Common data paths
         "data_path", "platform", "cells_parquet", "expression_path",
-        "segmentation_result", "annotations", "dataset_path",
-        "num_classes", "class_names", "metadata"
+        # Segmentation outputs
+        "segmentation_result", "centroids_parquet", "boundaries_parquet", "masks_path",
+        # Annotation outputs
+        "annotations", "annotations_parquet",
+        # LMDB outputs
+        "dataset_path", "lmdb_path", "lmdb_dataset_id",
+        # Training outputs
+        "num_classes", "class_names", "model_path", "model_id",
+        # General metadata
+        "metadata", "index_to_class", "class_to_index",
     ]
     for key in parent_output_keys:
         if key in step_config and step_config[key]:
