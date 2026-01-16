@@ -3,9 +3,6 @@
 
 This is a thin wrapper that imports the main step runner and runs the segmentation step.
 Having a separate script file ensures ClearML creates unique tasks per step.
-
-IMPORTANT: We use continue_last_task=True to connect to the cloned task when
-running under ClearML agent, since CLEARML_TASK_ID isn't set in non-Docker mode.
 """
 import os
 import sys
@@ -22,9 +19,36 @@ task_id = os.environ.get("CLEARML_TASK_ID")
 
 if worker_id and not task_id:
     # Running under agent but CLEARML_TASK_ID not set
-    # Use continue_last_task to connect to the most recent task
+    # Query the workers API to find what task this worker is executing
+    from clearml.backend_api.session import Session
     from clearml import Task
-    task = Task.init(continue_last_task=True)
+
+    try:
+        session = Session()
+        # Get worker info - use data= parameter (not req=)
+        response = session.send_request(
+            service='workers',
+            action='get_all',
+            version='2.23',
+            data={'last_seen': 60}  # Workers seen in last 60 seconds
+        )
+        # Response may have workers at top level or under 'data'
+        workers = response.get('workers', []) or response.get('data', {}).get('workers', [])
+        print(f"[step_runner] Found {len(workers)} workers, looking for {worker_id}")
+        for w in workers:
+            if w.get('id') == worker_id:
+                task_info = w.get('task')
+                if task_info:
+                    current_task_id = task_info.get('id')
+                    print(f"[step_runner] Found task for worker {worker_id}: {current_task_id}")
+                    # Set the environment variable so Task.init() will use it
+                    os.environ['CLEARML_TASK_ID'] = current_task_id
+                    break
+    except Exception as e:
+        print(f"[step_runner] Warning: Could not query worker API: {e}")
+
+    # Now init the task - should connect to the correct one if we found it
+    task = Task.init()
     print(f"[step_runner] Connected to task: {task.id}")
 
 # Import and run the main step runner with this step name

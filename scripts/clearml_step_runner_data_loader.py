@@ -25,13 +25,16 @@ if worker_id and not task_id:
 
     try:
         session = Session()
-        # Get worker info
+        # Get worker info - use data= parameter (not req=)
         response = session.send_request(
             service='workers',
             action='get_all',
-            req={'last_seen': 60}  # Workers seen in last 60 seconds
+            version='2.23',
+            data={'last_seen': 60}  # Workers seen in last 60 seconds
         )
-        workers = response.get('response', {}).get('workers', [])
+        # Response may have workers at top level or under 'data'
+        workers = response.get('workers', []) or response.get('data', {}).get('workers', [])
+        print(f"[step_runner] Found {len(workers)} workers, looking for {worker_id}")
         for w in workers:
             if w.get('id') == worker_id:
                 task_info = w.get('task')
