@@ -20,9 +20,10 @@ task_id = os.environ.get("CLEARML_TASK_ID")
 if worker_id and not task_id:
     # Running under agent but CLEARML_TASK_ID not set (non-Docker mode)
     # Query the workers API to find what task this worker is executing
-    # NOTE: Must use Session.send_request() - APIClient.workers.get_all() returns empty!
+    # IMPORTANT: Set CLEARML_TASK_ID BEFORE importing Task to ensure it's respected!
+
+    # Only import Session for the query - avoid importing Task yet
     from clearml.backend_api import Session
-    from clearml import Task
 
     found_task_id = None
     try:
@@ -43,6 +44,7 @@ if worker_id and not task_id:
                 if task_info:
                     found_task_id = task_info.get('id')
                     print(f"[step_runner] Found task for worker {worker_id}: {found_task_id}")
+                    # Set env var BEFORE importing Task
                     os.environ['CLEARML_TASK_ID'] = found_task_id
                 break
     except Exception as e:
@@ -51,13 +53,13 @@ if worker_id and not task_id:
         traceback.print_exc()
 
     if found_task_id:
-        # Connect to the correct task - must use reuse_last_task_id=False
-        # Otherwise Task.init() ignores CLEARML_TASK_ID and reuses based on script history
-        task = Task.init(reuse_last_task_id=False)
+        # NOW import Task - after CLEARML_TASK_ID is set
+        from clearml import Task
+        task = Task.init()
         if task.id != found_task_id:
-            print(f"[step_runner] WARNING: Expected task {found_task_id} but connected to {task.id}")
-            print("[step_runner] Attempting to get correct task directly...")
-            task = Task.get_task(task_id=found_task_id)
+            print(f"[step_runner] ERROR: Expected task {found_task_id} but connected to {task.id}")
+            print("[step_runner] CLEARML_TASK_ID environment variable was not respected!")
+            sys.exit(1)
         print(f"[step_runner] Connected to task: {task.id}")
     else:
         # CRITICAL: Do NOT call Task.init() without task ID - it will connect to wrong task!
