@@ -348,7 +348,9 @@ class SegmentationStep(PipelineStep):
             argparse_args=[f"--step={self.name}"],
             # Enable auto Task.init() injection - each step has unique script file
             add_task_init_call=False,  # Handle in step runner
-            packages=["-e ."],
+            # Explicitly include clearml to ensure it's installed
+            # even if editable install has issues with the agent's venv
+            packages=["-e .", "clearml>=1.16"],
         )
 
         # Connect parameters for UI editing

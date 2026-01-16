@@ -510,7 +510,9 @@ class DataLoaderStep(PipelineStep):
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
             add_task_init_call=False,  # Handle in step runner  # ClearML injects Task.init() for unique script
-            packages=["-e ."],
+            # Explicitly include clearml and boto3 to ensure they're installed
+            # even if editable install has issues with the agent's venv
+            packages=["-e .", "clearml>=1.16", "boto3"],
         )
 
         # Connect parameters for UI editing
