@@ -261,9 +261,8 @@ def main():
     ]
 
     # Method 1: Try to connect to ClearML task (works when running under agent)
-    # Task.init() will reconnect to existing task when running remotely
-    # Note: We always try Task.init() because CLEARML_TASK_ID may not be set
-    # when using uv run mode, but Task.init() can still detect the running context
+    # First try Task.current_task() which doesn't create new tasks
+    # Then fall back to Task.get_task() if we have a task_id
     try:
         early_log("Attempting to connect to ClearML task...")
         from clearml import Task
@@ -271,10 +270,21 @@ def main():
         task_id = os.environ.get("CLEARML_TASK_ID", "")
         early_log(f"CLEARML_TASK_ID: {task_id!r}")
 
-        # Always try Task.init() - it will reconnect if running under agent
-        # or create a new task if running locally (which we'll catch and handle)
-        early_log("Calling Task.init()...")
-        task = Task.init()
+        # First try to get current task (non-blocking, works under agent)
+        early_log("Trying Task.current_task()...")
+        task = Task.current_task()
+        early_log(f"Task.current_task() returned: {task}")
+
+        # If no current task but we have task_id, connect to it
+        if task is None and task_id:
+            early_log(f"Connecting to task {task_id}...")
+            task = Task.get_task(task_id=task_id)
+            early_log(f"Task.get_task() returned: {task}")
+
+        # Last resort: try Task.init() which will either reconnect or create new
+        if task is None:
+            early_log("Calling Task.init() as last resort...")
+            task = Task.init()
 
         if task:
             early_log(f"Connected to task: {task.name} (id={task.id})")
