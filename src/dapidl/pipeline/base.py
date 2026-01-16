@@ -99,6 +99,22 @@ def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> 
             local_path = Path(local_path)
             logger.info(f"Downloaded artifact to: {local_path}")
 
+            # If it's a text file, check if it contains a path reference JSON
+            if local_path.suffix == ".txt":
+                try:
+                    content = local_path.read_text().strip()
+                    if content.startswith("{") and "local_path" in content:
+                        ref = json_module.loads(content)
+                        if ref.get("type") == "path_reference" and "local_path" in ref:
+                            ref_path = Path(ref["local_path"])
+                            if ref_path.exists():
+                                logger.info(f"Resolved path reference from artifact: {ref_path}")
+                                return ref_path
+                            else:
+                                logger.warning(f"Path reference does not exist: {ref_path}")
+                except (json_module.JSONDecodeError, OSError) as e:
+                    logger.debug(f"Not a path reference JSON: {e}")
+
             # If it's a zip file, extract it
             if local_path.suffix == ".zip":
                 import zipfile
