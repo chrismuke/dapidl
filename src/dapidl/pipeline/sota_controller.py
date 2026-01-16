@@ -501,13 +501,13 @@ class SOTAPipelineController:
             cache_executed_step=True,
         )
 
-    def run(self, wait: bool = True, run_locally: bool = False) -> str:
+    def run(self, wait: bool = True) -> str:
         """Run the pipeline on ClearML.
+
+        The controller runs locally while step tasks are queued to remote agents.
 
         Args:
             wait: Wait for completion
-            run_locally: If True, run controller locally but queue steps to agents.
-                        If False, queue the entire pipeline to an agent (default).
 
         Returns:
             Pipeline run ID
@@ -517,12 +517,10 @@ class SOTAPipelineController:
 
         logger.info("Starting SOTA pipeline execution...")
 
-        if run_locally:
-            # Run controller locally, queue steps to agents
-            self._pipeline.start_locally(run_pipeline_steps_locally=False)
-        else:
-            # Queue entire pipeline to agent (recommended for fully remote execution)
-            self._pipeline.start(queue="default")
+        # Run controller locally, queue steps to remote agents
+        # Note: start(queue=...) doesn't work with CLI-triggered pipelines
+        # because ClearML tries to re-run the CLI without arguments
+        self._pipeline.start_locally(run_pipeline_steps_locally=False)
 
         if wait:
             self._pipeline.wait()
