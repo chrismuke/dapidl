@@ -326,9 +326,18 @@ class TrainingStep(PipelineStep):
         import torch
         from torch.utils.data import DataLoader, WeightedRandomSampler
 
-        # Determine format
+        # Determine format - check for LMDB in multiple locations
+        lmdb_path = None
         if patches_path.suffix == ".lmdb" or (patches_path / "data.mdb").exists():
-            dataset = self._create_lmdb_dataset(patches_path, cfg)
+            lmdb_path = patches_path
+        elif (patches_path / "patches.lmdb" / "data.mdb").exists():
+            # LMDB nested inside directory (from lmdb_creation step)
+            lmdb_path = patches_path / "patches.lmdb"
+        elif (patches_path / "patches.lmdb").exists():
+            lmdb_path = patches_path / "patches.lmdb"
+
+        if lmdb_path:
+            dataset = self._create_lmdb_dataset(lmdb_path, cfg)
         else:
             dataset = self._create_zarr_dataset(patches_path, cfg)
 
@@ -863,9 +872,8 @@ class TrainingStep(PipelineStep):
             task_type=Task.TaskTypes.training,
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
-            # Disable auto Task.init() injection - our script handles task connection
-            # via CLEARML_TASK_ID environment variable to avoid creating a new task
-            add_task_init_call=False,  # Handle task init in step runner
+            # Enable auto Task.init() injection - each step has unique script file
+            add_task_init_call=True,
             packages=["-e ."],
         )
 

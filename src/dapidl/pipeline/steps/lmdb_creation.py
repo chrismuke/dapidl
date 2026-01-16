@@ -751,9 +751,8 @@ class LMDBCreationStep(PipelineStep):
             task_type=Task.TaskTypes.data_processing,
             script=str(runner_script),
             argparse_args=[f"--step={self.name}"],
-            # Disable auto Task.init() injection - our script handles task connection
-            # via CLEARML_TASK_ID environment variable to avoid creating a new task
-            add_task_init_call=False,  # Handle task init in step runner
+            # Enable auto Task.init() injection - each step has unique script file
+            add_task_init_call=True,
             packages=["-e ."],
         )
 
