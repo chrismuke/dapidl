@@ -71,6 +71,7 @@ def run_step(step_name: str):
             dataset_project=step_config.get("dataset_project", "DAPIDL/datasets"),
             platform=step_config.get("platform", "auto"),
             local_path=step_config.get("local_path"),
+            s3_uri=step_config.get("s3_uri"),
         )
         step = DataLoaderStep(config)
 
