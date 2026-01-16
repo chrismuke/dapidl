@@ -771,9 +771,14 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
         stats: dict,
         cfg: EnsembleAnnotationConfig,
     ) -> str | None:
-        """Create ClearML Dataset with lineage to raw data.
+        """Create ClearML Dataset with lineage to raw data via S3.
 
-        Uses parent_datasets to avoid re-uploading raw data.
+        IMPORTANT: Never upload large data directly to ClearML.
+        Pattern:
+        1. Upload to S3 first
+        2. Register with ClearML using add_external_files() (metadata only)
+
+        Uses parent_datasets for lineage tracking.
         """
         try:
             from clearml import Dataset
@@ -781,39 +786,57 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
             logger.warning("ClearML not available, skipping dataset creation")
             return None
 
-        # Determine parent dataset
+        # Determine parent dataset for lineage
         parent_ids = []
         if cfg.parent_dataset_id:
             parent_ids.append(cfg.parent_dataset_id)
         elif inputs.get("raw_dataset_id"):
             parent_ids.append(inputs["raw_dataset_id"])
 
-        # Determine output URI
-        output_uri = None
-        if cfg.upload_to_s3:
-            output_uri = f"s3://{cfg.s3_bucket}/datasets/annotated/"
-
-        # Create dataset with lineage
+        # Create dataset name with config hash for cache lookup
         platform = inputs.get("platform", "unknown")
         raw_dataset_id = inputs.get("raw_dataset_id", cfg.parent_dataset_id or "local")
         config_hash = self._get_config_hash(cfg, raw_dataset_id)
-
-        # Use config hash in name for cache lookup
         dataset_name = f"annotated-{platform}-{config_hash}"
 
+        # S3 path for this dataset
+        s3_path = f"datasets/annotated/{dataset_name}"
+
         try:
-            dataset = Dataset.create(
-                dataset_project="DAPIDL/annotated",
-                dataset_name=dataset_name,
-                parent_datasets=parent_ids if parent_ids else None,
-                output_uri=output_uri,
-            )
+            if cfg.upload_to_s3:
+                # Step 1: Upload to S3 first (NOT to ClearML)
+                from dapidl.utils.s3 import upload_to_s3
 
-            # Add only new annotation files (parent has raw data)
-            dataset.add_files(str(output_dir / "annotations.parquet"))
-            dataset.add_files(str(output_dir / "class_mapping.json"))
+                s3_uri = upload_to_s3(output_dir, s3_path)
+                logger.info(f"Uploaded annotations to S3: {s3_uri}")
 
-            # Metadata - include config hash and details for skip logic
+                # Step 2: Register with ClearML as external reference
+                dataset = Dataset.create(
+                    dataset_project="DAPIDL/annotated",
+                    dataset_name=dataset_name,
+                    parent_datasets=parent_ids if parent_ids else None,
+                    # NOTE: Do NOT set output_uri - we don't upload to ClearML
+                )
+
+                # Add external reference to S3 - this does NOT upload!
+                dataset.add_external_files(
+                    source_url=s3_uri,
+                    dataset_path="/",
+                )
+            else:
+                # Local only - register local path reference
+                s3_uri = None
+                dataset = Dataset.create(
+                    dataset_project="DAPIDL/annotated",
+                    dataset_name=dataset_name,
+                    parent_datasets=parent_ids if parent_ids else None,
+                )
+                dataset.add_external_files(
+                    source_url=f"file://{output_dir}",
+                    dataset_path="/",
+                )
+
+            # Metadata (this goes to ClearML - small JSON only)
             dataset.set_metadata({
                 "config_hash": config_hash,
                 "raw_dataset_id": raw_dataset_id,
@@ -832,16 +855,20 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
                 "unanimous_agreement_pct": stats["unanimous_agreement"] / stats["annotated_cells"]
                 if stats["annotated_cells"] > 0
                 else 0,
+                "s3_uri": s3_uri,  # Store S3 location in metadata
+                "local_path": str(output_dir),  # For reference
+                "registration_type": "external_reference",
+                "uploaded_to_clearml": False,
             })
 
             dataset.finalize()
-            dataset.upload()
+            # NOTE: Do NOT call dataset.upload() - files are already on S3
 
-            logger.info(f"Created ClearML dataset: {dataset.id}")
+            logger.info(f"Registered ClearML dataset: {dataset.id} -> {s3_uri or output_dir}")
             return dataset.id
 
         except Exception as e:
-            logger.warning(f"Failed to create ClearML dataset: {e}")
+            logger.warning(f"Failed to register ClearML dataset: {e}")
             return None
 
     def get_queue(self) -> str:

@@ -57,6 +57,10 @@ class PatchExtractionConfig:
     dataset_project: str = "DAPIDL/datasets"
     dataset_name: str | None = None  # Auto-generate if None
 
+    # S3 settings
+    upload_to_s3: bool = True
+    s3_bucket: str = "dapidl"
+
 
 class PatchExtractionStep(PipelineStep):
     """Extract nucleus-centered patches for training.
@@ -642,8 +646,18 @@ class PatchExtractionStep(PipelineStep):
         inputs: dict,
         stats: dict,
     ) -> str | None:
-        """Create ClearML Dataset from patches."""
-        from clearml import Dataset
+        """Create ClearML Dataset from patches via S3.
+
+        IMPORTANT: Never upload large data directly to ClearML.
+        Pattern:
+        1. Upload to S3 first
+        2. Register with ClearML using add_external_files() (metadata only)
+        """
+        try:
+            from clearml import Dataset
+        except ImportError:
+            logger.warning("ClearML not available, skipping dataset creation")
+            return None
 
         # Generate name if not provided
         dataset_name = cfg.dataset_name
@@ -653,30 +667,64 @@ class PatchExtractionStep(PipelineStep):
             patch_size = cfg.patch_size
             dataset_name = f"{platform}-{annotator}-p{patch_size}"
 
-        dataset = Dataset.create(
-            dataset_project=cfg.dataset_project,
-            dataset_name=dataset_name,
-        )
+        # S3 path for this dataset
+        s3_path = f"datasets/patches/{dataset_name}"
 
-        # Add files
-        dataset.add_files(str(output_dir))
+        try:
+            if cfg.upload_to_s3:
+                # Step 1: Upload to S3 first (NOT to ClearML)
+                from dapidl.utils.s3 import upload_to_s3
 
-        # Add metadata
-        dataset.set_metadata({
-            "patch_size": cfg.patch_size,
-            "normalization": cfg.normalization_method,
-            "n_patches": stats["n_extracted"],
-            "class_counts": stats["class_counts"],
-            "source_platform": inputs.get("platform"),
-            "annotator": inputs.get("annotator_used"),
-        })
+                s3_uri = upload_to_s3(output_dir, s3_path)
+                logger.info(f"Uploaded patches to S3: {s3_uri}")
 
-        # Finalize
-        dataset.finalize()
-        dataset.upload()
+                # Step 2: Register with ClearML as external reference
+                dataset = Dataset.create(
+                    dataset_project=cfg.dataset_project,
+                    dataset_name=dataset_name,
+                    # NOTE: Do NOT set output_uri - we don't upload to ClearML
+                )
 
-        logger.info(f"Created ClearML Dataset: {dataset.id}")
-        return dataset.id
+                # Add external reference to S3 - this does NOT upload!
+                dataset.add_external_files(
+                    source_url=s3_uri,
+                    dataset_path="/",
+                )
+            else:
+                # Local only - register local path reference
+                s3_uri = None
+                dataset = Dataset.create(
+                    dataset_project=cfg.dataset_project,
+                    dataset_name=dataset_name,
+                )
+                dataset.add_external_files(
+                    source_url=f"file://{output_dir}",
+                    dataset_path="/",
+                )
+
+            # Metadata (this goes to ClearML - small JSON only)
+            dataset.set_metadata({
+                "patch_size": cfg.patch_size,
+                "normalization": cfg.normalization_method,
+                "n_patches": stats["n_extracted"],
+                "class_counts": stats["class_counts"],
+                "source_platform": inputs.get("platform"),
+                "annotator": inputs.get("annotator_used"),
+                "s3_uri": s3_uri,  # Store S3 location in metadata
+                "local_path": str(output_dir),  # For reference
+                "registration_type": "external_reference",
+                "uploaded_to_clearml": False,
+            })
+
+            dataset.finalize()
+            # NOTE: Do NOT call dataset.upload() - files are already on S3
+
+            logger.info(f"Registered ClearML Dataset: {dataset.id} -> {s3_uri or output_dir}")
+            return dataset.id
+
+        except Exception as e:
+            logger.warning(f"Failed to register ClearML dataset: {e}")
+            return None
 
     def create_clearml_task(
         self,

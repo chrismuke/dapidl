@@ -664,9 +664,14 @@ class LMDBCreationStep(PipelineStep):
         stats: dict,
         cfg: LMDBCreationConfig,
     ) -> str | None:
-        """Register LMDB dataset with ClearML.
+        """Register LMDB dataset with ClearML via S3.
 
-        Uses parent_datasets for lineage to save space.
+        IMPORTANT: Never upload large data directly to ClearML.
+        Pattern:
+        1. Upload to S3 first
+        2. Register with ClearML using add_external_files() (metadata only)
+
+        Uses parent_datasets for lineage tracking.
         """
         try:
             from clearml import Dataset
@@ -674,37 +679,59 @@ class LMDBCreationStep(PipelineStep):
             logger.warning("ClearML not available, skipping dataset registration")
             return None
 
-        # Determine parent dataset
+        # Determine parent dataset for lineage
         parent_ids = []
         if cfg.parent_dataset_id:
             parent_ids.append(cfg.parent_dataset_id)
         elif inputs.get("annotated_dataset_id"):
             parent_ids.append(inputs["annotated_dataset_id"])
 
-        # Determine output URI
-        output_uri = None
-        if cfg.upload_to_s3:
-            output_uri = f"s3://{cfg.s3_bucket}/datasets/lmdb/"
-
         # Create dataset name
         platform = inputs.get("platform", "unknown")
         annotated_id = inputs.get("annotated_dataset_id", "")
         id_suffix = annotated_id[:8] if annotated_id else "local"
-
         dataset_name = f"lmdb-{platform}-p{cfg.patch_size}-{id_suffix}"
 
+        # S3 path for this dataset
+        s3_path = f"datasets/lmdb/{dataset_name}"
+
         try:
-            dataset = Dataset.create(
-                dataset_project="DAPIDL/lmdb",
-                dataset_name=dataset_name,
-                parent_datasets=parent_ids if parent_ids else None,
-                output_uri=output_uri,
-            )
+            if cfg.upload_to_s3:
+                # Step 1: Upload to S3 first (NOT to ClearML)
+                from dapidl.utils.s3 import upload_to_s3
 
-            # Add LMDB files
-            dataset.add_files(str(lmdb_path))
+                s3_uri = upload_to_s3(lmdb_path, s3_path)
+                logger.info(f"Uploaded LMDB to S3: {s3_uri}")
 
-            # Metadata
+                # Step 2: Register with ClearML as external reference
+                dataset = Dataset.create(
+                    dataset_project="DAPIDL/lmdb",
+                    dataset_name=dataset_name,
+                    parent_datasets=parent_ids if parent_ids else None,
+                    # NOTE: Do NOT set output_uri - we don't upload to ClearML
+                )
+
+                # Add external reference to S3 - this does NOT upload!
+                dataset.add_external_files(
+                    source_url=s3_uri,
+                    dataset_path="/",
+                )
+            else:
+                # Local only - just register the local path reference
+                s3_uri = None
+                dataset = Dataset.create(
+                    dataset_project="DAPIDL/lmdb",
+                    dataset_name=dataset_name,
+                    parent_datasets=parent_ids if parent_ids else None,
+                )
+                # Store local path as external reference for consistency
+                # (ClearML will resolve this on the local machine)
+                dataset.add_external_files(
+                    source_url=f"file://{lmdb_path}",
+                    dataset_path="/",
+                )
+
+            # Metadata (this goes to ClearML - small JSON only)
             dataset.set_metadata({
                 "patch_size": cfg.patch_size,
                 "n_patches": stats["n_patches"],
@@ -714,16 +741,20 @@ class LMDBCreationStep(PipelineStep):
                 "parent_annotated_id": inputs.get("annotated_dataset_id"),
                 "platform": platform,
                 "normalize_physical_size": cfg.normalize_physical_size,
+                "s3_uri": s3_uri,  # Store S3 location in metadata
+                "local_path": str(lmdb_path),  # For reference
+                "registration_type": "external_reference",
+                "uploaded_to_clearml": False,
             })
 
             dataset.finalize()
-            dataset.upload()
+            # NOTE: Do NOT call dataset.upload() - files are already on S3
 
-            logger.info(f"Created ClearML dataset: {dataset.id}")
+            logger.info(f"Registered ClearML dataset: {dataset.id} -> {s3_uri or lmdb_path}")
             return dataset.id
 
         except Exception as e:
-            logger.warning(f"Failed to create ClearML dataset: {e}")
+            logger.warning(f"Failed to register ClearML dataset: {e}")
             return None
 
     def get_queue(self) -> str:
