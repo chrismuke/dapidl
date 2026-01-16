@@ -251,8 +251,8 @@ class DAPIDLPipelineController:
                 # Pass outputs from parent steps
                 "step_config/data_path": "${data_loader.artifacts.data_path.url}",
                 "step_config/platform": "${data_loader.artifacts.platform.url}",
-                "step_config/segmentation_result": "${segmentation.artifacts.segmentation_result.url}",
-                "step_config/annotations": "${annotation.artifacts.annotations.url}",
+                "step_config/centroids_parquet": "${segmentation.artifacts.centroids_parquet.url}",
+                "step_config/annotations_parquet": "${annotation.artifacts.annotations_parquet.url}",
             },
             execution_queue=cfg.default_queue if cfg.execute_remotely else None,
             cache_executed_step=True,  # Skip if inputs/params unchanged
@@ -296,7 +296,7 @@ class DAPIDLPipelineController:
                     # Pass outputs from parent steps
                     "step_config/model_path": "${training.artifacts.model_path.url}",
                     "step_config/patches_path": "${patch_extraction.artifacts.dataset_path.url}",
-                    "step_config/annotations_parquet": "${annotation.artifacts.annotations.url}",
+                    "step_config/annotations_parquet": "${annotation.artifacts.annotations_parquet.url}",
                     "step_config/class_mapping": "${patch_extraction.artifacts.class_names.url}",
                     "step_config/expression_path": "${data_loader.artifacts.expression_path.url}",
                 },

@@ -419,8 +419,8 @@ class SOTAPipelineController:
                     # Data from parents
                     "step_config/data_path": "${data_loader.artifacts.data_path.url}",
                     "step_config/platform": "${data_loader.artifacts.platform.url}",
-                    "step_config/segmentation_result": "${segmentation.artifacts.segmentation_result.url}",
-                    "step_config/annotations": "${ensemble_annotation.artifacts.annotations.url}",
+                    "step_config/centroids_parquet": "${segmentation.artifacts.centroids_parquet.url}",
+                    "step_config/annotations_parquet": "${ensemble_annotation.artifacts.annotations_parquet.url}",
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
