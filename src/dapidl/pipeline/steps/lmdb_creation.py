@@ -269,6 +269,10 @@ class LMDBCreationStep(PipelineStep):
                 "patch_size": cfg.patch_size,
                 "skipped": False,
                 "extraction_stats": stats,
+                # Class information for training step
+                "num_classes": stats["n_classes"],
+                "class_names": stats["class_names"],
+                "index_to_class": stats["index_to_class"],
             },
         )
 
@@ -575,11 +579,18 @@ class LMDBCreationStep(PipelineStep):
         with open(dataset_dir / "metadata.json", "w") as f:
             json.dump(metadata_out, f, indent=2)
 
+        # Build index_to_class from class_mapping
+        index_to_class = {idx: name for name, idx in class_mapping.items()}
+        class_names = [index_to_class[i] for i in range(len(index_to_class))]
+
         stats = {
             "n_patches": n_patches,
             "patch_size": cfg.patch_size,
             "class_counts": class_counts,
-            "n_classes": len(class_counts),
+            "n_classes": len(class_mapping),
+            "class_names": class_names,
+            "index_to_class": index_to_class,
+            "class_mapping": class_mapping,
             "lmdb_path": str(dataset_dir),  # Return dataset directory, not LMDB subdirectory
         }
 
