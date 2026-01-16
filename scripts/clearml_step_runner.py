@@ -21,6 +21,15 @@ def early_log(msg):
     """Log to stderr before logging framework is available."""
     print(f"[clearml_step_runner] {msg}", file=sys.stderr, flush=True)
 
+
+def _parse_bool(value) -> bool:
+    """Parse a boolean from various input types (str, bool, int)."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on")
+    return bool(value)
+
 early_log(f"Python: {sys.version}")
 early_log(f"Working dir: {Path.cwd()}")
 early_log(f"Script path: {__file__}")
@@ -126,8 +135,70 @@ def run_step(step_name: str):
             epochs=int(step_config.get("epochs", 50)),
             batch_size=int(step_config.get("batch_size", 128)),
             learning_rate=float(step_config.get("learning_rate", 3e-4)),
+            weight_decay=float(step_config.get("weight_decay", 1e-5)),
+            use_weighted_loss=_parse_bool(step_config.get("use_weighted_loss", True)),
+            use_weighted_sampler=_parse_bool(step_config.get("use_weighted_sampler", True)),
+            max_weight_ratio=float(step_config.get("max_weight_ratio", 10.0)),
+            patience=int(step_config.get("patience", 15)),
         )
         step = TrainingStep(config)
+
+    elif step_name == "ensemble_annotation":
+        from dapidl.pipeline.steps.ensemble_annotation import (
+            EnsembleAnnotationConfig,
+            EnsembleAnnotationStep,
+        )
+
+        # Parse celltypist_models list from comma-separated string
+        models_str = step_config.get("celltypist_models", "Cells_Adult_Breast.pkl,Immune_All_High.pkl")
+        models = models_str.split(",") if isinstance(models_str, str) else models_str
+
+        config = EnsembleAnnotationConfig(
+            celltypist_models=models,
+            include_singler=_parse_bool(step_config.get("include_singler", True)),
+            singler_reference=step_config.get("singler_reference", "blueprint"),
+            include_sctype=_parse_bool(step_config.get("include_sctype", False)),
+            min_agreement=int(step_config.get("min_agreement", 2)),
+            confidence_threshold=float(step_config.get("confidence_threshold", 0.5)),
+            use_confidence_weighting=_parse_bool(step_config.get("use_confidence_weighting", False)),
+            fine_grained=_parse_bool(step_config.get("fine_grained", False)),
+            skip_if_exists=_parse_bool(step_config.get("skip_if_exists", True)),
+            create_derived_dataset=_parse_bool(step_config.get("create_derived_dataset", True)),
+        )
+        step = EnsembleAnnotationStep(config)
+
+    elif step_name == "lmdb_creation":
+        from dapidl.pipeline.steps.lmdb_creation import (
+            LMDBCreationConfig,
+            LMDBCreationStep,
+        )
+
+        config = LMDBCreationConfig(
+            patch_size=int(step_config.get("patch_size", 128)),
+            normalization_method=step_config.get("normalization_method", "adaptive"),
+            normalize_physical_size=_parse_bool(step_config.get("normalize_physical_size", True)),
+            target_pixel_size_um=float(step_config.get("target_pixel_size_um", 0.2125)),
+            exclude_edge_cells=_parse_bool(step_config.get("exclude_edge_cells", True)),
+            edge_margin_px=int(step_config.get("edge_margin_px", 64)),
+            skip_if_exists=_parse_bool(step_config.get("skip_if_exists", True)),
+            create_clearml_dataset=_parse_bool(step_config.get("create_clearml_dataset", True)),
+        )
+        step = LMDBCreationStep(config)
+
+    elif step_name == "cross_validation":
+        from dapidl.pipeline.steps.cross_validation import (
+            CrossValidationConfig,
+            CrossValidationStep,
+        )
+
+        config = CrossValidationConfig(
+            run_leiden_check=_parse_bool(step_config.get("run_leiden_check", True)),
+            run_dapi_check=_parse_bool(step_config.get("run_dapi_check", True)),
+            run_consensus_check=_parse_bool(step_config.get("run_consensus_check", True)),
+            min_ari_threshold=float(step_config.get("min_ari_threshold", 0.5)),
+            min_agreement_threshold=float(step_config.get("min_agreement_threshold", 0.5)),
+        )
+        step = CrossValidationStep(config)
 
     else:
         logger.error(f"Unknown step: {step_name}")
@@ -183,7 +254,11 @@ def main():
 
     early_log("Entered main()")
 
-    valid_steps = ["data_loader", "segmentation", "annotation", "patch_extraction", "training"]
+    valid_steps = [
+        "data_loader", "segmentation", "annotation", "patch_extraction", "training",
+        # SOTA pipeline steps
+        "ensemble_annotation", "lmdb_creation", "cross_validation",
+    ]
 
     # Method 1: Try to connect to ClearML task (works when running under agent)
     # Task.init() will reconnect to existing task when running remotely

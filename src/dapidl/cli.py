@@ -751,6 +751,207 @@ def evaluate(checkpoint: Path, data: Path, output: Path | None) -> None:
     console.print("\n[yellow]Evaluation not yet implemented[/yellow]")
 
 
+@main.command()
+@click.option(
+    "--checkpoint",
+    "-c",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Path to model checkpoint (trained on source platform)",
+)
+@click.option(
+    "--target-data",
+    "-t",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Path to target platform LMDB/Zarr dataset for adaptation",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output path for adapted model (default: <checkpoint>_adapted.pt)",
+)
+@click.option(
+    "--num-batches",
+    "-n",
+    type=int,
+    default=20,
+    show_default=True,
+    help="Number of batches for BN statistics adaptation",
+)
+@click.option(
+    "--batch-size",
+    "-b",
+    type=int,
+    default=64,
+    show_default=True,
+    help="Batch size for adaptation data loader",
+)
+@click.option(
+    "--compute-metrics/--no-compute-metrics",
+    default=True,
+    help="Compute domain shift metrics before/after adaptation",
+)
+def adapt(
+    checkpoint: Path,
+    target_data: Path,
+    output: Path | None,
+    num_batches: int,
+    batch_size: int,
+    compute_metrics: bool,
+) -> None:
+    """Adapt trained model to a new platform using AdaBN.
+
+    Uses Adaptive Batch Normalization (AdaBN) to update the BatchNorm
+    layer statistics on target domain data without retraining. This is
+    essential for cross-platform transfer (e.g., Xenium → MERSCOPE).
+
+    The adaptation process:
+      1. Loads the checkpoint trained on source platform
+      2. Runs forward passes on target data to update BN statistics
+      3. Saves the adapted model
+
+    Expected improvement: 5-15% accuracy gain on target platform.
+
+    Examples:
+        # Adapt Xenium-trained model to MERSCOPE
+        dapidl adapt -c xenium_model.pt -t merscope-data/ -o adapted.pt
+
+        # Quick adaptation with fewer batches
+        dapidl adapt -c model.pt -t target/ -n 10
+
+        # Adapt with domain shift analysis
+        dapidl adapt -c model.pt -t target/ --compute-metrics
+    """
+    import torch
+    from dapidl.models import (
+        adapt_batch_norm,
+        create_adaptation_loader,
+        compute_domain_shift_metrics,
+    )
+
+    console.print("[bold blue]DAPIDL Domain Adaptation (AdaBN)[/bold blue]")
+    console.print(f"Source checkpoint: {checkpoint}")
+    console.print(f"Target data: {target_data}")
+    console.print(f"Num batches: {num_batches}")
+    console.print(f"Batch size: {batch_size}")
+
+    # Determine output path
+    if output is None:
+        output = checkpoint.parent / f"{checkpoint.stem}_adapted.pt"
+    console.print(f"Output: {output}")
+
+    # Load model - detect model type from checkpoint
+    console.print("\n[yellow]Loading model...[/yellow]")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Load checkpoint to detect model type
+    checkpoint_data = torch.load(checkpoint, map_location=device, weights_only=False)
+    model_type = checkpoint_data.get("model_type")
+    hparams = checkpoint_data.get("hparams", {})
+
+    # Detect model type from hparams if not explicitly set
+    if model_type is None:
+        if "num_coarse" in hparams and "num_medium" in hparams:
+            model_type = "HierarchicalClassifier"
+        elif "seg_hidden_dim" in hparams:
+            model_type = "MultiTaskClassifier"
+        else:
+            model_type = "CellTypeClassifier"
+
+    console.print(f"  Model type: {model_type}")
+
+    # Load appropriate model class
+    if model_type == "HierarchicalClassifier":
+        from dapidl.models.hierarchical import HierarchicalClassifier
+        model = HierarchicalClassifier.from_checkpoint(str(checkpoint))
+    elif model_type == "MultiTaskClassifier":
+        from dapidl.models.multitask import MultiTaskClassifier
+        model = MultiTaskClassifier.from_checkpoint(str(checkpoint))
+    else:
+        from dapidl.models.classifier import CellTypeClassifier
+        model = CellTypeClassifier.from_checkpoint(str(checkpoint))
+
+    model = model.to(device)
+    console.print(f"  Device: {device}")
+    console.print(f"  Classes: {getattr(model, 'num_classes', 'N/A')}")
+
+    # Create adaptation data loader
+    console.print("[yellow]Creating adaptation loader...[/yellow]")
+    target_loader = create_adaptation_loader(
+        data_path=target_data,
+        batch_size=batch_size,
+    )
+    console.print(f"  Loaded target dataset from {target_data}")
+
+    # Optionally compute domain shift metrics before adaptation
+    if compute_metrics:
+        console.print("\n[yellow]Computing domain shift metrics (before)...[/yellow]")
+        metrics_before = compute_domain_shift_metrics(
+            model, target_loader, device=device, num_batches=5
+        )
+        console.print(f"  Feature mean: {metrics_before['feature_mean']:.4f}")
+        console.print(f"  Feature std: {metrics_before['feature_std']:.4f}")
+
+    # Perform AdaBN adaptation
+    console.print("\n[yellow]Adapting BatchNorm statistics...[/yellow]")
+    model = adapt_batch_norm(
+        model=model,
+        target_loader=target_loader,
+        num_batches=num_batches,
+        device=device,
+    )
+    console.print(f"  Adapted using {num_batches} batches")
+
+    # Optionally compute domain shift metrics after adaptation
+    if compute_metrics:
+        console.print("\n[yellow]Computing domain shift metrics (after)...[/yellow]")
+        # Recreate loader since we consumed it
+        target_loader = create_adaptation_loader(
+            data_path=target_data,
+            batch_size=batch_size,
+        )
+        metrics_after = compute_domain_shift_metrics(
+            model, target_loader, device=device, num_batches=5
+        )
+        console.print(f"  Feature mean: {metrics_after['feature_mean']:.4f}")
+        console.print(f"  Feature std: {metrics_after['feature_std']:.4f}")
+
+        # Show comparison
+        console.print("\n[cyan]Domain Shift Analysis:[/cyan]")
+        table = Table()
+        table.add_column("Metric", style="cyan")
+        table.add_column("Before", style="yellow")
+        table.add_column("After", style="green")
+        table.add_row(
+            "Feature Mean",
+            f"{metrics_before['feature_mean']:.4f}",
+            f"{metrics_after['feature_mean']:.4f}",
+        )
+        table.add_row(
+            "Feature Std",
+            f"{metrics_before['feature_std']:.4f}",
+            f"{metrics_after['feature_std']:.4f}",
+        )
+        console.print(table)
+
+    # Save adapted model
+    console.print(f"\n[yellow]Saving adapted model to {output}...[/yellow]")
+    # Save the full checkpoint with adapted state dict
+    checkpoint_data = torch.load(checkpoint, map_location=device, weights_only=False)
+    checkpoint_data["model_state_dict"] = model.state_dict()
+    checkpoint_data["adapted"] = True
+    checkpoint_data["adaptation_batches"] = num_batches
+    checkpoint_data["target_data"] = str(target_data)
+    torch.save(checkpoint_data, output)
+
+    console.print(f"\n[bold green]Adaptation complete![/bold green]")
+    console.print(f"Adapted model saved to: {output}")
+    console.print("\n[dim]Use the adapted model for inference on target platform data.[/dim]")
+
+
 @main.command(name="compare-labels")
 @click.option(
     "--predictions",
@@ -1347,6 +1548,170 @@ def export_lmdb(data_path: str, output_path: str | None, map_size: float, worker
     except Exception as e:
         console.print(f"[red]Error during conversion: {e}[/red]")
         raise click.Abort()
+
+
+@main.command(name="clean-dataset")
+@click.option(
+    "-d", "--data",
+    "data_path",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to dataset directory (with patches.zarr)",
+)
+@click.option(
+    "-o", "--output",
+    "output_path",
+    type=click.Path(),
+    default=None,
+    help="Output path for cleaned dataset (default: <data>_cleaned)",
+)
+@click.option(
+    "--coherence-threshold",
+    type=float,
+    default=0.20,
+    show_default=True,
+    help="Minimum neighbor agreement rate (0-1). Cells below this are filtered.",
+)
+@click.option(
+    "-k", "--neighbors",
+    type=int,
+    default=20,
+    show_default=True,
+    help="Number of neighbors for coherence computation",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Only compute stats, don't write filtered dataset",
+)
+def clean_dataset(
+    data_path: str,
+    output_path: str | None,
+    coherence_threshold: float,
+    neighbors: int,
+    dry_run: bool,
+) -> None:
+    """Apply spatial consistency filtering to remove noisy annotations.
+
+    Filters cells whose labels disagree with their spatial neighbors.
+    This removes likely segmentation artifacts and annotation errors.
+
+    Cells of certain types (dendritic cells, mast cells, etc.) are exempt
+    from filtering since they naturally appear in isolation.
+
+    Example:
+        dapidl clean-dataset -d ./dataset --coherence-threshold 0.2
+
+        # Dry run to see statistics only
+        dapidl clean-dataset -d ./dataset --dry-run
+    """
+    import json
+    import numpy as np
+    import polars as pl
+
+    from dapidl.data.cleaning import (
+        compute_spatial_coherence,
+        filter_spatially_inconsistent,
+        clean_dataset_spatial,
+    )
+
+    console.print("[bold blue]Spatial Consistency Filtering[/bold blue]")
+    console.print(f"Dataset: {data_path}")
+    console.print(f"Coherence threshold: {coherence_threshold:.0%}")
+    console.print(f"k-neighbors: {neighbors}")
+
+    data_path_obj = Path(data_path)
+
+    if dry_run:
+        # Just compute and display stats
+        console.print("\n[yellow]Dry run - computing statistics only[/yellow]\n")
+
+        # Load data
+        metadata = pl.read_parquet(data_path_obj / "metadata.parquet")
+        labels = np.load(data_path_obj / "labels.npy")
+        with open(data_path_obj / "class_mapping.json") as f:
+            class_mapping = json.load(f)
+        label_to_name = {v: k for k, v in class_mapping.items()}
+
+        # Find coordinate columns
+        x_col = y_col = None
+        for col in metadata.columns:
+            if "x" in col.lower() and "centroid" in col.lower():
+                x_col = col
+            if "y" in col.lower() and "centroid" in col.lower():
+                y_col = col
+        if x_col is None:
+            for col in metadata.columns:
+                if col.lower() in ("x", "x_location"):
+                    x_col = col
+                if col.lower() in ("y", "y_location"):
+                    y_col = col
+
+        if x_col is None or y_col is None:
+            console.print(f"[red]Error: Could not find coordinate columns[/red]")
+            console.print(f"Available columns: {metadata.columns}")
+            raise click.Abort()
+
+        coordinates = np.column_stack([
+            metadata[x_col].to_numpy(),
+            metadata[y_col].to_numpy(),
+        ])
+
+        # Compute stats
+        keep_mask, stats = filter_spatially_inconsistent(
+            metadata=metadata,
+            cell_coordinates=coordinates,
+            cell_labels=labels,
+            coherence_threshold=coherence_threshold,
+            k=neighbors,
+            label_to_name=label_to_name,
+        )
+
+        # Display results
+        console.print(f"\n[bold]Overall Statistics:[/bold]")
+        console.print(f"  Original cells: {stats['n_cells_original']:,}")
+        console.print(f"  Would keep:     {stats['n_cells_kept']:,}")
+        console.print(f"  Would filter:   {stats['n_cells_filtered']:,} ({stats['filter_rate']*100:.1f}%)")
+        console.print(f"  Exempt cells:   {stats['n_cells_exempt']:,}")
+
+        console.print(f"\n[bold]Coherence Distribution:[/bold]")
+        p = stats["coherence_percentiles"]
+        console.print(f"  p5:  {p['p5']:.2f}  p25: {p['p25']:.2f}  p50: {p['p50']:.2f}  p75: {p['p75']:.2f}  p95: {p['p95']:.2f}")
+
+        console.print(f"\n[bold]Per-Class Breakdown:[/bold]")
+        per_class = stats.get("per_class", {})
+        # Sort by filter rate descending
+        sorted_classes = sorted(per_class.items(), key=lambda x: 1 - x[1]["keep_rate"])
+        for class_name, cs in sorted_classes[:10]:
+            keep_pct = cs["keep_rate"] * 100
+            console.print(
+                f"  {class_name:<25} {cs['kept']:>6}/{cs['original']:<6} "
+                f"({keep_pct:5.1f}% kept, coherence={cs['mean_coherence']:.2f})"
+            )
+        if len(sorted_classes) > 10:
+            console.print(f"  ... and {len(sorted_classes) - 10} more classes")
+
+    else:
+        # Actually filter the dataset
+        try:
+            stats = clean_dataset_spatial(
+                data_path=data_path_obj,
+                output_path=Path(output_path) if output_path else None,
+                coherence_threshold=coherence_threshold,
+                k=neighbors,
+            )
+
+            output = output_path if output_path else f"{data_path}_cleaned"
+            console.print(f"\n[green]✓ Dataset cleaned![/green]")
+            console.print(f"  Original:  {stats['n_cells_original']:,} cells")
+            console.print(f"  Cleaned:   {stats['n_cells_kept']:,} cells")
+            console.print(f"  Filtered:  {stats['n_cells_filtered']:,} ({stats['filter_rate']*100:.1f}%)")
+            console.print(f"  Output:    {output}")
+
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise click.Abort()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2334,6 +2699,162 @@ def create_base_tasks(project: str, include_universal: bool) -> None:
     console.print("\n[green]✓ Base tasks created![/green]")
     console.print(f"  Project: {project}")
     console.print("  You can now run the pipeline with: dapidl clearml-pipeline run")
+
+
+@clearml_pipeline_group.command(name="sota")
+@click.option(
+    "--dataset-id",
+    type=str,
+    help="ClearML Dataset ID for raw spatial data",
+)
+@click.option(
+    "--local-path",
+    "-l",
+    type=click.Path(exists=True, path_type=Path),
+    help="Local path to Xenium/MERSCOPE output directory",
+)
+@click.option(
+    "--s3-uri",
+    type=str,
+    help="S3 URI for raw data (e.g., s3://dapidl/raw-data/xenium-breast/)",
+)
+@click.option(
+    "--platform",
+    type=click.Choice(["auto", "xenium", "merscope"]),
+    default="auto",
+    show_default=True,
+    help="Spatial platform (auto-detected by default)",
+)
+@click.option(
+    "--fine-grained/--coarse",
+    default=False,
+    help="Use fine-grained classification (default: coarse 3-class)",
+)
+@click.option(
+    "--epochs",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Training epochs",
+)
+@click.option(
+    "--local",
+    is_flag=True,
+    help="Run locally (no ClearML agents)",
+)
+@click.option(
+    "--create-tasks",
+    is_flag=True,
+    help="Create base tasks before running (first time only)",
+)
+def sota_pipeline(
+    dataset_id: str | None,
+    local_path: Path | None,
+    s3_uri: str | None,
+    platform: str,
+    fine_grained: bool,
+    epochs: int,
+    local: bool,
+    create_tasks: bool,
+) -> None:
+    """Run state-of-the-art pipeline with best practices from benchmarking.
+
+    This pipeline uses optimal settings discovered through comprehensive
+    benchmarking (Jan 2025):
+
+    \b
+    Annotation (F1=0.844):
+      - PopV Ensemble with 3 CellTypist + SingleR (HPCA + Blueprint)
+      - UNWEIGHTED voting (beats confidence-weighted by 15-22%)
+      - Blueprint reference CRITICAL for Stromal (+117% F1)
+
+    \b
+    Training (F1=0.8481):
+      - EfficientNetV2-S backbone, 256px patches
+      - max_weight_ratio=10.0 (CRITICAL: prevents mode collapse)
+      - WeightedRandomSampler + weighted loss
+
+    \b
+    Examples:
+
+        # Remote execution on ClearML
+        dapidl clearml-pipeline sota --dataset-id abc123
+
+        # Local execution with Xenium data
+        dapidl clearml-pipeline sota --local-path /path/to/xenium --local
+
+        # Fine-grained classification with more epochs
+        dapidl clearml-pipeline sota --dataset-id abc123 --fine-grained --epochs 150
+    """
+    from dapidl.pipeline import SOTAPipelineController, create_sota_config
+
+    # Validate input - but allow --create-tasks without data source
+    if not create_tasks and not dataset_id and not local_path and not s3_uri:
+        console.print("[red]Error: Must specify --dataset-id, --local-path, or --s3-uri[/red]")
+        raise click.Abort()
+
+    # Create configuration with SOTA settings
+    config = create_sota_config(
+        dataset_id=dataset_id,
+        local_path=str(local_path) if local_path else None,
+        s3_uri=s3_uri,
+        platform=platform,
+        fine_grained=fine_grained,
+        epochs=epochs,
+    )
+
+    controller = SOTAPipelineController(config)
+
+    console.print("[bold blue]DAPIDL State-of-the-Art Pipeline[/bold blue]\n")
+    console.print("[dim]Best practices from Jan 2025 benchmarking[/dim]\n")
+
+    # Show SOTA settings
+    console.print("[cyan]Annotation (SOTA):[/cyan]")
+    console.print(f"  Models: {config.annotation.celltypist_models}")
+    console.print(f"  SingleR: {config.annotation.singler_reference} (CRITICAL for Stromal)")
+    console.print(f"  Voting: UNWEIGHTED (beats confidence-weighted by 15-22%)")
+
+    console.print("\n[cyan]Training (SOTA):[/cyan]")
+    console.print(f"  Backbone: {config.training.backbone.value}")
+    console.print(f"  Patch sizes: {config.lmdb.patch_sizes} (primary: {config.lmdb.primary_patch_size})")
+    console.print(f"  Epochs: {config.training.epochs}")
+    console.print(f"  max_weight_ratio: {config.training.max_weight_ratio} (CRITICAL: prevents mode collapse)")
+    console.print()
+
+    # Create base tasks if requested
+    if create_tasks:
+        console.print("[cyan]Creating SOTA base tasks...[/cyan]")
+        controller.create_base_tasks()
+        console.print("[green]✓ Base tasks created[/green]\n")
+
+        # If only creating tasks (no data source), exit now
+        if not dataset_id and not local_path and not s3_uri:
+            console.print("[dim]Base tasks created. Run with --dataset-id, --local-path, or --s3-uri to execute pipeline.[/dim]")
+            return
+
+    if local:
+        console.print("[cyan]Running locally...[/cyan]\n")
+        results = controller.run_locally()
+
+        if "training" in results:
+            console.print("\n[green]✓ SOTA Pipeline complete![/green]")
+            if "model_path" in results["training"]:
+                console.print(f"  Model: {results['training']['model_path']}")
+            if "metrics" in results["training"]:
+                metrics = results["training"]["metrics"]
+                console.print("  Metrics:")
+                for key, value in metrics.items():
+                    if isinstance(value, float):
+                        console.print(f"    {key}: {value:.4f}")
+        else:
+            console.print("\n[yellow]Pipeline completed but training results not found[/yellow]")
+    else:
+        console.print("[cyan]Creating ClearML SOTA pipeline...[/cyan]")
+        controller.create_pipeline()
+        console.print("[cyan]Starting remote execution...[/cyan]")
+        pipeline_id = controller.run(wait=False)
+        console.print(f"\n[green]✓ SOTA pipeline started: {pipeline_id}[/green]")
+        console.print("  Monitor at: https://app.clear.ml")
 
 
 # =============================================================================
