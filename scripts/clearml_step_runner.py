@@ -260,31 +260,74 @@ def main():
         "ensemble_annotation", "lmdb_creation", "cross_validation",
     ]
 
+    # Log all CLEARML environment variables for debugging
+    clearml_env_vars = {k: v for k, v in os.environ.items() if 'CLEARML' in k.upper()}
+    early_log(f"CLEARML env vars: {clearml_env_vars}")
+
+    # Log command line args
+    early_log(f"sys.argv: {sys.argv}")
+
+    # Method 0: Check argparse first (most reliable - ClearML sets this via argparse_args)
+    # Parse args early to get step name
+    parser = argparse.ArgumentParser(description="ClearML Pipeline Step Runner")
+    parser.add_argument(
+        "--step",
+        required=False,  # Not required, we have fallbacks
+        choices=valid_steps,
+        help="Step to execute",
+    )
+    args, unknown = parser.parse_known_args()
+    early_log(f"Parsed args: step={args.step}, unknown={unknown}")
+
+    if args.step:
+        early_log(f"Running step '{args.step}' from command line argument")
+        run_step(args.step)
+        return
+
+    # Method 0.5: Extract step name from script filename
+    # Script names like clearml_step_runner_data_loader.py contain the step name
+    script_name = Path(sys.argv[0]).stem  # e.g., "clearml_step_runner_data_loader"
+    early_log(f"Script name: {script_name}")
+    if "_" in script_name:
+        # Try to extract step from script name (after "clearml_step_runner_")
+        script_parts = script_name.split("_", 3)  # ['clearml', 'step', 'runner', 'step_name']
+        if len(script_parts) > 3:
+            step_from_script = script_parts[3]
+            early_log(f"Extracted step from script name: {step_from_script}")
+            if step_from_script in valid_steps:
+                early_log(f"Running step '{step_from_script}' from script name")
+                run_step(step_from_script)
+                return
+
     # Method 1: Try to connect to ClearML task (works when running under agent)
-    # First try Task.current_task() which doesn't create new tasks
-    # Then fall back to Task.get_task() if we have a task_id
     try:
         early_log("Attempting to connect to ClearML task...")
         from clearml import Task
 
-        task_id = os.environ.get("CLEARML_TASK_ID", "")
-        early_log(f"CLEARML_TASK_ID: {task_id!r}")
+        # CLEARML_PROC_MASTER_ID contains the task ID when running under agent
+        # Format: "PID:TASK_ID"
+        proc_master_id = os.environ.get("CLEARML_PROC_MASTER_ID", "")
+        early_log(f"CLEARML_PROC_MASTER_ID: {proc_master_id!r}")
 
-        # First try to get current task (non-blocking, works under agent)
-        early_log("Trying Task.current_task()...")
-        task = Task.current_task()
-        early_log(f"Task.current_task() returned: {task}")
-
-        # If no current task but we have task_id, connect to it
-        if task is None and task_id:
-            early_log(f"Connecting to task {task_id}...")
-            task = Task.get_task(task_id=task_id)
+        task = None
+        if proc_master_id and ":" in proc_master_id:
+            agent_task_id = proc_master_id.split(":", 1)[1]
+            early_log(f"Extracted agent task_id: {agent_task_id}")
+            # Get the task that the agent is running
+            task = Task.get_task(task_id=agent_task_id)
             early_log(f"Task.get_task() returned: {task}")
 
-        # Last resort: try Task.init() which will either reconnect or create new
         if task is None:
-            early_log("Calling Task.init() as last resort...")
-            task = Task.init()
+            # Fallback: try current_task (in case ClearML injected Task.init())
+            task = Task.current_task()
+            early_log(f"Task.current_task() returned: {task}")
+
+        if task is None:
+            # Call Task.init() with reuse_last_task_id=False to prevent reusing old tasks
+            # Under ClearML agent, this should connect to the current running task
+            early_log("No current task, calling Task.init(reuse_last_task_id=False)...")
+            task = Task.init(reuse_last_task_id=False)
+            early_log(f"Task.init() returned: {task}")
 
         if task:
             early_log(f"Connected to task: {task.name} (id={task.id})")
@@ -295,13 +338,24 @@ def main():
                 run_step(task.name)
                 return
 
-            # Also check step_config parameters
+            # Check task parameters for step name
             params = task.get_parameters_as_dict()
-            early_log(f"Task params: {list(params.keys())}")
-            step_name = params.get("step_config", {}).get("step_name")
-            early_log(f"step_name from params: {step_name}")
+            early_log(f"Task params keys: {list(params.keys())}")
+            early_log(f"Full params: {params}")
+
+            # ClearML stores argparse_args under Args/ namespace
+            step_name = params.get("Args", {}).get("step")
+            early_log(f"step from Args/step: {step_name}")
             if step_name and step_name in valid_steps:
-                early_log(f"Running step '{step_name}' from task parameters")
+                early_log(f"Running step '{step_name}' from Args/step parameter")
+                run_step(step_name)
+                return
+
+            # Also check step_config (legacy/fallback)
+            step_name = params.get("step_config", {}).get("step_name")
+            early_log(f"step_name from step_config: {step_name}")
+            if step_name and step_name in valid_steps:
+                early_log(f"Running step '{step_name}' from step_config parameters")
                 run_step(step_name)
                 return
 
@@ -326,18 +380,10 @@ def main():
         run_step(task_name)
         return
 
-    # Fallback to argparse for local execution/testing
-    early_log("Falling back to argparse (local execution mode)")
-    parser = argparse.ArgumentParser(description="ClearML Pipeline Step Runner")
-    parser.add_argument(
-        "--step",
-        required=True,
-        choices=valid_steps,
-        help="Step to execute",
-    )
-    args = parser.parse_args()
-
-    run_step(args.step)
+    # Final fallback - require --step argument
+    early_log("ERROR: Could not determine step to run")
+    early_log("Please provide --step argument or run under ClearML agent")
+    sys.exit(1)
 
 
 if __name__ == "__main__":
