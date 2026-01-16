@@ -273,20 +273,21 @@ class DataLoaderStep(PipelineStep):
     def _download_from_s3(self) -> Path:
         """Download data from S3 URI.
 
-        Uses AWS CLI with iDrive e2 configuration from CLAUDE.md.
+        Uses boto3 with iDrive e2 configuration.
         Downloads to a local cache directory.
         """
-        import subprocess
-        import tempfile
-        import os
+        import boto3
+        from botocore.config import Config
 
         cfg = self.config
         s3_uri = cfg.s3_uri
 
-        # Parse S3 URI to get dataset name for cache dir
-        # s3://dapidl/raw-data/xenium-breast/ -> xenium-breast
-        parts = s3_uri.rstrip("/").split("/")
-        dataset_name = parts[-1]
+        # Parse S3 URI: s3://bucket/path/ -> bucket, path
+        # s3://dapidl/raw-data/xenium-breast-cancer-rep1/
+        parts = s3_uri.replace("s3://", "").rstrip("/").split("/", 1)
+        bucket_name = parts[0]
+        prefix = parts[1] if len(parts) > 1 else ""
+        dataset_name = prefix.split("/")[-1] if prefix else bucket_name
 
         # Use persistent cache directory
         cache_dir = Path.home() / ".cache" / "dapidl" / "s3_downloads" / dataset_name
@@ -300,24 +301,43 @@ class DataLoaderStep(PipelineStep):
         logger.info(f"Downloading from S3: {s3_uri}")
 
         # S3 configuration for iDrive e2
-        env = os.environ.copy()
-        env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
-        env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url="https://s3.eu-central-2.idrivee2.com",
+            aws_access_key_id="evkizOGyflbhx5uSi4oV",
+            aws_secret_access_key="zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9",
+            region_name="eu-central-2",
+            config=Config(signature_version="s3v4"),
+        )
 
-        # Download using AWS CLI
-        cmd = [
-            "aws", "s3", "sync",
-            s3_uri, str(cache_dir),
-            "--endpoint-url", "https://s3.eu-central-2.idrivee2.com",
-            "--region", "eu-central-2",
-        ]
+        # List and download all objects with prefix
+        paginator = s3_client.get_paginator("list_objects_v2")
+        total_files = 0
+        total_bytes = 0
 
-        try:
-            result = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
-            logger.info(f"Downloaded to: {cache_dir}")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"S3 download failed: {e.stderr}")
-            raise RuntimeError(f"Failed to download from S3: {e.stderr}") from e
+        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                size = obj["Size"]
+
+                # Skip directories (keys ending with /)
+                if key.endswith("/"):
+                    continue
+
+                # Calculate relative path from prefix
+                rel_path = key[len(prefix):].lstrip("/") if prefix else key
+                local_path = cache_dir / rel_path
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Download file
+                logger.debug(f"Downloading: {key} ({size / 1024 / 1024:.1f} MB)")
+                s3_client.download_file(bucket_name, key, str(local_path))
+                total_files += 1
+                total_bytes += size
+
+        logger.info(
+            f"Downloaded {total_files} files ({total_bytes / 1024 / 1024 / 1024:.2f} GB) to: {cache_dir}"
+        )
 
         return cache_dir
 
