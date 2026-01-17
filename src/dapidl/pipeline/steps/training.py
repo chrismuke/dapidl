@@ -166,12 +166,13 @@ class TrainingStep(PipelineStep):
         """Validate step inputs.
 
         Requires:
-        - patches_path or lmdb_path: Path to LMDB/Zarr dataset
-        - class_mapping: Dict mapping class names to indices
+        - dataset_path, patches_path, or lmdb_path: Path to LMDB/Zarr dataset
+        - class_mapping, index_to_class, or class_names: Class information
         """
         outputs = artifacts.outputs
-        has_dataset = "patches_path" in outputs or "lmdb_path" in outputs
-        return has_dataset and "class_mapping" in outputs
+        has_dataset = any(k in outputs for k in ("dataset_path", "patches_path", "lmdb_path"))
+        has_class_info = any(k in outputs for k in ("class_mapping", "index_to_class", "class_names"))
+        return has_dataset and has_class_info
 
     def execute(self, artifacts: StepArtifacts) -> StepArtifacts:
         """Execute training step.
@@ -192,24 +193,62 @@ class TrainingStep(PipelineStep):
         inputs = artifacts.outputs
 
         # Resolve artifact URLs to local paths
-        # Support both 'lmdb_path' (from LMDB creation step) and 'patches_path' (legacy)
-        patches_path_str = inputs.get("lmdb_path") or inputs.get("patches_path")
+        # Support multiple naming conventions:
+        # - 'dataset_path' (from SOTA controller)
+        # - 'lmdb_path' (from LMDB creation step)
+        # - 'patches_path' (legacy)
+        patches_path_str = inputs.get("dataset_path") or inputs.get("lmdb_path") or inputs.get("patches_path")
         if not patches_path_str:
-            raise ValueError("patches_path or lmdb_path artifact is required")
+            raise ValueError("dataset_path, patches_path, or lmdb_path artifact is required")
         patches_path = resolve_artifact_path(patches_path_str, "patches_path")
         if patches_path is None:
             raise ValueError("Could not resolve patches_path artifact")
 
-        # class_mapping can be a URL to a JSON file or a dict directly
-        class_mapping_raw = inputs["class_mapping"]
-        if isinstance(class_mapping_raw, str):
-            class_mapping_path = resolve_artifact_path(class_mapping_raw, "class_mapping")
-            if class_mapping_path and class_mapping_path.exists():
-                class_mapping = json.loads(class_mapping_path.read_text())
+        # Class mapping can come from multiple sources:
+        # - 'class_mapping' (name -> index dict, legacy format)
+        # - 'index_to_class' (index -> name dict, from LMDB creation step)
+        # - 'class_names' (list of class names, from LMDB creation step)
+        class_mapping: dict[str, int] = {}
+
+        if "class_mapping" in inputs and inputs["class_mapping"]:
+            # Direct class_mapping (name -> index)
+            class_mapping_raw = inputs["class_mapping"]
+            if isinstance(class_mapping_raw, str):
+                class_mapping_path = resolve_artifact_path(class_mapping_raw, "class_mapping")
+                if class_mapping_path and class_mapping_path.exists():
+                    class_mapping = json.loads(class_mapping_path.read_text())
+                else:
+                    class_mapping = json.loads(class_mapping_raw)
             else:
-                class_mapping = json.loads(class_mapping_raw)
+                class_mapping = class_mapping_raw
+        elif "index_to_class" in inputs and inputs["index_to_class"]:
+            # index_to_class (index -> name), need to invert
+            idx_to_class_raw = inputs["index_to_class"]
+            if isinstance(idx_to_class_raw, str):
+                idx_to_class_path = resolve_artifact_path(idx_to_class_raw, "index_to_class")
+                if idx_to_class_path and idx_to_class_path.exists():
+                    idx_to_class = json.loads(idx_to_class_path.read_text())
+                else:
+                    idx_to_class = json.loads(idx_to_class_raw)
+            else:
+                idx_to_class = idx_to_class_raw
+            # Convert {idx: name} to {name: idx}
+            # Keys may be strings ("0", "1") or ints (0, 1)
+            class_mapping = {name: int(idx) for idx, name in idx_to_class.items()}
+        elif "class_names" in inputs and inputs["class_names"]:
+            # class_names list, derive mapping
+            class_names_raw = inputs["class_names"]
+            if isinstance(class_names_raw, str):
+                class_names_path = resolve_artifact_path(class_names_raw, "class_names")
+                if class_names_path and class_names_path.exists():
+                    class_names = json.loads(class_names_path.read_text())
+                else:
+                    class_names = json.loads(class_names_raw)
+            else:
+                class_names = class_names_raw
+            class_mapping = {name: idx for idx, name in enumerate(class_names)}
         else:
-            class_mapping = class_mapping_raw
+            raise ValueError("class_mapping, index_to_class, or class_names artifact is required")
 
         num_classes = len(class_mapping)
 
