@@ -576,6 +576,7 @@ class SOTAPipelineController:
             dataset_name=cfg.input.dataset_name,
             dataset_project=cfg.input.dataset_project,
             local_path=cfg.input.local_path,
+            s3_uri=cfg.input.s3_uri,
             platform=cfg.input.platform.value,
         )
         data_loader = DataLoaderStep(data_config)
