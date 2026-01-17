@@ -51,6 +51,9 @@ class SegmentationStepConfig:
     save_masks: bool = False
     output_format: str = "parquet"
 
+    # Skip logic
+    skip_if_exists: bool = True
+
 
 class SegmentationStep(PipelineStep):
     """Nucleus segmentation step.
@@ -158,6 +161,25 @@ class SegmentationStep(PipelineStep):
         # Update config with platform info
         if cfg.pixel_size_um == 0:
             cfg.pixel_size_um = self._get_pixel_size(platform)
+
+        # Check for existing outputs (skip if exists)
+        output_dir = data_path / "pipeline_outputs" / "segmentation"
+        centroids_path = output_dir / "centroids.parquet"
+        boundaries_path = output_dir / "boundaries.parquet"
+
+        if cfg.skip_if_exists and centroids_path.exists() and boundaries_path.exists():
+            logger.info(f"Skipping segmentation - outputs already exist at {output_dir}")
+            return StepArtifacts(
+                inputs=inputs,
+                outputs={
+                    **inputs,
+                    "boundaries_parquet": str(boundaries_path),
+                    "centroids_parquet": str(centroids_path),
+                    "masks_path": None,
+                    "matching_stats": {"skipped": True, "reason": "outputs_exist"},
+                    "segmenter_used": "skipped",
+                },
+            )
 
         # Load DAPI image
         dapi_image = self._load_dapi_image(data_path, platform)

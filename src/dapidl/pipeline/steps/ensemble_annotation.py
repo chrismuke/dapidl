@@ -270,7 +270,32 @@ class EnsembleAnnotationStep(PipelineStep):
         # Get raw dataset ID for cache key
         raw_dataset_id = inputs.get("raw_dataset_id", cfg.parent_dataset_id or "local")
 
-        # Check for existing annotations (skip logic)
+        # Check for existing LOCAL annotations first (skip logic)
+        output_dir = data_path / "pipeline_outputs" / "ensemble_annotation"
+        local_annotations = output_dir / "annotations.parquet"
+        local_mapping = output_dir / "class_mapping.json"
+
+        if cfg.skip_if_exists and local_annotations.exists() and local_mapping.exists():
+            logger.info(f"Skipping annotation - outputs already exist at {output_dir}")
+            with open(local_mapping) as f:
+                mapping_data = json.load(f)
+            return StepArtifacts(
+                inputs=inputs,
+                outputs={
+                    **inputs,
+                    "annotations_parquet": str(local_annotations),
+                    "class_mapping": mapping_data.get("class_mapping", {}),
+                    "index_to_class": mapping_data.get("index_to_class", {}),
+                    "annotated_dataset_id": None,
+                    "skipped": True,
+                    "annotation_stats": {
+                        "skipped": True,
+                        "reason": "local_outputs_exist",
+                    },
+                },
+            )
+
+        # Check for existing ClearML annotations (skip logic)
         if cfg.skip_if_exists:
             existing_id = self._check_existing_annotations(cfg, raw_dataset_id, platform)
             if existing_id:
@@ -279,12 +304,8 @@ class EnsembleAnnotationStep(PipelineStep):
                     annotations_path, mapping_data = cached
                     logger.info(f"Using cached annotations from dataset: {existing_id}")
 
-                    # Copy cached files to local output directory
-                    output_dir = data_path / "pipeline_outputs" / "ensemble_annotation"
+                    # Copy cached files to local output directory (reuse paths from above)
                     output_dir.mkdir(parents=True, exist_ok=True)
-
-                    local_annotations = output_dir / "annotations.parquet"
-                    local_mapping = output_dir / "class_mapping.json"
 
                     # Copy or link cached files
                     import shutil
