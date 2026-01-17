@@ -355,11 +355,10 @@ class HierarchicalTrainingStep(PipelineStep):
 
         logger.info(f"Uploading hierarchical models to S3: {s3_prefix}")
 
-        # Set up AWS credentials
+        # ALWAYS set correct credentials - don't rely on environment which may be corrupted
         env = os.environ.copy()
-        if "AWS_ACCESS_KEY_ID" not in env:
-            env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
-            env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
+        env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
+        env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
 
         s3_urls = {}
         files_to_upload = [

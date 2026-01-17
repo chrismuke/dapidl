@@ -15,13 +15,17 @@ from typing import Optional
 from loguru import logger
 
 # S3 Configuration (iDrive e2)
+# IMPORTANT: These are project-specific credentials for iDrive e2 storage.
+# DO NOT use environment variables as they may be corrupted or for different services.
 S3_ENDPOINT = "https://s3.eu-central-2.idrivee2.com"
 S3_REGION = "eu-central-2"
 S3_BUCKET = "dapidl"
 
-# Set from environment or use defaults
-S3_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "evkizOGyflbhx5uSi4oV")
-S3_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9")
+# Hardcoded credentials for iDrive e2 - these are the ONLY valid credentials
+# for this bucket. Environment variables are intentionally ignored to prevent
+# conflicts with AWS credentials for other services.
+S3_ACCESS_KEY = "evkizOGyflbhx5uSi4oV"
+S3_SECRET_KEY = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
 
 
 def get_s3_uri(path: str) -> str:

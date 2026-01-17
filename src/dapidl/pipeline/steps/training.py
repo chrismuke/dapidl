@@ -862,13 +862,11 @@ class TrainingStep(PipelineStep):
 
         logger.info(f"Uploading models to S3: {s3_prefix}")
 
-        # Set up AWS credentials from clearml.conf
+        # Set up AWS credentials for iDrive e2 storage
+        # ALWAYS set correct credentials - don't rely on environment which may be corrupted
         env = os.environ.copy()
-        # These should be set in clearml.conf or environment
-        if "AWS_ACCESS_KEY_ID" not in env:
-            # Try to get from clearml.conf (iDrive e2)
-            env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
-            env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
+        env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
+        env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
 
         s3_urls = {}
         files_to_upload = ["best_model.pt", "final_model.pt", "training_log.json"]
