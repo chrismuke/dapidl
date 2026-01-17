@@ -12,6 +12,7 @@ This step:
 from __future__ import annotations
 
 import json
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -535,13 +536,17 @@ class PatchExtractionStep(PipelineStep):
                             interpolation=cv2.INTER_LINEAR
                         )
 
-                    # Store patch as raw bytes (safe serialization)
-                    key = f"{n_extracted:08d}".encode()
-                    txn.put(key, patch.tobytes())
+                    # Store in format compatible with training.py:
+                    # - Key: big-endian uint64 (sequential index)
+                    # - Value: int64 label (8 bytes) + uint16 patch data
+                    key = struct.pack(">Q", n_extracted)
 
-                    # Store label in separate key
-                    label_key = f"label_{n_extracted:08d}".encode()
-                    txn.put(label_key, str(label).encode())
+                    # Pack label as int64 + patch as uint16
+                    label_bytes = np.array([label], dtype=np.int64).tobytes()
+                    patch_uint16 = patch.astype(np.uint16)
+                    value = label_bytes + patch_uint16.tobytes()
+
+                    txn.put(key, value)
 
                     n_extracted += 1
                     class_counts[label] = class_counts.get(label, 0) + 1
@@ -549,8 +554,10 @@ class PatchExtractionStep(PipelineStep):
                 logger.info(f"Extracted {n_extracted}/{n_cells} patches")
 
             # Store metadata as JSON (safe serialization)
+            # Note: Use both 'length' and 'n_patches' for backwards compatibility
             metadata = {
                 "length": n_extracted,
+                "n_patches": n_extracted,
                 "patch_size": patch_size,
                 "dtype": str(image.dtype),
                 "class_counts": {str(k): v for k, v in class_counts.items()},
