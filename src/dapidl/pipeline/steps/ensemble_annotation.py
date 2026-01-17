@@ -274,26 +274,43 @@ class EnsembleAnnotationStep(PipelineStep):
         output_dir = data_path / "pipeline_outputs" / "ensemble_annotation"
         local_annotations = output_dir / "annotations.parquet"
         local_mapping = output_dir / "class_mapping.json"
+        config_path = output_dir / "config.json"
 
         if cfg.skip_if_exists and local_annotations.exists() and local_mapping.exists():
-            logger.info(f"Skipping annotation - outputs already exist at {output_dir}")
-            with open(local_mapping) as f:
-                mapping_data = json.load(f)
-            return StepArtifacts(
-                inputs=inputs,
-                outputs={
-                    **inputs,
-                    "annotations_parquet": str(local_annotations),
-                    "class_mapping": mapping_data.get("class_mapping", {}),
-                    "index_to_class": mapping_data.get("index_to_class", {}),
-                    "annotated_dataset_id": None,
-                    "skipped": True,
-                    "annotation_stats": {
+            # Validate config matches (if config file exists)
+            config_matches = True
+            if config_path.exists():
+                with open(config_path) as f:
+                    saved_config = json.load(f)
+                # Check key annotation parameters
+                config_matches = (
+                    sorted(saved_config.get("celltypist_models", [])) == sorted(cfg.celltypist_models)
+                    and saved_config.get("include_singler") == cfg.include_singler
+                    and saved_config.get("singler_reference") == cfg.singler_reference
+                    and saved_config.get("fine_grained") == cfg.fine_grained
+                )
+                if not config_matches:
+                    logger.info("Config mismatch - re-running annotation")
+
+            if config_matches:
+                logger.info(f"Skipping annotation - outputs already exist at {output_dir}")
+                with open(local_mapping) as f:
+                    mapping_data = json.load(f)
+                return StepArtifacts(
+                    inputs=inputs,
+                    outputs={
+                        **inputs,
+                        "annotations_parquet": str(local_annotations),
+                        "class_mapping": mapping_data.get("class_mapping", {}),
+                        "index_to_class": mapping_data.get("index_to_class", {}),
+                        "annotated_dataset_id": None,
                         "skipped": True,
-                        "reason": "local_outputs_exist",
+                        "annotation_stats": {
+                            "skipped": True,
+                            "reason": "local_outputs_exist",
+                        },
                     },
-                },
-            )
+                )
 
         # Check for existing ClearML annotations (skip logic)
         if cfg.skip_if_exists:
@@ -383,6 +400,19 @@ class EnsembleAnnotationStep(PipelineStep):
         # Save outputs
         output_dir = data_path / "pipeline_outputs" / "ensemble_annotation"
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save config for skip logic validation
+        config_path = output_dir / "config.json"
+        with open(config_path, "w") as f:
+            json.dump({
+                "celltypist_models": cfg.celltypist_models,
+                "include_singler": cfg.include_singler,
+                "singler_reference": cfg.singler_reference,
+                "include_sctype": cfg.include_sctype,
+                "fine_grained": cfg.fine_grained,
+                "min_agreement": cfg.min_agreement,
+                "confidence_threshold": cfg.confidence_threshold,
+            }, f, indent=2)
 
         annotations_path = output_dir / "annotations.parquet"
         consensus_df.write_parquet(annotations_path)

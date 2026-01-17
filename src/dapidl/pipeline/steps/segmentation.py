@@ -166,20 +166,38 @@ class SegmentationStep(PipelineStep):
         output_dir = data_path / "pipeline_outputs" / "segmentation"
         centroids_path = output_dir / "centroids.parquet"
         boundaries_path = output_dir / "boundaries.parquet"
+        config_path = output_dir / "config.json"
 
         if cfg.skip_if_exists and centroids_path.exists() and boundaries_path.exists():
-            logger.info(f"Skipping segmentation - outputs already exist at {output_dir}")
-            return StepArtifacts(
-                inputs=inputs,
-                outputs={
-                    **inputs,
-                    "boundaries_parquet": str(boundaries_path),
-                    "centroids_parquet": str(centroids_path),
-                    "masks_path": None,
-                    "matching_stats": {"skipped": True, "reason": "outputs_exist"},
-                    "segmenter_used": "skipped",
-                },
-            )
+            # Validate config matches (if config file exists)
+            config_matches = True
+            if config_path.exists():
+                import json
+                with open(config_path) as f:
+                    saved_config = json.load(f)
+                # Check key segmentation parameters
+                config_matches = (
+                    saved_config.get("segmenter") == cfg.segmenter
+                    and saved_config.get("diameter") == cfg.diameter
+                    and saved_config.get("flow_threshold") == cfg.flow_threshold
+                    and saved_config.get("cellprob_threshold") == cfg.cellprob_threshold
+                )
+                if not config_matches:
+                    logger.info("Config mismatch - re-running segmentation")
+
+            if config_matches:
+                logger.info(f"Skipping segmentation - outputs already exist at {output_dir}")
+                return StepArtifacts(
+                    inputs=inputs,
+                    outputs={
+                        **inputs,
+                        "boundaries_parquet": str(boundaries_path),
+                        "centroids_parquet": str(centroids_path),
+                        "masks_path": None,
+                        "matching_stats": {"skipped": True, "reason": "outputs_exist"},
+                        "segmenter_used": "skipped",
+                    },
+                )
 
         # Load DAPI image
         dapi_image = self._load_dapi_image(data_path, platform)
@@ -219,6 +237,19 @@ class SegmentationStep(PipelineStep):
         # Save outputs
         output_dir = data_path / "pipeline_outputs" / "segmentation"
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save config for skip logic validation
+        import json
+        config_path = output_dir / "config.json"
+        with open(config_path, "w") as f:
+            json.dump({
+                "segmenter": cfg.segmenter,
+                "diameter": cfg.diameter,
+                "flow_threshold": cfg.flow_threshold,
+                "cellprob_threshold": cfg.cellprob_threshold,
+                "match_threshold_um": cfg.match_threshold_um,
+                "platform": platform,
+            }, f, indent=2)
 
         # Save boundaries
         boundaries_path = output_dir / "boundaries.parquet"
