@@ -168,7 +168,8 @@ class SegmentationStep(PipelineStep):
         boundaries_path = output_dir / "boundaries.parquet"
         config_path = output_dir / "config.json"
 
-        if cfg.skip_if_exists and centroids_path.exists() and boundaries_path.exists():
+        # Note: Only check centroids, boundaries may not exist if no matching cells
+        if cfg.skip_if_exists and centroids_path.exists():
             # Validate config matches (if config file exists)
             config_matches = True
             if config_path.exists():
@@ -191,7 +192,7 @@ class SegmentationStep(PipelineStep):
                     inputs=inputs,
                     outputs={
                         **inputs,
-                        "boundaries_parquet": str(boundaries_path),
+                        "boundaries_parquet": str(boundaries_path) if boundaries_path.exists() else None,
                         "centroids_parquet": str(centroids_path),
                         "masks_path": None,
                         "matching_stats": {"skipped": True, "reason": "outputs_exist"},
