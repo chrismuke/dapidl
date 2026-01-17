@@ -43,22 +43,54 @@ else:
     early_log(f"src path not found: {src_path}")
 
 
-def run_step(step_name: str):
-    """Run a pipeline step with configuration from ClearML Task parameters."""
+def run_step(step_name: str, local_mode: bool = False, local_config: dict | None = None):
+    """Run a pipeline step with configuration from ClearML Task parameters.
+
+    Args:
+        step_name: Name of the step to run
+        local_mode: If True, run without ClearML task (for local testing)
+        local_config: Config dict to use in local mode (instead of ClearML params)
+    """
     from clearml import Task
     from loguru import logger
 
     # Initialize/connect to existing task
     task = Task.current_task()
-    if task is None:
+
+    if task is None and not local_mode:
+        # Try to init a new task - this works when ClearML has set up env vars
+        try:
+            task = Task.init(
+                project_name="DAPIDL/pipelines",
+                task_name=f"local-{step_name}",
+                reuse_last_task_id=False,
+                auto_connect_frameworks=False,
+            )
+            logger.info(f"Created local task: {task.id}")
+        except Exception as e:
+            logger.warning(f"Could not create ClearML task: {e}")
+            # Fall back to local mode
+            local_mode = True
+            logger.info("Falling back to local mode (no ClearML tracking)")
+
+    if task is None and not local_mode:
         logger.error("No ClearML task found. This script must be run by ClearML agent.")
+        logger.error("Use --local flag for local execution without ClearML.")
         sys.exit(1)
 
     logger.info(f"Running step: {step_name}")
-    logger.info(f"Task ID: {task.id}")
+    if task:
+        logger.info(f"Task ID: {task.id}")
+    else:
+        logger.info("Running in local mode (no ClearML task)")
 
-    # Get step configuration from task parameters
-    step_config = task.get_parameters_as_dict().get("step_config", {})
+    # Get step configuration from task parameters or local config
+    if local_mode and local_config:
+        step_config = local_config
+    elif task:
+        step_config = task.get_parameters_as_dict().get("step_config", {})
+    else:
+        step_config = {}
     logger.info(f"Step config: {step_config}")
 
     # Import and run the appropriate step
@@ -246,34 +278,37 @@ def run_step(step_name: str):
     logger.info(f"Executing step: {step_name}")
     result = step.execute(artifacts)
 
-    # Upload output artifacts
+    # Upload output artifacts (only if we have a ClearML task)
     # IMPORTANT: Never upload large data (datasets, models) directly to ClearML
     # Only upload: metrics, small configs, and path references
     # Large data should go to S3 and only the URI stored in ClearML
-    for key, value in result.outputs.items():
-        if isinstance(value, (dict, list)):
-            # Small JSON data - OK to upload
-            task.upload_artifact(key, json.dumps(value))
-        elif isinstance(value, (str, Path)):
-            path = Path(value)
-            if path.exists():
-                if path.is_dir():
-                    # Directory path - store as path reference, NOT upload
-                    # This prevents uploading large datasets to ClearML
-                    logger.info(f"Storing local path reference for {key}: {path}")
-                    task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
-                elif path.stat().st_size > 10 * 1024 * 1024:  # > 10MB
-                    # Large file - store path reference, should be uploaded to S3 separately
-                    logger.warning(f"Large file {key} ({path.stat().st_size / 1024 / 1024:.1f}MB) - storing path reference only")
-                    task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
+    if task:
+        for key, value in result.outputs.items():
+            if isinstance(value, (dict, list)):
+                # Small JSON data - OK to upload
+                task.upload_artifact(key, json.dumps(value))
+            elif isinstance(value, (str, Path)):
+                path = Path(value)
+                if path.exists():
+                    if path.is_dir():
+                        # Directory path - store as path reference, NOT upload
+                        # This prevents uploading large datasets to ClearML
+                        logger.info(f"Storing local path reference for {key}: {path}")
+                        task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
+                    elif path.stat().st_size > 10 * 1024 * 1024:  # > 10MB
+                        # Large file - store path reference, should be uploaded to S3 separately
+                        logger.warning(f"Large file {key} ({path.stat().st_size / 1024 / 1024:.1f}MB) - storing path reference only")
+                        task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
+                    else:
+                        # Small file - OK to upload
+                        task.upload_artifact(key, str(value))
                 else:
-                    # Small file - OK to upload
+                    # Non-existent path or string value - store as-is
                     task.upload_artifact(key, str(value))
             else:
-                # Non-existent path or string value - store as-is
                 task.upload_artifact(key, str(value))
-        else:
-            task.upload_artifact(key, str(value))
+    else:
+        logger.info(f"Skipping artifact upload (local mode)")
 
     logger.info(f"Step {step_name} completed successfully")
     logger.info(f"Outputs: {list(result.outputs.keys())}")
@@ -306,12 +341,17 @@ def main():
         choices=valid_steps,
         help="Step to execute",
     )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Run in local mode without ClearML task tracking",
+    )
     args, unknown = parser.parse_known_args()
-    early_log(f"Parsed args: step={args.step}, unknown={unknown}")
+    early_log(f"Parsed args: step={args.step}, local={args.local}, unknown={unknown}")
 
     if args.step:
-        early_log(f"Running step '{args.step}' from command line argument")
-        run_step(args.step)
+        early_log(f"Running step '{args.step}' from command line argument (local={args.local})")
+        run_step(args.step, local_mode=args.local)
         return
 
     # Method 0.5: Extract step name from script filename
@@ -412,7 +452,8 @@ def main():
 
     # Final fallback - require --step argument
     early_log("ERROR: Could not determine step to run")
-    early_log("Please provide --step argument or run under ClearML agent")
+    early_log("Please provide --step argument (e.g., --step data_loader)")
+    early_log("For local execution without ClearML: --step data_loader --local")
     sys.exit(1)
 
 
