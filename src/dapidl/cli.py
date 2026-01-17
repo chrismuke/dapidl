@@ -2740,7 +2740,12 @@ def create_base_tasks(project: str, include_universal: bool) -> None:
 @click.option(
     "--local",
     is_flag=True,
-    help="Run locally (no ClearML agents)",
+    help="Run locally (no ClearML agents, no caching)",
+)
+@click.option(
+    "--local-cached",
+    is_flag=True,
+    help="Run locally WITH ClearML caching (recommended for development)",
 )
 @click.option(
     "--create-tasks",
@@ -2755,6 +2760,7 @@ def sota_pipeline(
     fine_grained: bool,
     epochs: int,
     local: bool,
+    local_cached: bool,
     create_tasks: bool,
 ) -> None:
     """Run state-of-the-art pipeline with best practices from benchmarking.
@@ -2780,7 +2786,10 @@ def sota_pipeline(
         # Remote execution on ClearML
         dapidl clearml-pipeline sota --dataset-id abc123
 
-        # Local execution with Xenium data
+        # Local execution with ClearML caching (recommended for development)
+        dapidl clearml-pipeline sota --local-path /path/to/xenium --local-cached
+
+        # Local execution without caching (fastest, no ClearML dependency)
         dapidl clearml-pipeline sota --local-path /path/to/xenium --local
 
         # Fine-grained classification with more epochs
@@ -2832,8 +2841,15 @@ def sota_pipeline(
             console.print("[dim]Base tasks created. Run with --dataset-id, --local-path, or --s3-uri to execute pipeline.[/dim]")
             return
 
-    if local:
-        console.print("[cyan]Running locally...[/cyan]\n")
+    if local_cached:
+        console.print("[cyan]Running locally WITH ClearML caching...[/cyan]")
+        console.print("[dim]Steps will run as subprocesses with cache_executed_step support[/dim]\n")
+        controller.create_pipeline()
+        pipeline_id = controller.run_locally_with_caching()
+        console.print(f"\n[green]✓ SOTA Pipeline complete![/green]")
+        console.print(f"  Pipeline ID: {pipeline_id}")
+    elif local:
+        console.print("[cyan]Running locally (no caching)...[/cyan]\n")
         results = controller.run_locally()
 
         if "training" in results:

@@ -528,8 +528,43 @@ class SOTAPipelineController:
 
         return self._pipeline.id
 
+    def run_locally_with_caching(self, wait: bool = True) -> str:
+        """Run pipeline locally with ClearML caching support.
+
+        Uses ClearML's start_locally(run_pipeline_steps_locally=True) to:
+        - Execute steps as local subprocesses (no remote agents needed)
+        - Still use ClearML's task system for tracking
+        - Leverage cache_executed_step for deduplication
+
+        This is the recommended mode for local development with caching.
+
+        Args:
+            wait: Wait for completion
+
+        Returns:
+            Pipeline run ID
+        """
+        if self._pipeline is None:
+            self.create_pipeline()
+
+        logger.info("Starting SOTA pipeline with local execution + ClearML caching...")
+        logger.info("Steps will run as subprocesses with cache_executed_step support")
+
+        # Run both controller AND steps locally, but still use ClearML tasks
+        # This enables cache_executed_step to work for local runs
+        self._pipeline.start_locally(run_pipeline_steps_locally=True)
+
+        if wait:
+            self._pipeline.wait()
+            logger.info("Pipeline completed")
+
+        return self._pipeline.id
+
     def run_locally(self) -> dict[str, Any]:
         """Run pipeline steps locally without ClearML agents.
+
+        NOTE: This bypasses ClearML entirely - no caching support.
+        For local runs with caching, use run_locally_with_caching() instead.
 
         Each step is executed in sequence, passing outputs between steps.
 
