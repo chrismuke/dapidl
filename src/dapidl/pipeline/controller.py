@@ -100,6 +100,117 @@ class PipelineConfig:
     # Caching - ClearML will skip steps with unchanged inputs/params
     cache_training: bool = False  # Disabled by default (random seed variance)
 
+    def validate(self) -> list[str]:
+        """Validate configuration and return list of errors (empty if valid).
+
+        Returns:
+            List of error messages. Empty list means valid configuration.
+        """
+        errors = []
+
+        # Validate enum-like fields
+        valid_platforms = {"auto", "xenium", "merscope"}
+        if self.platform not in valid_platforms:
+            errors.append(
+                f"Invalid platform '{self.platform}'. "
+                f"Must be one of: {', '.join(sorted(valid_platforms))}"
+            )
+
+        valid_segmenters = {"cellpose", "native"}
+        if self.segmenter not in valid_segmenters:
+            errors.append(
+                f"Invalid segmenter '{self.segmenter}'. "
+                f"Must be one of: {', '.join(sorted(valid_segmenters))}"
+            )
+
+        valid_annotators = {"celltypist", "ground_truth", "popv"}
+        if self.annotator not in valid_annotators:
+            errors.append(
+                f"Invalid annotator '{self.annotator}'. "
+                f"Must be one of: {', '.join(sorted(valid_annotators))}"
+            )
+
+        valid_patch_sizes = {32, 64, 128, 256}
+        if self.patch_size not in valid_patch_sizes:
+            errors.append(
+                f"Invalid patch_size {self.patch_size}. "
+                f"Must be one of: {', '.join(str(s) for s in sorted(valid_patch_sizes))}"
+            )
+
+        valid_strategies = {"single", "consensus", "hierarchical"}
+        if self.annotation_strategy not in valid_strategies:
+            errors.append(
+                f"Invalid annotation_strategy '{self.annotation_strategy}'. "
+                f"Must be one of: {', '.join(sorted(valid_strategies))}"
+            )
+
+        valid_formats = {"lmdb", "zarr"}
+        if self.output_format not in valid_formats:
+            errors.append(
+                f"Invalid output_format '{self.output_format}'. "
+                f"Must be one of: {', '.join(sorted(valid_formats))}"
+            )
+
+        valid_backbones = {
+            "efficientnetv2_rw_s", "efficientnet_b0", "efficientnet_b1",
+            "convnext_tiny", "convnext_small", "resnet50", "resnet34",
+        }
+        if self.backbone not in valid_backbones:
+            errors.append(
+                f"Invalid backbone '{self.backbone}'. "
+                f"Must be one of: {', '.join(sorted(valid_backbones))}"
+            )
+
+        valid_normalizations = {"adaptive", "fixed", "none"}
+        if self.normalization not in valid_normalizations:
+            errors.append(
+                f"Invalid normalization '{self.normalization}'. "
+                f"Must be one of: {', '.join(sorted(valid_normalizations))}"
+            )
+
+        valid_templates = {"default", "minimal", "detailed"}
+        if self.doc_template not in valid_templates:
+            errors.append(
+                f"Invalid doc_template '{self.doc_template}'. "
+                f"Must be one of: {', '.join(sorted(valid_templates))}"
+            )
+
+        # Validate numeric ranges
+        if self.epochs < 1 or self.epochs > 500:
+            errors.append(f"epochs must be 1-500, got {self.epochs}")
+
+        if self.batch_size < 1 or self.batch_size > 1024:
+            errors.append(f"batch_size must be 1-1024, got {self.batch_size}")
+
+        if self.confidence_threshold < 0.0 or self.confidence_threshold > 1.0:
+            errors.append(
+                f"confidence_threshold must be 0.0-1.0, got {self.confidence_threshold}"
+            )
+
+        if self.learning_rate <= 0 or self.learning_rate > 1.0:
+            errors.append(f"learning_rate must be >0 and <=1.0, got {self.learning_rate}")
+
+        if self.diameter < 5 or self.diameter > 200:
+            errors.append(f"diameter must be 5-200 pixels, got {self.diameter}")
+
+        # Validate data source
+        if not self.dataset_id and not self.local_path:
+            errors.append("Either dataset_id or local_path must be provided")
+
+        # Validate ground truth requirements
+        if self.annotator == "ground_truth" and not self.ground_truth_file:
+            errors.append("ground_truth_file required when annotator='ground_truth'")
+
+        return errors
+
+    def validate_or_raise(self) -> None:
+        """Validate configuration and raise ValueError if invalid."""
+        errors = self.validate()
+        if errors:
+            raise ValueError(
+                f"Invalid pipeline configuration:\n  - " + "\n  - ".join(errors)
+            )
+
 
 class DAPIDLPipelineController:
     """Orchestrates the DAPIDL pipeline using ClearML.
@@ -136,6 +247,9 @@ class DAPIDLPipelineController:
 
         cfg = self.config
 
+        # Validate configuration before creating pipeline
+        cfg.validate_or_raise()
+
         self._pipeline = PipelineController(
             name=cfg.name,
             project=cfg.project,
@@ -147,36 +261,47 @@ class DAPIDLPipelineController:
         if cfg.execute_remotely:
             self._pipeline.set_default_execution_queue(cfg.default_queue)
 
-        # Add pipeline-level parameters
+        # Add pipeline-level parameters with clear descriptions of allowed values
+        # Note: ClearML free edition doesn't support dropdown UI - descriptions serve as guidance
         self._pipeline.add_parameter(
             name="dataset_id",
             default=cfg.dataset_id or "",
-            description="ClearML Dataset ID for input data",
+            description="ClearML Dataset ID (32-char hex) or leave empty for local_path",
         )
         self._pipeline.add_parameter(
             name="platform",
             default=cfg.platform,
-            description="Platform: auto, xenium, or merscope",
+            description="[auto|xenium|merscope] Platform type. 'auto' detects from files.",
         )
         self._pipeline.add_parameter(
             name="segmenter",
             default=cfg.segmenter,
-            description="Segmentation method: cellpose or native",
+            description="[cellpose|native] 'cellpose'=GPU deep learning, 'native'=platform boundaries",
         )
         self._pipeline.add_parameter(
             name="annotator",
             default=cfg.annotator,
-            description="Annotation method: celltypist, ground_truth, or popv",
+            description="[celltypist|ground_truth|popv] Annotation method for cell typing",
         )
         self._pipeline.add_parameter(
             name="patch_size",
             default=cfg.patch_size,
-            description="Patch size in pixels: 32, 64, 128, or 256",
+            description="[32|64|128|256] Patch size in pixels. 128 recommended for most cases.",
+        )
+        self._pipeline.add_parameter(
+            name="backbone",
+            default=cfg.backbone,
+            description="[efficientnetv2_rw_s|convnext_tiny|resnet50] CNN backbone architecture",
         )
         self._pipeline.add_parameter(
             name="epochs",
             default=cfg.epochs,
-            description="Number of training epochs",
+            description="Training epochs (1-200). Use 1-2 for testing, 50+ for production.",
+        )
+        self._pipeline.add_parameter(
+            name="fine_grained",
+            default=cfg.fine_grained,
+            description="[true|false] Fine-grained cell types (~20) vs coarse (3: Epi/Imm/Str)",
         )
 
         # Step 1: Data Loader
