@@ -62,6 +62,9 @@ class PatchExtractionConfig:
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
 
+    # Caching
+    skip_if_exists: bool = True
+
 
 class PatchExtractionStep(PipelineStep):
     """Extract nucleus-centered patches for training.
@@ -171,6 +174,47 @@ class PatchExtractionStep(PipelineStep):
         else:
             platform = str(platform_value)
 
+        # Check for existing outputs (skip if exists)
+        output_dir = data_path / "pipeline_outputs" / "patches"
+        if cfg.output_format == "lmdb":
+            patches_path = output_dir / "patches.lmdb"
+        else:
+            patches_path = output_dir / "patches.zarr"
+        metadata_path = output_dir / "metadata.parquet"
+        config_path = output_dir / "config.json"
+
+        if cfg.skip_if_exists and patches_path.exists() and metadata_path.exists():
+            # Validate config matches (if config file exists)
+            import json
+
+            config_matches = True
+            if config_path.exists():
+                with open(config_path) as f:
+                    saved_config = json.load(f)
+                # Check key patch extraction parameters
+                config_matches = (
+                    saved_config.get("patch_size") == cfg.patch_size
+                    and saved_config.get("output_format") == cfg.output_format
+                    and saved_config.get("normalize_physical_size") == cfg.normalize_physical_size
+                    and saved_config.get("exclude_edge_cells") == cfg.exclude_edge_cells
+                )
+                if not config_matches:
+                    logger.info("Config mismatch - re-running patch extraction")
+
+            if config_matches:
+                logger.info(f"Skipping patch extraction - outputs already exist at {output_dir}")
+                return StepArtifacts(
+                    inputs=inputs,
+                    outputs={
+                        **inputs,
+                        "patches_path": str(patches_path),
+                        "metadata_parquet": str(metadata_path),
+                        "dataset_id": None,
+                        "extraction_stats": {"skipped": True, "reason": "outputs_exist"},
+                        "class_mapping": inputs.get("class_mapping", {}),
+                    },
+                )
+
         # Load DAPI image
         dapi_image = self._load_dapi_image(data_path, platform)
         logger.info(f"Loaded DAPI: {dapi_image.shape}, dtype={dapi_image.dtype}")
@@ -264,6 +308,23 @@ class PatchExtractionStep(PipelineStep):
         if cfg.create_dataset:
             dataset_id = self._create_clearml_dataset(
                 output_dir, cfg, inputs, stats
+            )
+
+        # Save config for cache validation
+        import json
+
+        config_path = output_dir / "config.json"
+        with open(config_path, "w") as f:
+            json.dump(
+                {
+                    "patch_size": cfg.patch_size,
+                    "output_format": cfg.output_format,
+                    "normalize_physical_size": cfg.normalize_physical_size,
+                    "exclude_edge_cells": cfg.exclude_edge_cells,
+                    "target_pixel_size_um": cfg.target_pixel_size_um,
+                },
+                f,
+                indent=2,
             )
 
         return StepArtifacts(

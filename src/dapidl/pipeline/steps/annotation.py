@@ -53,6 +53,9 @@ class AnnotationStepConfig:
     fine_grained: bool = False
     filter_category: str | None = None  # Filter to specific category
 
+    # Caching
+    skip_if_exists: bool = True
+
 
 def _compute_class_mapping(annotations_df: pl.DataFrame, fine_grained: bool) -> dict[str, int]:
     """Compute class mapping from annotations DataFrame.
@@ -204,6 +207,48 @@ class AnnotationStep(PipelineStep):
         else:
             platform = str(platform_value)
 
+        # Check for existing outputs (skip if exists)
+        output_dir = data_path / "pipeline_outputs" / "annotation"
+        annotations_path = output_dir / "annotations.parquet"
+        mapping_path = output_dir / "class_mapping.json"
+        config_path = output_dir / "config.json"
+
+        if cfg.skip_if_exists and annotations_path.exists() and mapping_path.exists():
+            # Validate config matches (if config file exists)
+            import json
+
+            config_matches = True
+            if config_path.exists():
+                with open(config_path) as f:
+                    saved_config = json.load(f)
+                # Check key annotation parameters
+                config_matches = (
+                    saved_config.get("annotator") == cfg.annotator
+                    and saved_config.get("strategy") == cfg.strategy
+                    and saved_config.get("model_names") == cfg.model_names
+                    and saved_config.get("fine_grained") == cfg.fine_grained
+                    and saved_config.get("confidence_threshold") == cfg.confidence_threshold
+                )
+                if not config_matches:
+                    logger.info("Config mismatch - re-running annotation")
+
+            if config_matches:
+                logger.info(f"Skipping annotation - outputs already exist at {output_dir}")
+                # Load cached class_mapping
+                with open(mapping_path) as f:
+                    mapping_data = json.load(f)
+                return StepArtifacts(
+                    inputs=inputs,
+                    outputs={
+                        **inputs,
+                        "annotations_parquet": str(annotations_path),
+                        "class_mapping": mapping_data["class_mapping"],
+                        "index_to_class": mapping_data["index_to_class"],
+                        "annotation_stats": {"skipped": True, "reason": "outputs_exist"},
+                        "annotator_used": "skipped",
+                    },
+                )
+
         # Create annotation config
         annot_config = AnnotationConfig(
             method=cfg.annotator,
@@ -297,6 +342,21 @@ class AnnotationStep(PipelineStep):
                 {
                     "class_mapping": class_mapping,
                     "index_to_class": index_to_class,
+                },
+                f,
+                indent=2,
+            )
+
+        # Save config for cache validation
+        config_path = output_dir / "config.json"
+        with open(config_path, "w") as f:
+            json.dump(
+                {
+                    "annotator": cfg.annotator,
+                    "strategy": cfg.strategy,
+                    "model_names": cfg.model_names,
+                    "fine_grained": cfg.fine_grained,
+                    "confidence_threshold": cfg.confidence_threshold,
                 },
                 f,
                 indent=2,
