@@ -13,6 +13,12 @@ from dapidl.models.hierarchical import (
     HierarchyConfig,
     HierarchicalOutput,
 )
+from dapidl.models.domain_adaptation import (
+    adapt_batch_norm,
+    create_adaptation_loader,
+    compute_domain_shift_metrics,
+    AdaptiveInference,
+)
 
 __all__ = [
     "create_backbone",
@@ -25,4 +31,9 @@ __all__ = [
     "HierarchicalClassifier",
     "HierarchyConfig",
     "HierarchicalOutput",
+    # Domain adaptation
+    "adapt_batch_norm",
+    "create_adaptation_loader",
+    "compute_domain_shift_metrics",
+    "AdaptiveInference",
 ]

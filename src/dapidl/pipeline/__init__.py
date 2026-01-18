@@ -93,6 +93,12 @@ from dapidl.pipeline.unified_controller import (
     PipelineResult,
     create_unified_pipeline,
 )
+# State-of-the-Art Controller (v3.0) - best practices from benchmarking
+from dapidl.pipeline.sota_controller import (
+    SOTAPipelineController,
+    create_sota_config,
+    create_sota_pipeline,
+)
 from dapidl.pipeline.registry import (
     get_annotator,
     get_segmenter,
@@ -142,6 +148,10 @@ __all__ = [
     "SegmentationResult",
     "AnnotationConfig",
     "AnnotationResult",
+    # State-of-the-Art Controller (v3.0) - recommended for production
+    "SOTAPipelineController",
+    "create_sota_config",
+    "create_sota_pipeline",
     # Registry functions
     "register_segmenter",
     "register_annotator",

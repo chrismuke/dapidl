@@ -368,6 +368,7 @@ MERSCOPE_BREAST_GT_TO_CL = {
     "Epithelial": "CL:0000066",
     "Luminal": "CL:0002325",
     "Basal": "CL:0000646",
+    "basal": "CL:0000646",  # Lowercase variant
     "T_Cell": "CL:0000084",
     "CD4_T_Cell": "CL:0000624",
     "CD8_T_Cell": "CL:0000625",
@@ -379,6 +380,18 @@ MERSCOPE_BREAST_GT_TO_CL = {
     "Fibroblast": "CL:0000057",
     "Pericyte": "CL:0000669",
     "Endothelial": "CL:0000115",
+    # MERSCOPE consensus annotation labels (Jan 2025)
+    "Fibro-major": "CL:0000057",  # Fibroblast
+    "Fibro-matrix": "CL:0000057",  # Fibroblast (matrix-producing)
+    "Lumsec-HLA": "CL:0002325",  # Luminal secretory epithelial
+    "Lumsec-basal": "CL:0002325",  # Luminal-basal transitional
+    "Lumsec-myo": "CL:0000185",  # Myoepithelial (luminal-myo)
+    "Lymph-major": "CL:0000542",  # Lymphocyte (general)
+    "Macro-lipo": "CL:0000235",  # Lipid-associated macrophage
+    "Mono-classical": "CL:0000860",  # Classical monocyte
+    "Mono-NonClassical": "CL:0000875",  # Non-classical monocyte
+    "Vas-arterial": "CL:1000413",  # Arterial endothelial
+    "Vas-capillary": "CL:0002144",  # Capillary endothelial
 }
 
 # Common pathology terms

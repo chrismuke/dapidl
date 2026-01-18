@@ -356,7 +356,7 @@ class OntologyConfig(BaseModel):
     ClearML GUI Group: Cell Ontology Standardization
     """
 
-    model_config = ConfigDict(extra="forbid", validate_default=True)
+    model_config = ConfigDict(extra="forbid", validate_default=True, populate_by_name=True)
 
     enabled: bool = Field(
         default=True,
@@ -708,7 +708,7 @@ class ValidationConfig(BaseModel):
     ClearML GUI Group: Validation (optional)
     """
 
-    model_config = ConfigDict(extra="forbid", validate_default=True)
+    model_config = ConfigDict(extra="forbid", validate_default=True, populate_by_name=True)
 
     enabled: bool = Field(
         default=False,
@@ -753,7 +753,7 @@ class TransferTestConfig(BaseModel):
     ClearML GUI Group: Transfer Testing (optional)
     """
 
-    model_config = ConfigDict(extra="forbid", validate_default=True)
+    model_config = ConfigDict(extra="forbid", validate_default=True, populate_by_name=True)
 
     enabled: bool = Field(
         default=False,
@@ -813,7 +813,7 @@ class DocumentationConfig(BaseModel):
     ClearML GUI Group: Documentation (optional)
     """
 
-    model_config = ConfigDict(extra="forbid", validate_default=True)
+    model_config = ConfigDict(extra="forbid", validate_default=True, populate_by_name=True)
 
     enabled: bool = Field(
         default=False,
