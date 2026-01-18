@@ -203,6 +203,11 @@ class PatchExtractionStep(PipelineStep):
 
             if config_matches:
                 logger.info(f"Skipping patch extraction - outputs already exist at {output_dir}")
+                existing_class_mapping = inputs.get("class_mapping", {})
+                # Derive additional outputs for training step
+                num_classes = len(existing_class_mapping) if existing_class_mapping else 3
+                class_names = [k for k, v in sorted(existing_class_mapping.items(), key=lambda x: x[1])] if existing_class_mapping else ["Epithelial", "Immune", "Stromal"]
+                index_to_class = {v: k for k, v in existing_class_mapping.items()} if existing_class_mapping else {0: "Epithelial", 1: "Immune", 2: "Stromal"}
                 return StepArtifacts(
                     inputs=inputs,
                     outputs={
@@ -211,7 +216,10 @@ class PatchExtractionStep(PipelineStep):
                         "metadata_parquet": str(metadata_path),
                         "dataset_id": None,
                         "extraction_stats": {"skipped": True, "reason": "outputs_exist"},
-                        "class_mapping": inputs.get("class_mapping", {}),
+                        "class_mapping": existing_class_mapping,
+                        "num_classes": num_classes,
+                        "class_names": class_names,
+                        "index_to_class": index_to_class,
                     },
                 )
 
@@ -327,6 +335,11 @@ class PatchExtractionStep(PipelineStep):
                 indent=2,
             )
 
+        # Derive additional outputs for training step
+        num_classes = len(class_mapping) if class_mapping else 3
+        class_names = [k for k, v in sorted(class_mapping.items(), key=lambda x: x[1])] if class_mapping else ["Epithelial", "Immune", "Stromal"]
+        index_to_class = {v: k for k, v in class_mapping.items()} if class_mapping else {0: "Epithelial", 1: "Immune", 2: "Stromal"}
+
         return StepArtifacts(
             inputs=inputs,
             outputs={
@@ -336,6 +349,9 @@ class PatchExtractionStep(PipelineStep):
                 "dataset_id": dataset_id,
                 "extraction_stats": stats,
                 "class_mapping": class_mapping,
+                "num_classes": num_classes,
+                "class_names": class_names,
+                "index_to_class": index_to_class,
             },
         )
 

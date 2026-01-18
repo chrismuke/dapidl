@@ -272,9 +272,11 @@ class DAPIDLPipelineController:
                 "step_config/batch_size": cfg.batch_size,
                 "step_config/learning_rate": cfg.learning_rate,
                 # Pass outputs from patch_extraction
-                "step_config/dataset_path": "${patch_extraction.artifacts.dataset_path.url}",
+                # Note: patches_path is the LMDB dataset, num_classes/class_names/index_to_class from annotations
+                "step_config/dataset_path": "${patch_extraction.artifacts.patches_path.url}",
                 "step_config/num_classes": "${patch_extraction.artifacts.num_classes.url}",
                 "step_config/class_names": "${patch_extraction.artifacts.class_names.url}",
+                "step_config/index_to_class": "${patch_extraction.artifacts.index_to_class.url}",
             },
             execution_queue=cfg.gpu_queue if cfg.execute_remotely else None,
             cache_executed_step=cfg.cache_training,  # Configurable
