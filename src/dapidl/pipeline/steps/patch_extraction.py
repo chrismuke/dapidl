@@ -806,9 +806,10 @@ class PatchExtractionStep(PipelineStep):
 
         task_name = task_name or f"step-{self.name}"
 
-        # Use the runner script for remote execution (avoids uv entry point issues)
+        # Use the per-step runner script for remote execution
+        # Per-step scripts handle task ID discovery via workers API
         # Path: src/dapidl/pipeline/steps -> 5 parents to reach repo root
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
 
         self._task = Task.create(
             project_name=project,
