@@ -19,6 +19,11 @@ from dapidl.data.dataset import DAPIDLDataset, DAPIDLDatasetWithHeavyAug, create
 from dapidl.models.classifier import CellTypeClassifier
 from dapidl.training.losses import get_class_weights
 
+# Import types for type hints (avoid circular imports)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from dapidl.data.multi_tissue_dataset import MultiTissueConfig
+
 
 class Trainer:
     """Training orchestrator for DAPIDL.
@@ -28,7 +33,7 @@ class Trainer:
 
     def __init__(
         self,
-        data_path: str | Path,
+        data_path: str | Path | None = None,
         output_path: str | Path = "outputs",
         # Model params
         backbone_name: str = "efficientnetv2_rw_s",
@@ -58,11 +63,13 @@ class Trainer:
         backend: str = "pytorch",
         # Augmentation options
         use_heavy_aug: bool = False,
+        # Multi-tissue training
+        multi_tissue_config: "MultiTissueConfig | None" = None,
     ) -> None:
         """Initialize trainer.
 
         Args:
-            data_path: Path to prepared dataset
+            data_path: Path to prepared dataset (None if using multi_tissue_config)
             output_path: Path for outputs (checkpoints, logs)
             backbone_name: Name of timm backbone
             pretrained: Use pretrained weights
@@ -84,8 +91,14 @@ class Trainer:
             use_amp: Use automatic mixed precision (fp16) for faster training
             backend: Data loading backend ("pytorch" or "dali")
             use_heavy_aug: Use heavy augmentation for rare classes
+            multi_tissue_config: Configuration for multi-tissue training (alternative to data_path)
         """
-        self.data_path = Path(data_path)
+        self.data_path = Path(data_path) if data_path else None
+        self.multi_tissue_config = multi_tissue_config
+
+        # Validate data source
+        if self.data_path is None and self.multi_tissue_config is None:
+            raise ValueError("Either data_path or multi_tissue_config must be provided")
         self.output_path = Path(output_path)
         self.output_path.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +158,15 @@ class Trainer:
 
     def _setup_data(self) -> None:
         """Set up data loaders."""
+        # Handle multi-tissue config (runtime combination of multiple LMDB datasets)
+        if self.multi_tissue_config is not None:
+            self._setup_multi_tissue_data()
+            return
+
         logger.info(f"Setting up data loaders (backend={self.backend})...")
+
+        # Type narrowing - if multi_tissue_config is None, data_path must be set (validated in __init__)
+        assert self.data_path is not None, "data_path required for single-dataset training"
 
         # Auto-filter classes with too few samples for stratified splitting
         # With 70/15/15 split, need at least ceil(2/0.15) ≈ 14 samples per class
@@ -191,6 +212,49 @@ class Trainer:
             self._class_weights = None  # Computed in _setup_model for PyTorch
 
         logger.info(f"Data setup complete: {self.num_classes} classes")
+
+    def _setup_multi_tissue_data(self) -> None:
+        """Set up data loaders for multi-tissue training."""
+        from dapidl.data.multi_tissue_dataset import (
+            create_multi_tissue_splits,
+            create_multi_tissue_dataloaders,
+        )
+
+        # Type narrowing - this is validated in __init__
+        assert self.multi_tissue_config is not None
+
+        logger.info("Setting up multi-tissue data loaders...")
+        logger.info(f"  Datasets: {len(self.multi_tissue_config.datasets)}")
+        for ds in self.multi_tissue_config.datasets:
+            logger.info(f"    - {ds.tissue} ({ds.platform}): {ds.path}")
+
+        # Create train/val/test splits
+        train_ds, val_ds, test_ds = create_multi_tissue_splits(
+            self.multi_tissue_config,
+            train_ratio=0.7,
+            val_ratio=0.15,
+            test_ratio=0.15,
+            seed=self.seed,
+            stratify_by="both",  # Stratify by tissue and label
+        )
+
+        # Create data loaders
+        self.train_loader, self.val_loader, self.test_loader = create_multi_tissue_dataloaders(
+            train_ds,
+            val_ds,
+            test_ds,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+        )
+
+        self.num_classes = train_ds.num_classes
+        self.class_names = train_ds.class_names
+        self._class_weights = None  # Will be computed in _setup_model
+
+        logger.info(f"Multi-tissue data setup complete: {self.num_classes} classes")
+        logger.info(f"  Train: {len(train_ds)} samples")
+        logger.info(f"  Val: {len(val_ds)} samples")
+        logger.info(f"  Test: {len(test_ds)} samples")
 
     def _setup_model(self) -> None:
         """Set up model, optimizer, scheduler, and loss."""
@@ -259,17 +323,26 @@ class Trainer:
             )
 
             # Load dataset info for class distribution
-            dataset_info_path = self.data_path / "dataset_info.json"
             dataset_info = {}
-            if dataset_info_path.exists():
-                with open(dataset_info_path) as f:
-                    dataset_info = json.load(f)
+            if self.data_path is not None:
+                dataset_info_path = self.data_path / "dataset_info.json"
+                if dataset_info_path.exists():
+                    with open(dataset_info_path) as f:
+                        dataset_info = json.load(f)
 
             # Capture reproducibility info
-            repro_info = get_reproducibility_info(
-                dataset_path=self.data_path,
-                cli_command=get_cli_command(),
-            )
+            if self.data_path is not None:
+                repro_info = get_reproducibility_info(
+                    dataset_path=self.data_path,
+                    cli_command=get_cli_command(),
+                )
+            else:
+                # Multi-tissue mode - capture basic info
+                repro_info = {
+                    "mode": "multi_tissue",
+                    "datasets": [str(ds.path) for ds in self.multi_tissue_config.datasets] if self.multi_tissue_config else [],
+                    "cli_command": get_cli_command(),
+                }
 
             # Build config with training params + reproducibility
             config = {

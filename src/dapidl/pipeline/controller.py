@@ -64,6 +64,7 @@ class PipelineConfig:
     batch_size: int = 128
     learning_rate: float = 3e-4
     fine_grained: bool = False
+    skip_training: bool = False  # Skip training step (for prepare-only mode)
 
     # Cross-modal validation (optional step after training)
     run_validation: bool = False  # Enable cross-modal validation step
@@ -386,26 +387,29 @@ class DAPIDLPipelineController:
         # Step 5: Training (depends on patch_extraction)
         # Note: Training caching disabled by default - users often want to
         # re-run training with same params but different random seeds
-        self._pipeline.add_step(
-            name="training",
-            parents=["patch_extraction"],
-            base_task_project=cfg.project,
-            base_task_name="step-training",
-            parameter_override={
-                "step_config/backbone": cfg.backbone,
-                "step_config/epochs": cfg.epochs,
-                "step_config/batch_size": cfg.batch_size,
-                "step_config/learning_rate": cfg.learning_rate,
-                # Pass outputs from patch_extraction
-                # Note: patches_path is the LMDB dataset, num_classes/class_names/index_to_class from annotations
-                "step_config/dataset_path": "${patch_extraction.artifacts.patches_path.url}",
-                "step_config/num_classes": "${patch_extraction.artifacts.num_classes.url}",
-                "step_config/class_names": "${patch_extraction.artifacts.class_names.url}",
-                "step_config/index_to_class": "${patch_extraction.artifacts.index_to_class.url}",
-            },
-            execution_queue=cfg.gpu_queue if cfg.execute_remotely else None,
-            cache_executed_step=cfg.cache_training,  # Configurable
-        )
+        if not cfg.skip_training:
+            self._pipeline.add_step(
+                name="training",
+                parents=["patch_extraction"],
+                base_task_project=cfg.project,
+                base_task_name="step-training",
+                parameter_override={
+                    "step_config/backbone": cfg.backbone,
+                    "step_config/epochs": cfg.epochs,
+                    "step_config/batch_size": cfg.batch_size,
+                    "step_config/learning_rate": cfg.learning_rate,
+                    # Pass outputs from patch_extraction
+                    # Note: patches_path is the LMDB dataset, num_classes/class_names/index_to_class from annotations
+                    "step_config/dataset_path": "${patch_extraction.artifacts.patches_path.url}",
+                    "step_config/num_classes": "${patch_extraction.artifacts.num_classes.url}",
+                    "step_config/class_names": "${patch_extraction.artifacts.class_names.url}",
+                    "step_config/index_to_class": "${patch_extraction.artifacts.index_to_class.url}",
+                },
+                execution_queue=cfg.gpu_queue if cfg.execute_remotely else None,
+                cache_executed_step=cfg.cache_training,  # Configurable
+            )
+        else:
+            logger.info("Skipping training step (skip_training=True)")
 
         # Step 6 (Optional): Cross-modal Validation (depends on training)
         if cfg.run_validation:
@@ -615,21 +619,27 @@ class DAPIDLPipelineController:
         results["patch_extraction"] = artifacts.outputs
         logger.info(f"Patch extraction outputs: {list(artifacts.outputs.keys())}")
 
-        # Step 5: Training
-        logger.info("=" * 50)
-        logger.info("Step 5: Training")
-        logger.info("=" * 50)
+        # Step 5: Training (optional - can be skipped for prepare-only mode)
+        if not cfg.skip_training:
+            logger.info("=" * 50)
+            logger.info("Step 5: Training")
+            logger.info("=" * 50)
 
-        train_config = TrainingStepConfig(
-            backbone=cfg.backbone,
-            epochs=cfg.epochs,
-            batch_size=cfg.batch_size,
-            learning_rate=cfg.learning_rate,
-        )
-        training = TrainingStep(train_config)
-        artifacts = training.execute(artifacts)
-        results["training"] = artifacts.outputs
-        logger.info(f"Training outputs: {list(artifacts.outputs.keys())}")
+            train_config = TrainingStepConfig(
+                backbone=cfg.backbone,
+                epochs=cfg.epochs,
+                batch_size=cfg.batch_size,
+                learning_rate=cfg.learning_rate,
+            )
+            training = TrainingStep(train_config)
+            artifacts = training.execute(artifacts)
+            results["training"] = artifacts.outputs
+            logger.info(f"Training outputs: {list(artifacts.outputs.keys())}")
+        else:
+            logger.info("=" * 50)
+            logger.info("Step 5: Training (SKIPPED - skip_training=True)")
+            logger.info("=" * 50)
+            logger.info(f"Dataset prepared at: {artifacts.outputs.get('patches_path')}")
 
         # Step 6 (Optional): Cross-modal Validation
         if cfg.run_validation:

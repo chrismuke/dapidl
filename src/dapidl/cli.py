@@ -714,6 +714,181 @@ def train(
     console.print(f"\n[bold green]Training complete![/bold green]")
 
 
+@main.command(name="train-multi")
+@click.option(
+    "--dataset",
+    "-d",
+    multiple=True,
+    nargs=5,
+    type=(click.Path(exists=True), str, str, int, float),
+    required=True,
+    help="Dataset spec: PATH TISSUE PLATFORM CONFIDENCE WEIGHT (e.g., '/lmdb/breast breast xenium 2 1.0')",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output directory for model",
+)
+@click.option(
+    "--sampling",
+    type=click.Choice(["equal", "proportional", "sqrt"]),
+    default="sqrt",
+    show_default=True,
+    help="Tissue sampling strategy",
+)
+@click.option(
+    "--standardize-labels/--no-standardize-labels",
+    default=True,
+    help="Use Cell Ontology label standardization",
+)
+@click.option(
+    "--epochs",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Training epochs",
+)
+@click.option(
+    "--batch-size",
+    type=int,
+    default=64,
+    show_default=True,
+    help="Batch size",
+)
+@click.option(
+    "--backbone",
+    default="efficientnetv2_rw_s",
+    show_default=True,
+    help="CNN backbone architecture",
+)
+@click.option(
+    "--lr",
+    type=float,
+    default=3e-4,
+    show_default=True,
+    help="Learning rate",
+)
+@click.option(
+    "--max-weight-ratio",
+    type=float,
+    default=10.0,
+    show_default=True,
+    help="Max class weight ratio to prevent mode collapse",
+)
+@click.option(
+    "--wandb/--no-wandb",
+    default=True,
+    help="Enable Weights & Biases logging",
+)
+def train_multi(
+    dataset: tuple,
+    output: Path,
+    sampling: str,
+    standardize_labels: bool,
+    epochs: int,
+    batch_size: int,
+    backbone: str,
+    lr: float,
+    max_weight_ratio: float,
+    wandb: bool,
+) -> None:
+    """Train on multiple LMDB datasets with runtime combination.
+
+    Combines multiple LMDB datasets at training time without creating a merged file.
+    Supports tissue-balanced sampling, confidence weighting, and Cell Ontology
+    label standardization.
+
+    Examples:
+
+        # Train on two datasets with equal sampling
+        dapidl train-multi \\
+            -d ./xenium-breast breast xenium 2 1.0 \\
+            -d ./merscope-liver liver merscope 2 0.8 \\
+            --sampling equal \\
+            -o ./model
+
+        # Train with confidence weighting (higher tier = more trusted)
+        dapidl train-multi \\
+            -d ./ground-truth breast xenium 1 1.0 \\  # tier 1 = ground truth
+            -d ./consensus lung xenium 2 1.0 \\       # tier 2 = consensus
+            -o ./model
+
+    Confidence tiers:
+        1 = Ground truth (full weight)
+        2 = Consensus annotation (80% weight)
+        3 = Predicted/uncertain (50% weight)
+    """
+    from dapidl.data.multi_tissue_dataset import (
+        MultiTissueConfig,
+        create_multi_tissue_splits,
+    )
+    from dapidl.training.trainer import Trainer
+
+    console.print("[bold blue]DAPIDL Multi-Dataset Training[/bold blue]\n")
+
+    # Build multi-tissue config
+    config = MultiTissueConfig(
+        sampling_strategy=sampling,
+        standardize_labels=standardize_labels,
+    )
+
+    for path, tissue, platform, confidence, weight in dataset:
+        config.add_dataset(
+            path=path,
+            tissue=tissue,
+            platform=platform,
+            confidence_tier=int(confidence),
+            weight_multiplier=float(weight),
+        )
+        console.print(f"  + {tissue} ({platform}): {path}")
+        console.print(f"    Confidence tier: {confidence}, Weight: {weight}")
+
+    console.print(f"\n  Sampling: {sampling}")
+    console.print(f"  Label standardization: {standardize_labels}")
+    console.print(f"  Backbone: {backbone}")
+    console.print(f"  Epochs: {epochs}")
+    console.print(f"  Batch size: {batch_size}")
+    console.print()
+
+    # Create train/val/test splits
+    console.print("[cyan]Creating data splits...[/cyan]")
+    train_ds, val_ds, test_ds = create_multi_tissue_splits(
+        config,
+        train_ratio=0.7,
+        val_ratio=0.15,
+        test_ratio=0.15,
+        stratify_by="both",  # Stratify by tissue and label
+    )
+
+    console.print(f"  Train: {len(train_ds)} samples")
+    console.print(f"  Val: {len(val_ds)} samples")
+    console.print(f"  Test: {len(test_ds)} samples")
+    console.print(f"  Classes: {train_ds.num_classes}")
+
+    # Create trainer with multi-tissue dataset
+    console.print("\n[cyan]Creating trainer...[/cyan]")
+    trainer = Trainer(
+        data_path=None,  # Not used for multi-tissue
+        multi_tissue_config=config,
+        output_path=output,
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=lr,
+        use_wandb=wandb,
+        backbone_name=backbone,
+        max_weight_ratio=max_weight_ratio,
+    )
+
+    # Train
+    console.print("[cyan]Starting training...[/cyan]\n")
+    trainer.train()
+
+    console.print(f"\n[bold green]Training complete![/bold green]")
+    console.print(f"  Model saved to: {output / 'best_model.pt'}")
+
+
 @main.command()
 @click.option(
     "--checkpoint",
@@ -2182,6 +2357,11 @@ def clearml_pipeline_group() -> None:
     is_flag=True,
     help="Use fine-grained cell types (~20 classes) instead of broad categories (3 classes)",
 )
+@click.option(
+    "--skip-training",
+    is_flag=True,
+    help="Skip training step (prepare-only mode for creating LMDB datasets)",
+)
 def run_pipeline(
     dataset_id: str | None,
     local_path: Path | None,
@@ -2199,6 +2379,7 @@ def run_pipeline(
     compare_ground_truth: bool,
     gt_comparison_file: Path | None,
     fine_grained: bool,
+    skip_training: bool,
 ) -> None:
     """Run the DAPIDL ClearML pipeline.
 
@@ -2241,6 +2422,7 @@ def run_pipeline(
         run_ground_truth_comparison=compare_ground_truth,
         gt_comparison_file=str(gt_comparison_file) if gt_comparison_file else None,
         fine_grained=fine_grained,
+        skip_training=skip_training,
     )
 
     console.print("[bold blue]DAPIDL ClearML Pipeline[/bold blue]\n")
@@ -2250,8 +2432,11 @@ def run_pipeline(
     console.print(f"  Fine-grained: {fine_grained}")
     console.print(f"  Extended consensus: {extended_consensus}")
     console.print(f"  Patch size: {patch_size}px")
-    console.print(f"  Backbone: {backbone}")
-    console.print(f"  Epochs: {epochs}")
+    if not skip_training:
+        console.print(f"  Backbone: {backbone}")
+        console.print(f"  Epochs: {epochs}")
+    else:
+        console.print("  [yellow]Training: SKIPPED (prepare-only mode)[/yellow]")
     if compare_ground_truth:
         console.print(f"  Ground truth comparison: {gt_comparison_file}")
     console.print(f"  Execution: {'local' if local else 'ClearML agents'}")
@@ -2267,6 +2452,10 @@ def run_pipeline(
             test_metrics = results["training"].get("test_metrics", {})
             console.print(f"  Test F1: {test_metrics.get('f1', 'N/A'):.4f}")
             console.print(f"  Test Accuracy: {test_metrics.get('accuracy', 'N/A'):.4f}")
+        elif skip_training:
+            patches_path = results.get("patch_extraction", {}).get("patches_path", "N/A")
+            console.print("[yellow]  Training was skipped (prepare-only mode)[/yellow]")
+            console.print(f"  Dataset prepared at: {patches_path}")
     else:
         console.print("[cyan]Creating ClearML pipeline...[/cyan]")
         pipeline.create_pipeline()
