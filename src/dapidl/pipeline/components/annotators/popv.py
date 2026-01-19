@@ -413,11 +413,21 @@ class PopVAnnotator:
             genes_are_ensembl = all(str(g).startswith("ENSG") for g in sample_genes)
             gene_symbols_param = None if genes_are_ensembl else "feature_name"
 
-            # Run prediction
-            result = hub_model.predict(
-                query_adata,
-                gene_symbols=gene_symbols_param,
-            )
+            # Run prediction (API changed in popv 0.6.0: predict -> annotate_data)
+            if hasattr(hub_model, 'annotate_data'):
+                # PopV 0.6.0+ API
+                result = hub_model.annotate_data(
+                    query_adata,
+                    gene_symbols=gene_symbols_param,
+                )
+            elif hasattr(hub_model, 'predict'):
+                # Older PopV API
+                result = hub_model.predict(
+                    query_adata,
+                    gene_symbols=gene_symbols_param,
+                )
+            else:
+                raise RuntimeError("HubModel has no prediction method (tried annotate_data and predict)")
 
             logger.info("HubModel prediction complete")
             return result
