@@ -547,6 +547,9 @@ class Trainer:
         pbar = tqdm(self.train_loader, desc="Training", leave=False)
         for images, labels in pbar:
             images = images.to(self.device, non_blocking=True)
+            # Handle dict labels from MultiTissueDataset
+            if isinstance(labels, dict):
+                labels = labels["label"]
             labels = labels.to(self.device, non_blocking=True)
 
             # Forward pass with optional AMP
@@ -608,6 +611,9 @@ class Trainer:
 
         for images, labels in tqdm(loader, desc=f"Evaluating ({prefix})", leave=False):
             images = images.to(self.device)
+            # Handle dict labels from MultiTissueDataset
+            if isinstance(labels, dict):
+                labels = labels["label"]
             labels = labels.to(self.device)
 
             outputs = self.model(images)
