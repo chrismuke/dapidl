@@ -151,16 +151,36 @@ class MultiTissueDataset(Dataset):
         else:
             self.indices = np.arange(self.total_samples)
 
-        # Compute normalization stats (use first dataset's stats as base)
-        self.stats = compute_dataset_stats(config.datasets[0].path)
+        # Load per-dataset normalization stats
+        # CRITICAL: Each platform has different intensity distributions
+        # (e.g., MERSCOPE is ~70x brighter than Xenium)
+        self.per_dataset_stats: list[dict[str, float]] = []
+        for ds_config in config.datasets:
+            stats = compute_dataset_stats(ds_config.path)
+            self.per_dataset_stats.append(stats)
+            logger.debug(
+                f"Loaded normalization stats for {ds_config.tissue}/{ds_config.platform}: "
+                f"p_low={stats['p_low']:.0f}, p_high={stats['p_high']:.0f}"
+            )
 
-        # Set transform
+        # For backward compatibility, expose first dataset's stats
+        self.stats = self.per_dataset_stats[0]
+
+        # Build per-dataset transforms (each uses its own normalization stats)
+        self.per_dataset_transforms: list[Callable] = []
         if transform is not None:
-            self.transform = transform
+            # If explicit transform provided, use it for all datasets
+            for _ in config.datasets:
+                self.per_dataset_transforms.append(transform)
+            self.transform = transform  # backward compatibility
         elif split == "train":
-            self.transform = get_train_transforms(stats=self.stats)
+            for stats in self.per_dataset_stats:
+                self.per_dataset_transforms.append(get_train_transforms(stats=stats))
+            self.transform = self.per_dataset_transforms[0]  # backward compatibility
         else:
-            self.transform = get_val_transforms(stats=self.stats)
+            for stats in self.per_dataset_stats:
+                self.per_dataset_transforms.append(get_val_transforms(stats=stats))
+            self.transform = self.per_dataset_transforms[0]  # backward compatibility
 
         self._log_dataset_info()
 
@@ -291,7 +311,7 @@ class MultiTissueDataset(Dataset):
         CL-standardized label.
         """
         try:
-            from dapidl.ontology import map_label, get_term_by_id
+            from dapidl.ontology import map_label, get_term
             has_ontology = True
         except ImportError:
             logger.warning("Ontology module not available, using simple union")
@@ -308,7 +328,7 @@ class MultiTissueDataset(Dataset):
                 if cl_id != "UNMAPPED":
                     all_cl_ids.add(cl_id)
                     # Use canonical name from ontology
-                    term = get_term_by_id(cl_id)
+                    term = get_term(cl_id)
                     if term and term.name:
                         cl_to_unified[cl_id] = term.name
                     else:
@@ -438,9 +458,11 @@ class MultiTissueDataset(Dataset):
         # Get unified label
         label = self.labels[global_idx]
 
-        # Apply transform
-        if self.transform is not None:
-            transformed = self.transform(image=patch)
+        # Apply per-dataset transform (uses correct normalization stats)
+        # This is critical for multi-platform data (Xenium vs MERSCOPE have 70x intensity difference)
+        transform = self.per_dataset_transforms[dataset_idx]
+        if transform is not None:
+            transformed = transform(image=patch)
             patch = transformed["image"]
 
         # Build labels dict
