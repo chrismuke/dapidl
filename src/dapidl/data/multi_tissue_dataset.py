@@ -189,6 +189,7 @@ class MultiTissueDataset(Dataset):
         # Store LMDB paths for lazy opening (fork-safe)
         self.lmdb_paths: list[Path] = []
         self._lmdb_envs: list[lmdb.Environment | None] = []  # Lazily opened
+        self.key_formats: list[str] = []  # 'ascii' or 'binary' per dataset
         self.dataset_offsets = [0]  # Cumulative offsets for global indexing
         self.dataset_sizes = []
         self.tissue_indices = []  # Which tissue each sample belongs to
@@ -199,7 +200,14 @@ class MultiTissueDataset(Dataset):
         all_class_mappings = []
 
         for i, ds_config in enumerate(self.config.datasets):
-            lmdb_path = ds_config.path / "patches.lmdb"
+            # Handle different path formats:
+            # - /path/to/patches/patches.lmdb (LMDB directory itself)
+            # - /path/to/patches (parent directory containing patches.lmdb)
+            base_path = Path(ds_config.path)
+            if base_path.name == "patches.lmdb" or base_path.suffix == ".lmdb":
+                lmdb_path = base_path
+            else:
+                lmdb_path = base_path / "patches.lmdb"
 
             if not lmdb_path.exists():
                 raise FileNotFoundError(
@@ -211,8 +219,29 @@ class MultiTissueDataset(Dataset):
             self.lmdb_paths.append(lmdb_path)
             self._lmdb_envs.append(None)  # Will be opened lazily
 
-            # Load labels
-            labels = np.load(ds_config.path / "labels.npy")
+            # Detect key format by checking first key (do once at load time)
+            key_format = self._detect_key_format(lmdb_path)
+            self.key_formats.append(key_format)
+
+            # Determine parent directory for metadata files
+            # If path is patches.lmdb, parent is patches/
+            parent_dir = lmdb_path.parent if lmdb_path.name == "patches.lmdb" else base_path
+
+            # Load labels - try labels.npy first, then metadata.parquet
+            labels_npy = parent_dir / "labels.npy"
+            metadata_parquet = parent_dir / "metadata.parquet"
+
+            if labels_npy.exists():
+                labels = np.load(labels_npy)
+            elif metadata_parquet.exists():
+                import polars as pl
+                meta_df = pl.read_parquet(metadata_parquet)
+                labels = meta_df["label"].to_numpy()
+            else:
+                raise FileNotFoundError(
+                    f"Neither labels.npy nor metadata.parquet found in {parent_dir}"
+                )
+
             n_samples = len(labels)
             self.dataset_sizes.append(n_samples)
 
@@ -224,14 +253,49 @@ class MultiTissueDataset(Dataset):
             self.platform_indices.extend([ds_config.platform] * n_samples)
             self.confidence_tiers.extend([ds_config.confidence_tier] * n_samples)
 
-            # Load class mapping
-            with open(ds_config.path / "class_mapping.json") as f:
-                class_mapping = json.load(f)
+            # Load class mapping - try class_mapping.json or infer from labels
+            class_mapping_json = parent_dir / "class_mapping.json"
+            if class_mapping_json.exists():
+                with open(class_mapping_json) as f:
+                    class_mapping = json.load(f)
+            elif metadata_parquet.exists():
+                # Infer class mapping from metadata.parquet
+                import polars as pl
+                if "meta_df" not in dir():
+                    meta_df = pl.read_parquet(metadata_parquet)
+                unique_labels = sorted(meta_df["label"].unique().to_list())
+                n_labels = len(unique_labels)
+
+                # Try to get class names from metadata columns
+                # Priority: predicted_type (fine-grained) > broad_category (coarse)
+                class_name_col = None
+                for col in ["predicted_type", "broad_category"]:
+                    if col in meta_df.columns:
+                        # Check if this column has the same number of unique values as labels
+                        if meta_df[col].n_unique() == n_labels:
+                            class_name_col = col
+                            break
+
+                if class_name_col:
+                    # Build mapping: class_name -> label_id
+                    class_mapping = {}
+                    for lbl in unique_labels:
+                        row = meta_df.filter(pl.col("label") == lbl).head(1)
+                        if len(row) > 0:
+                            class_mapping[row[class_name_col][0]] = lbl
+                else:
+                    # No suitable column found, use string indices
+                    class_mapping = {str(i): i for i in unique_labels}
+            else:
+                raise FileNotFoundError(
+                    f"class_mapping.json not found in {parent_dir}"
+                )
+
             all_class_mappings.append(class_mapping)
             all_labels.append(labels)
 
             # Load metadata for patch size
-            metadata_path = ds_config.path / "metadata.json"
+            metadata_path = parent_dir / "metadata.json"
             if metadata_path.exists():
                 with open(metadata_path) as f:
                     metadata = json.load(f)
@@ -260,6 +324,33 @@ class MultiTissueDataset(Dataset):
         # Store for label remapping
         self._all_labels = all_labels
         self._all_class_mappings = all_class_mappings
+
+    def _detect_key_format(self, lmdb_path: Path) -> str:
+        """Detect whether LMDB uses ASCII or binary keys.
+
+        Args:
+            lmdb_path: Path to LMDB directory
+
+        Returns:
+            'ascii' if keys are ASCII strings like b'00000000'
+            'binary' if keys are binary uint64 like struct.pack('>Q', 0)
+        """
+        env = lmdb.open(str(lmdb_path), readonly=True, lock=False)
+        try:
+            with env.begin() as txn:
+                cursor = txn.cursor()
+                for key, _ in cursor:
+                    if key == b"__metadata__":
+                        continue
+                    # Check if key is ASCII digits
+                    if len(key) == 8 and key.isdigit():
+                        return "ascii"
+                    # Otherwise assume binary format
+                    return "binary"
+            # Empty LMDB, default to binary
+            return "binary"
+        finally:
+            env.close()
 
     def _build_unified_labels(self) -> None:
         """Build unified class mapping across all datasets.
@@ -442,18 +533,68 @@ class MultiTissueDataset(Dataset):
         dataset_idx, local_idx = self._get_dataset_and_local_idx(global_idx)
 
         # Load patch from LMDB (lazily opened for fork-safety)
-        # Keys are stored as big-endian uint64, values as label (8 bytes) + patch data
+        # Keys can be ASCII strings (b'00000000') or binary uint64 (struct.pack('>Q', 0))
         env = self._get_lmdb_env(dataset_idx)
+        key_format = self.key_formats[dataset_idx]
         with env.begin(write=False) as txn:
-            key = struct.pack(">Q", local_idx)
+            if key_format == "ascii":
+                key = f"{local_idx:08d}".encode()
+            else:
+                key = struct.pack(">Q", local_idx)
             value = txn.get(key)
             if value is None:
-                raise KeyError(f"Sample {local_idx} not found in dataset {dataset_idx}")
-            # Skip first 8 bytes (label prefix), rest is patch data
-            patch_bytes = value[8:]
-            patch = np.frombuffer(patch_bytes, dtype=np.uint16).reshape(
-                self.patch_size, self.patch_size
-            ).copy()
+                raise KeyError(
+                    f"Sample {local_idx} not found in dataset {dataset_idx} "
+                    f"(key_format={key_format}, key={key})"
+                )
+
+            # Auto-detect data format from value length
+            # Different pipelines produce different formats:
+            # - HQ float32: 128*128*4 = 65536 bytes (no label prefix)
+            # - Standard uint16 + label: 128*128*2 + 8 = 32776 bytes
+            # - HQ uint16: 128*128*2 = 32768 bytes (no label prefix)
+            # - Normalized uint8: 128*128*1 = 16384 bytes (pre-normalized)
+            val_len = len(value)
+            uint8_bytes = self.patch_size * self.patch_size
+            uint16_bytes = self.patch_size * self.patch_size * 2
+            float32_bytes = self.patch_size * self.patch_size * 4
+
+            if val_len == uint8_bytes:
+                # Normalized uint8 format (no label prefix, pre-normalized 0-255)
+                patch = np.frombuffer(value, dtype=np.uint8).reshape(
+                    self.patch_size, self.patch_size
+                ).copy().astype(np.float32) / 255.0
+            elif val_len == uint8_bytes + 8:
+                # uint8 with 8-byte label prefix
+                patch = np.frombuffer(value[8:], dtype=np.uint8).reshape(
+                    self.patch_size, self.patch_size
+                ).copy().astype(np.float32) / 255.0
+            elif val_len == float32_bytes:
+                # HQ float32 format (no label prefix)
+                patch = np.frombuffer(value, dtype=np.float32).reshape(
+                    self.patch_size, self.patch_size
+                ).copy()
+            elif val_len == float32_bytes + 8:
+                # float32 with 8-byte label prefix
+                patch = np.frombuffer(value[8:], dtype=np.float32).reshape(
+                    self.patch_size, self.patch_size
+                ).copy()
+            elif val_len == uint16_bytes + 8:
+                # Standard uint16 with 8-byte label prefix
+                patch = np.frombuffer(value[8:], dtype=np.uint16).reshape(
+                    self.patch_size, self.patch_size
+                ).copy()
+            elif val_len == uint16_bytes:
+                # HQ uint16 format (no label prefix)
+                patch = np.frombuffer(value, dtype=np.uint16).reshape(
+                    self.patch_size, self.patch_size
+                ).copy()
+            else:
+                raise ValueError(
+                    f"Unknown data format: value length={val_len}, "
+                    f"expected {uint8_bytes}, {uint8_bytes+8}, {uint16_bytes}, {uint16_bytes+8}, "
+                    f"{float32_bytes}, or {float32_bytes+8}"
+                )
 
         # Get unified label
         label = self.labels[global_idx]
