@@ -382,10 +382,12 @@ class UniversalDAPITrainingStep(PipelineStep):
             )
 
         # Also add datasets from artifacts (if not already in config)
+        # Deduplicate by checking existing paths
+        existing_paths = {str(ds.path) for ds in mt_config.datasets}
         if "dataset_configs" in inputs:
             for ds_dict in inputs["dataset_configs"]:
                 resolved_path = resolve_artifact_path(ds_dict["path"], f"dataset_{ds_dict['tissue']}")
-                if resolved_path:
+                if resolved_path and str(resolved_path) not in existing_paths:
                     mt_config.add_dataset(
                         path=str(resolved_path),
                         tissue=ds_dict["tissue"],
@@ -393,6 +395,7 @@ class UniversalDAPITrainingStep(PipelineStep):
                         confidence_tier=ds_dict.get("confidence_tier", 2),
                         weight_multiplier=ds_dict.get("weight_multiplier", 1.0),
                     )
+                    existing_paths.add(str(resolved_path))
 
         # Add from patches_path_N pattern
         for key, value in inputs.items():
@@ -645,11 +648,27 @@ class UniversalDAPITrainingStep(PipelineStep):
 
         best_val_f1 = 0.0
         patience_counter = 0
+        current_phase = 0  # Track phase for reset on transition
+        phase_best_f1 = {}  # Track best F1 per phase
 
         # Training loop
         for epoch in range(cfg.epochs):
             # Get curriculum phase
             active_heads = scheduler_curriculum.get_active_heads(epoch)
+            phase_num = scheduler_curriculum.get_phase_number(epoch)
+
+            # Reset patience and best_f1 on phase transition
+            if phase_num != current_phase:
+                if current_phase > 0:
+                    # Save best model from previous phase
+                    phase_best_f1[current_phase] = best_val_f1
+                    logger.info(
+                        f"Phase {current_phase} complete. Best F1={best_val_f1:.4f}. "
+                        f"Resetting for Phase {phase_num}."
+                    )
+                current_phase = phase_num
+                best_val_f1 = 0.0
+                patience_counter = 0
             phase_name = scheduler_curriculum.get_phase_name(epoch)
             loss_weights = scheduler_curriculum.get_loss_weights(
                 epoch,
@@ -713,12 +732,15 @@ class UniversalDAPITrainingStep(PipelineStep):
                 f"val_loss={val_loss:.4f}, val_f1={current_f1:.4f}"
             )
 
-            # Save best model
+            # Save best model (per phase)
             if current_f1 > best_val_f1:
                 best_val_f1 = current_f1
                 patience_counter = 0
+                # Save phase-specific best model
+                model.save_checkpoint(str(output_dir / f"best_model_phase{current_phase}.pt"))
+                # Also save as overall best (will be latest phase's best)
                 model.save_checkpoint(str(output_dir / "best_model.pt"))
-                logger.info(f"New best model: F1={best_val_f1:.4f}")
+                logger.info(f"New best model (Phase {current_phase}): F1={best_val_f1:.4f}")
             else:
                 patience_counter += 1
 
@@ -754,8 +776,18 @@ class UniversalDAPITrainingStep(PipelineStep):
         # Save final model
         model.save_checkpoint(str(output_dir / "final_model.pt"))
 
+        # Record final phase best
+        phase_best_f1[current_phase] = best_val_f1
+
+        # Log per-phase best metrics
+        logger.info("Training complete. Per-phase best F1:")
+        for phase, f1 in sorted(phase_best_f1.items()):
+            phase_names = {1: "Coarse Only", 2: "Coarse + Medium", 3: "All Heads"}
+            logger.info(f"  Phase {phase} ({phase_names.get(phase, 'Unknown')}): F1={f1:.4f}")
+
         # Save training history
         history["best_val_f1"] = best_val_f1
+        history["phase_best_f1"] = phase_best_f1
         with open(output_dir / "training_log.json", "w") as f:
             json.dump(history, f, indent=2)
 
