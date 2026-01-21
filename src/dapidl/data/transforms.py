@@ -134,7 +134,20 @@ def compute_dataset_stats(
         Dictionary with p_low, p_high, mean, std values
     """
     data_path = Path(data_path)
-    stats_file = data_path / "normalization_stats.json"
+
+    # Handle both cases:
+    # - data_path is the parent directory (contains patches.lmdb)
+    # - data_path IS the LMDB directory (ends with .lmdb)
+    if data_path.name == "patches.lmdb" or data_path.suffix == ".lmdb":
+        lmdb_path = data_path
+        zarr_path = data_path.parent / "patches.zarr"
+        parent_dir = data_path.parent
+    else:
+        lmdb_path = data_path / "patches.lmdb"
+        zarr_path = data_path / "patches.zarr"
+        parent_dir = data_path
+
+    stats_file = parent_dir / "normalization_stats.json"
 
     # Return cached stats if they exist and are valid
     if stats_file.exists():
@@ -154,10 +167,6 @@ def compute_dataset_stats(
                 stats_file.unlink()
                 # Fall through to recompute
 
-    # Check for LMDB or Zarr format
-    lmdb_path = data_path / "patches.lmdb"
-    zarr_path = data_path / "patches.zarr"
-
     if lmdb_path.exists():
         # Compute from LMDB
         import lmdb as lmdb_lib
@@ -175,7 +184,11 @@ def compute_dataset_stats(
             # Sample patches
             cursor = txn.cursor()
             samples = []
-            expected_patch_bytes = patch_size * patch_size * 2  # uint16
+
+            # Pre-compute expected sizes for different formats
+            # We auto-detect based on value size, not metadata dtype (which can be wrong)
+            uint16_patch_bytes = patch_size * patch_size * 2  # uint16: 2 bytes per pixel
+            float32_patch_bytes = patch_size * patch_size * 4  # float32: 4 bytes per pixel
 
             for key, value in cursor:
                 if key == b"__metadata__":
@@ -184,17 +197,29 @@ def compute_dataset_stats(
                 if key.startswith(b"label_"):
                     continue
 
-                # Detect format based on value length:
-                # - HQ format: pure uint16 patch (no label prefix)
-                # - Standard format: 8-byte int64 label + uint16 patch
-                if len(value) == expected_patch_bytes:
-                    patch_bytes = value  # HQ format
-                elif len(value) == expected_patch_bytes + 8:
-                    patch_bytes = value[8:]  # Standard format
+                # Auto-detect format based on value length
+                val_len = len(value)
+                patch_bytes = None
+                patch_dtype = None
+
+                # Check for standard format with 8-byte label prefix
+                if val_len == uint16_patch_bytes + 8:
+                    patch_bytes = value[8:]
+                    patch_dtype = np.uint16
+                elif val_len == float32_patch_bytes + 8:
+                    patch_bytes = value[8:]
+                    patch_dtype = np.float32
+                # Check for HQ format (no label prefix)
+                elif val_len == uint16_patch_bytes:
+                    patch_bytes = value
+                    patch_dtype = np.uint16
+                elif val_len == float32_patch_bytes:
+                    patch_bytes = value
+                    patch_dtype = np.float32
                 else:
                     continue  # Unknown format, skip
 
-                patch = np.frombuffer(patch_bytes, dtype=np.uint16)
+                patch = np.frombuffer(patch_bytes, dtype=patch_dtype)
                 patch = patch.reshape(patch_size, patch_size)
                 # Convert to float for stats computation
                 samples.append(patch.astype(np.float32))

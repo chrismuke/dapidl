@@ -391,7 +391,9 @@ MERSCOPE_BREAST_GT_TO_CL = {
     "Mono-classical": "CL:0000860",  # Classical monocyte
     "Mono-NonClassical": "CL:0000875",  # Non-classical monocyte
     "Vas-arterial": "CL:1000413",  # Arterial endothelial
-    "Vas-capillary": "CL:0002144",  # Capillary endothelial
+    "Vas-capillary": "CL:0000115",  # Capillary endothelial (use generic endothelial)
+    "bmem_unswitched": "CL:0000787",  # Memory B cell (unswitched isotype)
+    "mDC": "CL:0000990",  # Conventional/myeloid dendritic cell
 }
 
 # Common pathology terms

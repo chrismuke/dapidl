@@ -424,7 +424,8 @@ class UniversalDAPIPipelineController:
             results[f"patch_extraction_{tissue_name}"] = patch_artifacts.outputs
 
             # Collect dataset config for universal training
-            dataset_path = patch_artifacts.outputs.get("dataset_path")
+            # patch extraction returns "patches_path" which points to the LMDB directory
+            dataset_path = patch_artifacts.outputs.get("patches_path")
             if dataset_path:
                 dataset_configs.append({
                     "path": dataset_path,

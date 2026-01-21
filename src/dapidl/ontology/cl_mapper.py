@@ -471,10 +471,18 @@ _default_mapper: Optional[CLMapper] = None
 
 
 def get_mapper() -> CLMapper:
-    """Get the default CLMapper instance."""
+    """Get the default CLMapper instance with all curated mappings loaded."""
     global _default_mapper
     if _default_mapper is None:
-        _default_mapper = CLMapper()
+        # Import here to avoid circular imports
+        from dapidl.ontology.annotator_mappings import (
+            get_all_annotator_mappings,
+            get_all_gt_mappings,
+        )
+        _default_mapper = CLMapper(
+            annotator_mappings=get_all_annotator_mappings(),
+            ground_truth_mappings=get_all_gt_mappings(),
+        )
     return _default_mapper
 
 

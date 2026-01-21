@@ -15,6 +15,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 import polars as pl
+from loguru import logger
 from scipy import ndimage
 from skimage.segmentation import relabel_sequential
 from tqdm import tqdm
@@ -108,7 +109,10 @@ class CellposeSegmenter:
         if self._model is None:
             from cellpose import models
 
-            self._model = models.CellposeModel(gpu=True)
+            use_gpu = self.config.gpu if self.config else True
+            logger.info(f"Initializing CellposeModel with gpu={use_gpu}")
+            self._model = models.CellposeModel(gpu=use_gpu)
+            logger.info(f"CellposeModel initialized - device: {self._model.device}")
         return self._model
 
     def segment(
@@ -213,12 +217,8 @@ class CellposeSegmenter:
         return pixel_sizes.get(platform.lower(), 0.2125)
 
     def _run_cellpose_inference(self, tile: np.ndarray, cfg: SegmentationConfig):
-        """Run Cellpose model inference on a single tile.
-
-        This wraps the Cellpose model's inference method.
-        """
-        # Cellpose CellposeModel.run_inference() is the method we call
-        # It returns (masks, flows, styles) tuple
+        """Run Cellpose model inference on a single tile."""
+        # model.eval is Cellpose's inference method (not Python's eval)
         masks, flows, styles = self.model.eval(
             tile,
             diameter=cfg.diameter,
@@ -228,6 +228,32 @@ class CellposeSegmenter:
             batch_size=8,
         )
         return masks, flows, styles
+
+    def _run_cellpose_inference_batch(
+        self, tiles: list[np.ndarray], cfg: SegmentationConfig
+    ) -> list[np.ndarray]:
+        """Run Cellpose inference on a batch of tiles for better GPU utilization.
+
+        Args:
+            tiles: List of normalized tile images
+            cfg: Segmentation configuration
+
+        Returns:
+            List of mask arrays, one per input tile
+        """
+        if not tiles:
+            return []
+
+        # Cellpose model.eval accepts a list of images for batch processing
+        masks_list, _, _ = self.model.eval(
+            tiles,
+            diameter=cfg.diameter,
+            channels=[0, 0],
+            flow_threshold=cfg.flow_threshold,
+            cellprob_threshold=cfg.cellprob_threshold,
+            batch_size=len(tiles),
+        )
+        return masks_list
 
     def _segment_tiled(
         self,
@@ -242,12 +268,33 @@ class CellposeSegmenter:
         """
         import torch
 
-        # Normalize image globally
-        dapi_norm = dapi_image.astype(np.float32)
-        p_low, p_high = np.percentile(dapi_norm, [1, 99.5])
-        dapi_norm = np.clip((dapi_norm - p_low) / (p_high - p_low), 0, 1)
+        # Calculate percentiles using sampling for large images (lazy normalization)
+        # We DON'T convert entire image to float32 - normalize each tile on-demand
+        h, w = dapi_image.shape
+        n_pixels = h * w
+        logger.info(f"Computing percentiles for image ({h}x{w}, {n_pixels/1e9:.2f} billion pixels)...")
 
-        h, w = dapi_norm.shape
+        # For large images, use sampled percentile estimation (much faster, ~same accuracy)
+        if n_pixels > 100_000_000:  # > 100M pixels
+            # Sample ~1M pixels for percentile estimation
+            sample_size = min(1_000_000, n_pixels)
+            rng = np.random.default_rng(42)  # Fixed seed for reproducibility
+            flat_indices = rng.choice(n_pixels, size=sample_size, replace=False)
+            sample = dapi_image.flat[flat_indices].astype(np.float32)
+            p_low, p_high = np.percentile(sample, [1, 99.5])
+            logger.info(f"Used sampled percentiles ({sample_size:,} samples): p_low={p_low:.1f}, p_high={p_high:.1f}")
+            logger.info(f"Using LAZY normalization (tiles normalized on-demand to save memory)")
+        else:
+            p_low, p_high = np.percentile(dapi_image, [1, 99.5])
+            logger.info(f"Percentiles: p_low={p_low:.1f}, p_high={p_high:.1f}")
+
+        # For small images, pre-normalize (faster). For large images, use lazy normalization.
+        use_lazy_norm = n_pixels > 100_000_000
+        if not use_lazy_norm:
+            dapi_norm = dapi_image.astype(np.float32)
+            dapi_norm = np.clip((dapi_norm - p_low) / (p_high - p_low), 0, 1)
+            logger.info(f"Pre-normalized image to float32")
+
         tile_size = cfg.tile_size
         overlap = cfg.tile_overlap
 
@@ -261,31 +308,62 @@ class CellposeSegmenter:
 
         total_tiles = len(y_starts) * len(x_starts)
 
+        # Batch size for GPU processing (4 tiles = good balance of speed vs memory)
+        gpu_batch_size = cfg.gpu_batch_size if hasattr(cfg, 'gpu_batch_size') else 4
+        logger.info(f"Starting tiled segmentation: {total_tiles} tiles ({len(y_starts)}x{len(x_starts)})")
+        logger.info(f"Using GPU: {self.model.gpu}, device: {self.model.device}, batch_size: {gpu_batch_size}")
+
+        # Collect all tile coordinates
+        tile_coords = [
+            (y_start, x_start)
+            for y_start in y_starts
+            for x_start in x_starts
+        ]
+
+        tile_count = 0
         with tqdm(total=total_tiles, desc="Segmenting tiles") as pbar:
-            for y_start in y_starts:
-                for x_start in x_starts:
-                    # Calculate tile boundaries
+            # Process tiles in batches
+            for batch_start in range(0, len(tile_coords), gpu_batch_size):
+                batch_coords = tile_coords[batch_start:batch_start + gpu_batch_size]
+
+                # Extract and normalize tiles for this batch
+                batch_tiles = []
+                batch_metadata = []  # Store coords and boundaries for each tile
+
+                for y_start, x_start in batch_coords:
                     y_end = min(y_start + tile_size, h)
                     x_end = min(x_start + tile_size, w)
 
-                    # Extract tile
-                    tile = dapi_norm[y_start:y_end, x_start:x_end]
+                    # Extract and normalize tile (lazy normalization for large images)
+                    if use_lazy_norm:
+                        tile_uint16 = dapi_image[y_start:y_end, x_start:x_end]
+                        tile = tile_uint16.astype(np.float32)
+                        tile = np.clip((tile - p_low) / (p_high - p_low), 0, 1)
+                    else:
+                        tile = dapi_norm[y_start:y_end, x_start:x_end]
 
-                    # Run Cellpose inference on tile
-                    masks, _, _ = self._run_cellpose_inference(tile, cfg)
+                    batch_tiles.append(tile)
+                    batch_metadata.append((y_start, x_start, y_end, x_end, tile.shape))
 
+                # Run Cellpose inference on entire batch
+                masks_list = self._run_cellpose_inference_batch(batch_tiles, cfg)
+
+                # Process results for each tile in batch
+                for idx, (masks, (y_start, x_start, y_end, x_end, tile_shape)) in enumerate(
+                    zip(masks_list, batch_metadata)
+                ):
                     # Calculate the non-overlapping region to keep
                     keep_y_start = overlap // 2 if y_start > 0 else 0
                     keep_x_start = overlap // 2 if x_start > 0 else 0
                     keep_y_end = (
-                        tile.shape[0] - overlap // 2
+                        tile_shape[0] - overlap // 2
                         if y_end < h
-                        else tile.shape[0]
+                        else tile_shape[0]
                     )
                     keep_x_end = (
-                        tile.shape[1] - overlap // 2
+                        tile_shape[1] - overlap // 2
                         if x_end < w
-                        else tile.shape[1]
+                        else tile_shape[1]
                     )
 
                     # Get the region to place in full mask
@@ -312,12 +390,21 @@ class CellposeSegmenter:
                         dest_y_start:dest_y_end, dest_x_start:dest_x_end
                     ] = tile_region_relabeled
 
-                    # Clear GPU memory
-                    torch.cuda.empty_cache()
                     pbar.update(1)
+                    tile_count += 1
+
+                # Clear GPU memory after each batch
+                torch.cuda.empty_cache()
+
+                # Log progress every 50 tiles
+                if tile_count % 50 == 0:
+                    logger.info(f"Segmentation progress: {tile_count}/{total_tiles} tiles ({100*tile_count/total_tiles:.1f}%)")
 
         # Relabel to ensure consecutive labels
         full_masks, _, _ = relabel_sequential(full_masks)
+
+        n_nuclei = full_masks.max()
+        logger.info(f"Tiled segmentation complete: {n_nuclei:,} nuclei detected from {total_tiles} tiles")
 
         return full_masks
 

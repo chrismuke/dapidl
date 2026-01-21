@@ -40,8 +40,17 @@ class XeniumDataReader:
         """Validate that required files exist."""
         outs_path = self._get_outs_path()
 
+        # Check for morphology image - old format has morphology_focus.ome.tif,
+        # new format (post 2024) has morphology.ome.tif
+        morphology_files = ["morphology_focus.ome.tif", "morphology.ome.tif"]
+        has_morphology = any((outs_path / f).exists() for f in morphology_files)
+        if not has_morphology:
+            raise FileNotFoundError(
+                f"No morphology image found. Looked for: {morphology_files} in {outs_path}"
+            )
+
+        # Check other required files
         required_files = [
-            "morphology_focus.ome.tif",
             "cells.parquet",
             "cell_feature_matrix.h5",
         ]
@@ -96,8 +105,23 @@ class XeniumDataReader:
         return self.image.shape
 
     def _load_image(self) -> np.ndarray:
-        """Load DAPI morphology image from OME-TIFF."""
-        image_path = self._get_outs_path() / "morphology_focus.ome.tif"
+        """Load DAPI morphology image from OME-TIFF.
+
+        Handles both old and new Xenium output formats:
+        - Old format: morphology_focus.ome.tif (single focused plane)
+        - New format: morphology.ome.tif (combined image from all FOVs)
+        """
+        outs_path = self._get_outs_path()
+
+        # Try old format first (morphology_focus.ome.tif), then new format
+        image_path = outs_path / "morphology_focus.ome.tif"
+        if not image_path.exists():
+            image_path = outs_path / "morphology.ome.tif"
+            if not image_path.exists():
+                raise FileNotFoundError(
+                    f"No morphology image found in {outs_path}"
+                )
+
         logger.info(f"Loading DAPI image from {image_path}")
 
         with tifffile.TiffFile(image_path) as tif:

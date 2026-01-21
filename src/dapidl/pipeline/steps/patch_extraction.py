@@ -227,9 +227,21 @@ class PatchExtractionStep(PipelineStep):
         dapi_image = self._load_dapi_image(data_path, platform)
         logger.info(f"Loaded DAPI: {dapi_image.shape}, dtype={dapi_image.dtype}")
 
-        # Normalize image
+        # Compute normalization parameters (DON'T convert whole image to float32!)
+        # For large images, use lazy normalization - normalize patches on-the-fly
+        h, w = dapi_image.shape
+        use_lazy_norm = h * w > 100_000_000  # > 100M pixels
+        norm_params = None
         if cfg.normalize:
-            dapi_image = self._normalize_image(dapi_image, cfg)
+            norm_params = self._compute_normalization_params(dapi_image, cfg)
+            if use_lazy_norm:
+                logger.info(f"Using LAZY normalization for {h * w / 1e9:.2f}B pixel image (saves ~{h * w * 4 / 1e9:.1f}GB)")
+            else:
+                # Small image - pre-normalize for speed
+                p_low, p_high = norm_params
+                dapi_image = np.clip(dapi_image, p_low, p_high).astype(np.float32)
+                dapi_image = (dapi_image - p_low) / (p_high - p_low + 1e-8)
+                norm_params = None  # Already normalized
 
         # Load annotations (resolve artifact URL)
         annotations_path = resolve_artifact_path(
@@ -240,20 +252,41 @@ class PatchExtractionStep(PipelineStep):
         annotations_df = pl.read_parquet(annotations_path)
         logger.info(f"Loaded {annotations_df.height} annotations")
 
-        # Load centroids (prefer segmentation output if available)
+        # Load centroids (prefer segmentation output if available and valid)
+        use_segmentation_centroids = False
+        centroids_df: pl.DataFrame | None = None
         if cfg.use_cellpose_centroids and inputs.get("centroids_parquet"):
-            # Use segmentation output centroids
-            centroids_path = resolve_artifact_path(
-                inputs["centroids_parquet"], "centroids_parquet"
-            )
-            centroids_df = self._load_centroids(centroids_path, platform)
-        else:
+            # Check if Cellpose matching succeeded (match_rate > 0)
+            matching_stats = inputs.get("matching_stats", {})
+            match_rate = matching_stats.get("match_rate", 0.0) if matching_stats else 0.0
+
+            if match_rate > 0:
+                # Use segmentation output centroids
+                centroids_path = resolve_artifact_path(
+                    inputs["centroids_parquet"], "centroids_parquet"
+                )
+                if centroids_path is not None:
+                    centroids_df = self._load_centroids(centroids_path, platform)
+                    use_segmentation_centroids = True
+                    logger.info(f"Using Cellpose centroids (match_rate={match_rate:.1%})")
+            else:
+                logger.warning(f"Cellpose matching failed (match_rate={match_rate:.1%}), falling back to native cells")
+
+        if not use_segmentation_centroids:
+            # Fall back to native cell coordinates
             cells_path_raw = inputs.get("cells_parquet")
             if cells_path_raw:
                 cells_path = resolve_artifact_path(cells_path_raw, "cells_parquet")
-                centroids_df = self._load_centroids(cells_path, platform)
+                if cells_path is not None:
+                    centroids_df = self._load_centroids(cells_path, platform)
+                    logger.info("Using native cell coordinates")
+                else:
+                    raise ValueError("cells_parquet path could not be resolved")
             else:
                 raise ValueError("No cell coordinates available")
+
+        if centroids_df is None:
+            raise ValueError("Failed to load cell centroids")
 
         logger.info(f"Loaded {centroids_df.height} cell centroids")
 
@@ -300,6 +333,7 @@ class PatchExtractionStep(PipelineStep):
                 dapi_image, merged_df, patches_path, cfg.patch_size,
                 source_pixel_size=source_pixel_size,
                 target_pixel_size=target_pixel_size,
+                norm_params=norm_params,  # Pass for lazy normalization
             )
         else:
             patches_path = output_dir / "patches.zarr"
@@ -373,22 +407,73 @@ class PatchExtractionStep(PipelineStep):
             mid_idx = len(dapi_files) // 2
             return tifffile.imread(dapi_files[mid_idx])
 
+    def _compute_normalization_params(
+        self, image: np.ndarray, cfg: PatchExtractionConfig
+    ) -> tuple[float, float]:
+        """Compute normalization parameters without converting image.
+
+        Returns:
+            Tuple of (p_low, p_high) percentile values for normalization.
+        """
+        h, w = image.shape
+        n_pixels = h * w
+
+        # For large images, use sampled percentile estimation (same as Cellpose fix)
+        if n_pixels > 100_000_000:  # > 100M pixels
+            sample_size = min(1_000_000, n_pixels)
+            rng = np.random.default_rng(42)  # Fixed seed for reproducibility
+            flat_indices = rng.choice(n_pixels, size=sample_size, replace=False)
+            sample = image.flat[flat_indices].astype(np.float32)
+            logger.info(f"Computing normalization params from {sample_size:,} samples ({n_pixels:,} total pixels)")
+        else:
+            sample = image.astype(np.float32)
+
+        if cfg.normalization_method == "adaptive":
+            p_low = float(np.percentile(sample, cfg.percentile_low))
+            p_high = float(np.percentile(sample, cfg.percentile_high))
+        elif cfg.normalization_method == "percentile":
+            p_low = float(np.percentile(sample, cfg.percentile_low))
+            p_high = float(np.percentile(sample, cfg.percentile_high))
+        else:  # minmax
+            p_low = float(image.min())
+            p_high = float(image.max())
+
+        logger.info(f"Normalization params: p_low={p_low:.1f}, p_high={p_high:.1f}")
+        return p_low, p_high
+
+    def _normalize_patch(
+        self, patch: np.ndarray, p_low: float, p_high: float
+    ) -> np.ndarray:
+        """Normalize a single patch to 0-1 range.
+
+        Args:
+            patch: Raw uint16 patch
+            p_low: Lower percentile value
+            p_high: Upper percentile value
+
+        Returns:
+            Normalized float32 patch (0-1 range)
+        """
+        patch_f = patch.astype(np.float32)
+        patch_f = np.clip(patch_f, p_low, p_high)
+        patch_f = (patch_f - p_low) / (p_high - p_low + 1e-8)
+        return patch_f
+
     def _normalize_image(
         self, image: np.ndarray, cfg: PatchExtractionConfig
     ) -> np.ndarray:
-        """Normalize image to 0-1 range."""
-        if cfg.normalization_method == "adaptive":
-            # Adaptive percentile based on image statistics
-            p_low = np.percentile(image, cfg.percentile_low)
-            p_high = np.percentile(image, cfg.percentile_high)
-        elif cfg.normalization_method == "percentile":
-            p_low = np.percentile(image, cfg.percentile_low)
-            p_high = np.percentile(image, cfg.percentile_high)
-        else:  # minmax
-            p_low = image.min()
-            p_high = image.max()
+        """Normalize image to 0-1 range.
 
-        # Clip and scale
+        WARNING: This method is DEPRECATED for large images. Use
+        _compute_normalization_params() + _normalize_patch() instead.
+        """
+        p_low, p_high = self._compute_normalization_params(image, cfg)
+
+        # Clip and scale - ONLY for small images!
+        h, w = image.shape
+        if h * w > 100_000_000:
+            logger.warning("_normalize_image called on large image - consider using lazy normalization")
+
         image = np.clip(image, p_low, p_high)
         image = (image - p_low) / (p_high - p_low + 1e-8)
 
@@ -426,13 +511,32 @@ class PatchExtractionStep(PipelineStep):
                 pl.col("y_centroid").alias("y"),
             ])
 
-        # Raw MERSCOPE (in microns)
-        if "EntityID" in cols and "center_x" in cols:
+        # Raw MERSCOPE (in microns) - handles both EntityID and unnamed first column
+        if "center_x" in cols and "center_y" in cols:
             pixel_size = 0.108  # MERSCOPE pixel size
+
+            # Find cell_id column (could be 'EntityID' or '' or first column)
+            if "EntityID" in cols:
+                cell_id_col = "EntityID"
+            elif "" in cols:
+                cell_id_col = ""
+            else:
+                cell_id_col = cols[0]  # First column
+
+            # Shift coordinates to make all positive (MERSCOPE can have negative coords)
+            x_min = df["center_x"].min()
+            y_min = df["center_y"].min()
+            if x_min is None:
+                x_min = 0.0
+            if y_min is None:
+                y_min = 0.0
+
+            logger.info(f"MERSCOPE coordinate offset: x_min={x_min:.2f}, y_min={y_min:.2f} µm")
+
             return df.select([
-                pl.col("EntityID").cast(pl.Utf8).alias("cell_id"),
-                (pl.col("center_x") / pixel_size).alias("x"),
-                (pl.col("center_y") / pixel_size).alias("y"),
+                pl.col(cell_id_col).cast(pl.Utf8).alias("cell_id"),
+                ((pl.col("center_x") - x_min) / pixel_size).alias("x"),
+                ((pl.col("center_y") - y_min) / pixel_size).alias("y"),
             ])
 
         raise ValueError(f"Unknown centroids format. Columns: {cols}")
@@ -539,21 +643,32 @@ class PatchExtractionStep(PipelineStep):
         patch_size: int,
         source_pixel_size: float = 0.0,
         target_pixel_size: float = 0.0,
+        norm_params: tuple[float, float] | None = None,
     ) -> dict[str, Any]:
         """Extract patches to LMDB database.
 
         Uses numpy's native tobytes()/frombuffer() for safe serialization.
 
         Args:
-            image: DAPI image to extract from
+            image: DAPI image to extract from (uint16 or float32)
             df: DataFrame with x, y, label columns
             output_path: Path to save LMDB
             patch_size: Output patch size in pixels
             source_pixel_size: Source platform pixel size (µm/px). 0 = no rescaling.
             target_pixel_size: Target pixel size (µm/px). 0 = no rescaling.
+            norm_params: If provided, (p_low, p_high) for lazy normalization.
+                        None means image is already normalized.
         """
         import cv2
         import lmdb
+
+        # Check if we need lazy normalization
+        use_lazy_norm = norm_params is not None
+        p_low: float = 0.0
+        p_high: float = 1.0
+        if use_lazy_norm and norm_params is not None:
+            p_low, p_high = norm_params
+            logger.info(f"Using lazy patch normalization: p_low={p_low:.1f}, p_high={p_high:.1f}")
 
         # Calculate extraction size for physical-space normalization
         do_rescale = source_pixel_size > 0 and target_pixel_size > 0
@@ -605,8 +720,17 @@ class PatchExtractionStep(PipelineStep):
                     if patch.shape != (source_extract_size, source_extract_size):
                         continue
 
+                    # Lazy normalization: normalize this patch only
+                    if use_lazy_norm:
+                        patch = patch.astype(np.float32)
+                        patch = np.clip(patch, p_low, p_high)
+                        patch = (patch - p_low) / (p_high - p_low + 1e-8)
+
                     # Resize to target size if using physical-space normalization
                     if do_rescale:
+                        # Ensure float32 for cv2.resize
+                        if patch.dtype != np.float32:
+                            patch = patch.astype(np.float32)
                         patch = cv2.resize(
                             patch,
                             (patch_size, patch_size),
@@ -616,11 +740,18 @@ class PatchExtractionStep(PipelineStep):
                     # Store in format compatible with training.py:
                     # - Key: big-endian uint64 (sequential index)
                     # - Value: int64 label (8 bytes) + uint16 patch data
+                    # Normalized patches (0-1) are scaled back to uint16 for storage
                     key = struct.pack(">Q", n_extracted)
+
+                    # Convert normalized float32 to uint16 for storage
+                    if patch.dtype == np.float32:
+                        # Normalize to 0-1 range was already done, scale to uint16
+                        patch_uint16 = (patch * 65535).clip(0, 65535).astype(np.uint16)
+                    else:
+                        patch_uint16 = patch.astype(np.uint16)
 
                     # Pack label as int64 + patch as uint16
                     label_bytes = np.array([label], dtype=np.int64).tobytes()
-                    patch_uint16 = patch.astype(np.uint16)
                     value = label_bytes + patch_uint16.tobytes()
 
                     txn.put(key, value)
@@ -636,11 +767,13 @@ class PatchExtractionStep(PipelineStep):
                 "length": n_extracted,
                 "n_patches": n_extracted,
                 "patch_size": patch_size,
-                "dtype": str(image.dtype),
+                "dtype": "uint16",  # Patches stored as normalized uint16 (0-65535)
+                "source_dtype": str(image.dtype),  # Original image dtype
                 "class_counts": {str(k): v for k, v in class_counts.items()},
                 "source_pixel_size_um": source_pixel_size if do_rescale else None,
                 "target_pixel_size_um": target_pixel_size if do_rescale else None,
                 "physical_normalized": do_rescale,
+                "lazy_normalized": use_lazy_norm,
             }
             txn.put(b"__metadata__", json.dumps(metadata).encode())
 
