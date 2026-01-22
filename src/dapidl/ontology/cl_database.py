@@ -539,7 +539,48 @@ FINE_TERMS = {
         level=HierarchyLevel.FINE,
         markers=["VIM", "COL1A1"],
     ),
-    # Additional tissue-specific and specialized cells can be added here
+    # === Specialized epithelial cells (CellTypist) ===
+    "CL:0000064": CLTerm(
+        "CL:0000064",
+        "ciliated cell",
+        ["ciliated epithelial cell", "Ciliated"],
+        parent_id="CL:0000066",  # epithelial cell
+        level=HierarchyLevel.FINE,
+        markers=["FOXJ1", "CFAP299"],
+    ),
+    "CL:0000160": CLTerm(
+        "CL:0000160",
+        "goblet cell",
+        ["mucus-secreting cell", "Goblet"],
+        parent_id="CL:0000066",  # epithelial cell
+        level=HierarchyLevel.FINE,
+        markers=["MUC5AC", "MUC5B"],
+    ),
+    "CL:0000158": CLTerm(
+        "CL:0000158",
+        "club cell",
+        ["Clara cell", "bronchiolar secretory cell", "Secretory_Club"],
+        parent_id="CL:0000066",  # epithelial cell
+        level=HierarchyLevel.FINE,
+        markers=["SCGB1A1", "SCGB3A1"],
+    ),
+    "CL:0002204": CLTerm(
+        "CL:0002204",
+        "tuft cell",
+        ["brush cell", "Tuft"],
+        parent_id="CL:0000066",  # epithelial cell
+        level=HierarchyLevel.FINE,
+        markers=["DCLK1", "TRPM5"],
+    ),
+    # === NKT cells ===
+    "CL:0000814": CLTerm(
+        "CL:0000814",
+        "mature NK T cell",
+        ["NKT cell", "NKT", "natural killer T cell"],
+        parent_id="CL:0000084",  # T cell (→ lymphocyte → leukocyte → Immune)
+        level=HierarchyLevel.FINE,
+        markers=["CD3D", "NCAM1", "KLRB1"],
+    ),
 }
 
 

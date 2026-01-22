@@ -213,7 +213,9 @@ class CLMapper:
                 )
 
         # 6. Pattern-based matching (handles variations)
-        pattern_result = self._pattern_match(label_clean)
+        # Use label.lower() instead of label_clean to preserve _ and - separators
+        # which are important for patterns like "DC_1", "Macro-IFN", "Fibro_adventitial"
+        pattern_result = self._pattern_match(label.lower())
         if pattern_result:
             return self._make_result(
                 original, pattern_result, 0.8, MappingMethod.FUZZY,
@@ -289,40 +291,66 @@ class CLMapper:
         )
 
     def _pattern_match(self, label: str) -> str | None:
-        """Match common patterns to CL IDs."""
+        """Match common patterns to CL IDs.
+
+        Enhanced patterns to catch CellTypist-specific naming conventions
+        like CD4-Tem (effector memory), CD8-Trm (tissue-resident memory),
+        Macro-IFN (interferon-stimulated), etc.
+        """
         patterns = [
-            # T cells
-            (r"cd4.*t.*cell|t.*cell.*cd4|helper.*t|th\d*\s*cell", "CL:0000624"),
-            (r"cd8.*t.*cell|t.*cell.*cd8|cytotoxic.*t|ctl\b", "CL:0000625"),
+            # T cells - enhanced for memory/effector subtypes
+            # CD4+ T cells: CD4-Tem, CD4-Th, CD4-naive, CD4_naive/CM
+            (r"cd4.*t|cd4.*(tem|th|naive|cm|em|trm)|t.*cd4|helper.*t|th\d*\s*cell", "CL:0000624"),
+            # CD8+ T cells: CD8-Tem, CD8-Trm, CD8_EM, CD8_TRM/EM, Activated CD8 T
+            (r"cd8.*t|cd8.*(tem|tmem|trm|em|activated)|t.*cd8|cytotoxic.*t|ctl\b|activated.*cd8", "CL:0000625"),
             (r"\btreg\b|regulatory.*t", "CL:0000815"),
-            (r"^t\s*cell|t.*lymphocyte", "CL:0000084"),
-            # B cells
-            (r"plasma.*cell|plasmacyte", "CL:0000786"),
-            (r"^b\s*cell|b.*lymphocyte", "CL:0000236"),
-            # Myeloid
-            (r"macrophage|histiocyte|\bm[12φ]\b", "CL:0000235"),
-            (r"monocyte", "CL:0000576"),
-            (r"dendritic|^dc$|\bcdc\b|\bpdc\b", "CL:0000451"),
+            (r"\bnkt\b|nk.*t\s*cell", "CL:0000814"),  # NKT cells
+            (r"thymocyte|double.*positive.*thymocyte", "CL:0000084"),  # Thymocytes
+            (r"^t\s*cell$|^t-cell$|t.*lymphocyte", "CL:0000084"),
+            # B cells - enhanced for memory subtypes
+            (r"plasma.*cell|plasmacyte|plasma_", "CL:0000786"),
+            (r"bmem|memory.*b", "CL:0000787"),  # Memory B cells
+            (r"^b\s*cell$|^b-cell$|b.*lymphocyte", "CL:0000236"),
+            # Myeloid - enhanced for macrophage/monocyte subtypes
+            # Macrophages: Macro-IFN, Macro_interstitial, Macro_intravascular
+            (r"macrophage|macro[-_]|histiocyte|\bm[12φ]\b", "CL:0000235"),
+            # Monocytes: Mono-non-classical, Mono-classical
+            (r"monocyte|mono[-_]", "CL:0000576"),
+            # Myeloid proliferating
+            (r"mye[-_]prol|myeloid.*prol", "CL:0000766"),
+            # Dendritic cells: DC_1, DC_2, DC_activated
+            (r"dendritic|^dc$|^dc_\d|dc_activated|\bcdc\b|\bpdc\b", "CL:0000451"),
             (r"mast.*cell|mastocyte", "CL:0000097"),
             (r"neutrophil|\bpmn\b", "CL:0000775"),
-            # NK - require word boundary to avoid matching "unknown"
-            (r"\bnk\s*cell|\bnatural\s*killer", "CL:0000623"),
-            # Epithelial
+            # NK/ILC - enhanced, careful to avoid "unknown"
+            (r"\bnk\s*cell|\bnatural\s*killer|\bnk[-_]ilc|\bilc\b", "CL:0000623"),
+            # Lymphocyte general
+            (r"lymphocyte", "CL:0000542"),
+            # Epithelial - enhanced for specialized types
             (r"epithelial|epithelium", "CL:0000066"),
-            (r"luminal.*epithelial|luminal.*cell", "CL:0002325"),
-            (r"basal.*cell|basal.*epithelial", "CL:0000646"),
+            # Luminal: LummHR-SCGB, Lumsec-prol
+            (r"luminal|lumm|lumsec", "CL:0002325"),
+            (r"basal.*cell|basal.*epithelial|^basal$", "CL:0000646"),
             (r"myoepithelial", "CL:0000185"),
-            (r"hepatocyte|liver.*cell", "CL:0000182"),
+            (r"hepatocyte|liver.*cell|cholangiocyte", "CL:0000182"),
             (r"keratinocyte", "CL:0000312"),
-            # Stromal
-            (r"fibroblast", "CL:0000057"),
+            # Specialized epithelial: colonocyte, ciliated, goblet, club, tuft
+            (r"colonocyte|enterocyte|intestin.*epithelial", "CL:0002071"),
+            (r"ciliated", "CL:0000064"),
+            (r"goblet", "CL:0000160"),
+            (r"club|secretory.*club", "CL:0000158"),
+            (r"tuft", "CL:0002204"),
+            # Stromal - enhanced for subtypes
+            (r"fibroblast|fibro[-_]", "CL:0000057"),
             (r"myofibroblast", "CL:0000186"),
             (r"smooth.*muscle|\bsmc\b", "CL:0000192"),
             (r"pericyte|mural.*cell", "CL:0000669"),
             (r"adipocyte|fat.*cell", "CL:0000136"),
-            # Endothelial
-            (r"endothelial|endothelium", "CL:0000115"),
-            (r"lymphatic.*endothelial|\blec\b", "CL:0002138"),
+            (r"stromal|stroma", "CL:0000499"),
+            # Endothelial - enhanced for EC abbreviations
+            # Mature venous EC, cycling EC, Endothelia_Lymphatic
+            (r"endotheli|endothelium|venous.*ec|cycling.*ec|\bec\b", "CL:0000115"),
+            (r"lymphatic.*endotheli|\blec\b", "CL:0002138"),
         ]
 
         for pattern, cl_id in patterns:
