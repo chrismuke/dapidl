@@ -26,8 +26,8 @@ from dapidl.pipeline.universal_controller import (
 # ClearML Dataset IDs (registered raw datasets)
 # Map: directory_name -> ClearML dataset ID
 CLEARML_DATASET_IDS = {
-    "breast_tumor_rep1": "ac032e65d7554634a910bf7346ee6e5d",
-    "breast_tumor_rep2": "8b2109792ef0426f9e82ea08b2e1f2b5",
+    "breast_tumor_rep1": "647b3a2d0ba24662bc83060a35fce12f",  # v2.0 with correct DAPI files
+    "breast_tumor_rep2": "b5babdf97e354f518166e90c5670c8a9",  # v2.0 with correct DAPI files
     "colon_cancer_colon-panel": "22f40795beaf4d2f88e4e57f24e63e4c",
     "colon_normal_colon-panel": "7fa2c7aba5284df68aa4f1aa2ace38e9",
     "colorectal_cancer_io-panel": "afa5dc80c38a4bdc946d2f5a2a2a7c6b",

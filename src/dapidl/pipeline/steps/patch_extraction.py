@@ -390,17 +390,54 @@ class PatchExtractionStep(PipelineStep):
         )
 
     def _load_dapi_image(self, data_path: Path, platform: str) -> np.ndarray:
-        """Load DAPI image."""
+        """Load DAPI image.
+
+        For Xenium, handles multiple file formats:
+        1. morphology_focus.ome.tif - single best-focus image (preferred)
+        2. morphology_focus/ directory - tiled focus images (Xenium Prime/IO)
+        3. morphology.ome.tif - raw z-stack (fallback, uses middle z-plane)
+        """
         import tifffile
 
         if platform == "xenium":
-            dapi_path = data_path / "morphology_focus.ome.tif"
-            if not dapi_path.exists():
-                dapi_path = data_path / "morphology.ome.tif"
-            image = tifffile.imread(dapi_path)
-            if image.ndim == 3:
-                image = image[0]
-            return image
+            # Option 1: Single focus image (standard Xenium)
+            focus_file = data_path / "morphology_focus.ome.tif"
+            if focus_file.exists():
+                logger.info(f"Loading single focus file: {focus_file.name}")
+                image = tifffile.imread(focus_file)
+                if image.ndim == 3:
+                    image = image[0]
+                return image
+
+            # Option 2: Tiled focus images (Xenium Prime/IO)
+            focus_dir = data_path / "morphology_focus"
+            if focus_dir.exists():
+                tiled_files = sorted(focus_dir.glob("morphology_focus_*.ome.tif"))
+                if tiled_files:
+                    # For single tile, use it directly
+                    if len(tiled_files) == 1:
+                        logger.info(f"Loading single tiled focus image: {tiled_files[0].name}")
+                        image = tifffile.imread(tiled_files[0])
+                        if image.ndim == 3:
+                            image = image[0]
+                        return image
+                    # For multiple tiles, fall back to z-stack (stitching is too memory-intensive)
+                    logger.info(f"Found {len(tiled_files)} tiled focus images - using z-stack middle plane instead")
+
+            # Option 3: Raw z-stack - use MIDDLE z-plane (not first!)
+            zstack_file = data_path / "morphology.ome.tif"
+            if zstack_file.exists():
+                logger.info(f"Loading z-stack: {zstack_file.name}")
+                image = tifffile.imread(zstack_file)
+                if image.ndim == 3:
+                    # Use middle z-plane where focus is typically best
+                    mid_z = image.shape[0] // 2
+                    logger.info(f"Using middle z-plane {mid_z} of {image.shape[0]}")
+                    image = image[mid_z]
+                return image
+
+            raise FileNotFoundError(f"No DAPI image found in {data_path}")
+
         else:  # merscope
             images_dir = data_path / "images"
             dapi_files = sorted(images_dir.glob("mosaic_DAPI_z*.tif"))
@@ -503,12 +540,15 @@ class PatchExtractionStep(PipelineStep):
                 (pl.col("centroid_y_um") / pixel_size).alias("y"),
             ])
 
-        # Raw Xenium cells.parquet (already in pixels)
+        # Raw Xenium cells.parquet (in MICRONS, need conversion to pixels)
+        # Note: Xenium coordinates are in microns, not pixels!
         if "x_centroid" in cols and "y_centroid" in cols:
+            pixel_size = 0.2125  # Xenium pixel size (µm/px)
+            logger.info(f"Converting Xenium coordinates from microns to pixels (÷{pixel_size})")
             return df.select([
                 pl.col("cell_id").cast(pl.Utf8),
-                pl.col("x_centroid").alias("x"),
-                pl.col("y_centroid").alias("y"),
+                (pl.col("x_centroid") / pixel_size).alias("x"),
+                (pl.col("y_centroid") / pixel_size).alias("y"),
             ])
 
         # Raw MERSCOPE (in microns) - handles both EntityID and unnamed first column

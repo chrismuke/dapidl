@@ -355,7 +355,11 @@ aws s3 sync s3://dapidl/raw-data/xenium-lung-2fov/ ./xenium-lung-2fov/ \
     --endpoint-url https://s3.eu-central-2.idrivee2.com --region eu-central-2
 ```
 
-**Note**: ClearML hosted quota fully exhausted (artifacts_storage). Cannot create new datasets/tasks until quota freed. Use S3 directly for data access.
+**Storage Strategy**:
+- **Large files (datasets, models)**: Store on S3, register with ClearML using S3 URIs
+- **Experiment tracking**: Use ClearML for all pipeline runs
+- **Free tier limits**: ~100GB storage, 1M API calls/month
+- Always use `--output-uri s3://dapidl/...` for ClearML tasks to store artifacts on S3
 
 ## Annotation Benchmark Results (Jan 2025)
 
