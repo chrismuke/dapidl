@@ -30,15 +30,80 @@ from dapidl.pipeline.base import PipelineStep, StepArtifacts
 # Add your local datasets here to avoid re-downloading.
 # The loader checks these paths FIRST before downloading.
 
+# Base directories for local raw datasets
+LOCAL_DATASET_ROOTS: list[Path] = [
+    Path("/mnt/work/datasets/raw/xenium"),
+    Path("/mnt/work/datasets/raw/merscope"),
+]
+
+
+def _build_local_registry() -> dict[str, Path]:
+    """Scan local dataset directories and build name->path registry.
+
+    Scans LOCAL_DATASET_ROOTS for directories and maps their names
+    to local paths. Also resolves outs/ subdirectory if present.
+    """
+    registry: dict[str, Path] = {}
+    for root in LOCAL_DATASET_ROOTS:
+        if not root.exists():
+            continue
+        for entry in root.iterdir():
+            if not entry.is_dir():
+                continue
+            # Use directory name as key (e.g., "xenium-breast-tumor-rep1")
+            effective_path = entry / "outs" if (entry / "outs").is_dir() else entry
+            registry[entry.name] = effective_path
+    return registry
+
+
+def _find_local_dataset_by_id(dataset_id: str) -> Path | None:
+    """Look up ClearML dataset by ID and check if data exists locally.
+
+    Resolves the dataset name from ClearML metadata, then checks if
+    a matching directory exists under LOCAL_DATASET_ROOTS.
+    """
+    try:
+        from clearml import Dataset
+
+        ds = Dataset.get(dataset_id=dataset_id, only_completed=False)
+        ds_name = ds.name  # e.g., "xenium-breast-tumor-rep1-raw"
+
+        local_registry = _build_local_registry()
+
+        # Strip common suffixes and try matching
+        stripped = ds_name
+        for suffix in ["-raw", "-raw-data"]:
+            stripped = stripped.removesuffix(suffix)
+
+        # Try exact match
+        if stripped in local_registry:
+            path = local_registry[stripped]
+            if path.exists():
+                logger.info(f"✓ Dataset '{ds_name}' found locally: {path}")
+                return path
+
+        # Try progressively shorter suffixes (e.g., strip panel info)
+        # "xenium-heart-normal-multi-tissue-panel" -> try "xenium-heart-normal"
+        parts = stripped.split("-")
+        for end in range(len(parts), 2, -1):
+            candidate = "-".join(parts[:end])
+            if candidate in local_registry:
+                path = local_registry[candidate]
+                if path.exists():
+                    logger.info(f"✓ Dataset '{ds_name}' matched locally as '{candidate}': {path}")
+                    return path
+
+    except Exception as e:
+        logger.debug(f"Could not resolve dataset_id locally: {e}")
+
+    return None
+
+
+# Legacy static registry for S3 URIs
 LOCAL_DATA_REGISTRY: dict[str, str] = {
-    # S3 URIs -> local paths
     "s3://dapidl/raw-data/xenium-breast-cancer-rep1/": "/mnt/work/datasets/raw/xenium/breast_tumor_rep1/outs",
     "s3://dapidl/raw-data/xenium-lung-2fov/": "/mnt/work/datasets/raw/xenium/lung_2fov/outs",
     "s3://dapidl/raw-data/xenium-ovarian-cancer/": "/mnt/work/datasets/raw/xenium/ovarian_cancer/outs",
-    # Dataset names -> local paths (for ClearML datasets)
-    "xenium-breast-cancer-rep1": "/mnt/work/datasets/raw/xenium/breast_tumor_rep1/outs",
-    "xenium-lung-2fov": "/mnt/work/datasets/raw/xenium/lung_2fov/outs",
-    "xenium-ovarian-cancer": "/mnt/work/datasets/raw/xenium/ovarian_cancer/outs",
     "merscope-breast": "/mnt/work/datasets/raw/merscope/breast",
 }
 
@@ -239,9 +304,15 @@ class DataLoaderStep(PipelineStep):
                 logger.info(f"✓ Found local copy via registry: {registry_path}")
                 return Path(registry_path)
 
-        # 5. Download from ClearML
+        # 2c. Check local directories by resolving dataset_id -> name
+        if cfg.dataset_id:
+            local_path = _find_local_dataset_by_id(cfg.dataset_id)
+            if local_path:
+                return local_path
+
+        # 5. Download from ClearML (last resort)
         if cfg.dataset_id or cfg.dataset_name:
-            logger.info(f"⬇ Downloading from ClearML...")
+            logger.info("⬇ Downloading from ClearML...")
             return self._download_dataset()
 
         raise ValueError(
