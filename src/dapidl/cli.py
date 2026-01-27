@@ -2885,6 +2885,13 @@ def create_base_tasks(project: str, include_universal: bool) -> None:
     console.print("[cyan]Registering pipeline steps...[/cyan]")
     pipeline.create_base_tasks()
 
+    if include_universal:
+        from dapidl.pipeline.universal_controller import UniversalPipelineConfig, UniversalDAPIPipelineController
+        console.print("[cyan]Registering universal training step...[/cyan]")
+        universal_config = UniversalPipelineConfig(project=project)
+        universal = UniversalDAPIPipelineController(universal_config)
+        universal.create_base_tasks()
+
     console.print("\n[green]✓ Base tasks created![/green]")
     console.print(f"  Project: {project}")
     console.print("  You can now run the pipeline with: dapidl clearml-pipeline run")
