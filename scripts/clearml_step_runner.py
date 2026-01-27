@@ -239,9 +239,43 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
 
     # Get input artifacts from parent tasks (via step_config parameters)
     # The pipeline controller passes parent outputs as step_config parameters
+    # using ${step.artifacts.name.url} syntax, which resolves to ClearML file
+    # server URLs. We need to download these URLs to get the actual values.
     from dapidl.pipeline.base import StepArtifacts
 
     inputs = {}
+
+    def _resolve_artifact_value(value: str) -> str | dict:
+        """Resolve a ClearML artifact URL or raw value to its actual content.
+
+        Pipeline parameter interpolation (${step.artifacts.name.url}) resolves
+        to ClearML file server URLs. This function downloads the URL to get
+        the actual artifact content (e.g., a path string or JSON object).
+        """
+        # Check if value is a ClearML file server URL
+        if isinstance(value, str) and ("files.clear.ml" in value or "/artifacts/" in value):
+            try:
+                from clearml.storage import StorageManager
+                local_path = StorageManager.get_local_copy(value)
+                if local_path:
+                    content = Path(local_path).read_text().strip()
+                    logger.info(f"  Resolved URL to: {content[:200]}")
+                    # Try to parse as JSON (path_reference objects, dicts, lists)
+                    if content.startswith("{") or content.startswith("["):
+                        try:
+                            return json.loads(content)
+                        except json.JSONDecodeError:
+                            return content
+                    return content
+            except Exception as e:
+                logger.warning(f"  Failed to resolve artifact URL: {e}")
+        # Handle JSON-encoded values (non-URL)
+        if isinstance(value, str) and value.startswith("{"):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                pass
+        return value
 
     # Extract parent outputs from step_config (set by pipeline parameter_override)
     parent_output_keys = [
@@ -261,15 +295,13 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
     for key in parent_output_keys:
         if key in step_config and step_config[key]:
             value = step_config[key]
-            # Handle JSON-encoded values
-            if isinstance(value, str) and value.startswith("{"):
-                try:
-                    inputs[key] = json.loads(value)
-                except json.JSONDecodeError:
-                    inputs[key] = value
-            else:
-                inputs[key] = value
-            logger.info(f"Got parent output: {key} = {value[:100] if isinstance(value, str) and len(value) > 100 else value}")
+            resolved = _resolve_artifact_value(value)
+            # Handle path_reference objects - extract the local_path
+            if isinstance(resolved, dict) and resolved.get("type") == "path_reference":
+                resolved = resolved["local_path"]
+                logger.info(f"  Extracted local_path from path_reference: {resolved}")
+            inputs[key] = resolved
+            logger.info(f"Got parent output: {key} = {str(resolved)[:100] if isinstance(resolved, str) and len(str(resolved)) > 100 else resolved}")
 
     # Parent outputs go in 'outputs' - steps access via artifacts.outputs
     artifacts = StepArtifacts(inputs={}, outputs=inputs)
