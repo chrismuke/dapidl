@@ -250,7 +250,13 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
 
         Pipeline parameter interpolation (${step.artifacts.name.url}) resolves
         to ClearML file server URLs. This function downloads the URL to get
-        the actual artifact content (e.g., a path string or JSON object).
+        the actual artifact content.
+
+        Two artifact types are handled:
+        1. Text artifacts (platform, data_path, metadata) - stored as text
+           files on the server, content is read and returned as string/dict.
+        2. File artifacts (centroids_parquet, annotations_parquet) - stored
+           as actual files, get_local_copy returns the downloaded file path.
         """
         # Check if value is a ClearML file server URL
         if isinstance(value, str) and ("files.clear.ml" in value or "/artifacts/" in value):
@@ -258,15 +264,29 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
                 from clearml.storage import StorageManager
                 local_path = StorageManager.get_local_copy(value)
                 if local_path:
-                    content = Path(local_path).read_text().strip()
-                    logger.info(f"  Resolved URL to: {content[:200]}")
-                    # Try to parse as JSON (path_reference objects, dicts, lists)
-                    if content.startswith("{") or content.startswith("["):
-                        try:
-                            return json.loads(content)
-                        except json.JSONDecodeError:
-                            return content
-                    return content
+                    local_file = Path(local_path)
+                    # Binary files (parquet, h5, etc.) - return the local path directly
+                    binary_suffixes = {".parquet", ".h5", ".hdf5",
+                                       ".tif", ".tiff", ".png", ".jpg", ".npy", ".npz",
+                                       ".lmdb", ".mdb", ".zip", ".tar", ".gz", ".pt", ".pth"}
+                    if local_file.suffix.lower() in binary_suffixes:
+                        logger.info(f"  Resolved URL to binary file: {local_path}")
+                        return str(local_path)
+                    # Text files - read content
+                    try:
+                        content = local_file.read_text().strip()
+                        logger.info(f"  Resolved URL to: {content[:200]}")
+                        # Try to parse as JSON (path_reference objects, dicts, lists)
+                        if content.startswith("{") or content.startswith("["):
+                            try:
+                                return json.loads(content)
+                            except json.JSONDecodeError:
+                                return content
+                        return content
+                    except UnicodeDecodeError:
+                        # Not a text file - return local path
+                        logger.info(f"  Resolved URL to binary file (fallback): {local_path}")
+                        return str(local_path)
             except Exception as e:
                 logger.warning(f"  Failed to resolve artifact URL: {e}")
         # Handle JSON-encoded values (non-URL)
