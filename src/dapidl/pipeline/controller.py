@@ -377,6 +377,7 @@ class DAPIDLPipelineController:
                 # Pass outputs from parent steps
                 "step_config/data_path": "${data_loader.artifacts.data_path.url}",
                 "step_config/platform": "${data_loader.artifacts.platform.url}",
+                "step_config/cells_parquet": "${data_loader.artifacts.cells_parquet.url}",
                 "step_config/centroids_parquet": "${segmentation.artifacts.centroids_parquet.url}",
                 "step_config/annotations_parquet": "${annotation.artifacts.annotations_parquet.url}",
             },
