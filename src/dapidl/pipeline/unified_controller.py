@@ -456,7 +456,14 @@ class UnifiedPipelineController:
         return patch_extraction_steps
 
     def run(self, wait: bool = True) -> str:
-        """Run pipeline on ClearML.
+        """Run pipeline on ClearML agents.
+
+        Uses start(queue=...) to enqueue the pipeline controller itself
+        to a services queue, which then dispatches steps to agent queues.
+
+        Note: start_locally(run_pipeline_steps_locally=False) is NOT used
+        because its daemon thread gets killed before steps are enqueued,
+        leaving tasks stuck in "created" status.
 
         Args:
             wait: If True, wait for pipeline completion
@@ -470,11 +477,12 @@ class UnifiedPipelineController:
         mode = "universal" if self.is_multi_tissue else "single-dataset"
         logger.info(f"Starting unified pipeline execution ({mode} mode)...")
 
-        # Start locally but execute steps on agents
-        self._pipeline.start_locally(run_pipeline_steps_locally=False)
+        # Enqueue pipeline controller to services queue.
+        # The controller runs on a services agent and dispatches steps
+        # to default/gpu queues as configured per step.
+        self._pipeline.start(queue="services", wait=wait)
 
         if wait:
-            self._pipeline.wait()
             logger.info("Pipeline completed")
 
         return self._pipeline.id

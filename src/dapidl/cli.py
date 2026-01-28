@@ -3251,5 +3251,235 @@ def popv_info() -> None:
     console.print("  ≤4/8: <65% accuracy (low confidence)")
 
 
+# =============================================================================
+# Standalone Step Commands
+# =============================================================================
+
+
+@main.group(name="step")
+def step_group() -> None:
+    """Run individual pipeline steps standalone.
+
+    Each step can run independently with its own config. Pass artifacts
+    between steps using --input-artifacts and --output-artifacts JSON files.
+
+    Examples:
+        # Run data loader
+        dapidl step data-loader --dataset-id bf8f913f --platform xenium \
+            --output-artifacts /tmp/step1.json
+
+        # Run annotation using previous step's output
+        dapidl step annotate --input-artifacts /tmp/step1.json \
+            --output-artifacts /tmp/step2.json
+
+        # Run LMDB creation
+        dapidl step lmdb --input-artifacts /tmp/step2.json --patch-size 128 \
+            --output-artifacts /tmp/step3.json
+    """
+    pass
+
+
+def _load_artifacts(path: str | None) -> dict:
+    """Load artifacts from JSON file."""
+    if path is None:
+        return {}
+    import json
+
+    with open(path) as f:
+        return json.load(f)
+
+
+def _save_artifacts(artifacts: dict, path: str | None) -> None:
+    """Save artifacts to JSON file."""
+    if path is None:
+        return
+    import json
+
+    # Filter to JSON-serializable values
+    serializable = {}
+    for k, v in artifacts.items():
+        if isinstance(v, (str, int, float, bool, list, dict, type(None))):
+            serializable[k] = v
+        elif hasattr(v, "__str__"):
+            serializable[k] = str(v)
+    with open(path, "w") as f:
+        json.dump(serializable, f, indent=2)
+    console.print(f"  Artifacts saved: {path}")
+
+
+@step_group.command(name="data-loader")
+@click.option("--dataset-id", default=None, help="ClearML dataset ID")
+@click.option("--local-path", "-l", default=None, help="Local data path")
+@click.option("--platform", default="auto", help="Platform: auto, xenium, merscope")
+@click.option("--output-artifacts", "-o", default=None, help="Save artifacts JSON")
+def step_data_loader(dataset_id, local_path, platform, output_artifacts):
+    """Load raw spatial transcriptomics data."""
+    from dapidl.pipeline.base import StepArtifacts
+    from dapidl.pipeline.steps.data_loader import DataLoaderConfig, DataLoaderStep
+
+    config = DataLoaderConfig(
+        dataset_id=dataset_id,
+        local_path=local_path,
+        platform=platform,
+    )
+    step = DataLoaderStep(config)
+    console.print("[cyan]Running DataLoader step...[/cyan]")
+    result = step.execute(StepArtifacts())
+
+    console.print("[green]✓ DataLoader complete[/green]")
+    for k, v in result.outputs.items():
+        console.print(f"  {k}: {v}")
+
+    _save_artifacts(result.outputs, output_artifacts)
+
+
+@step_group.command(name="annotate")
+@click.option("--annotator", default="celltypist", help="Method: celltypist, ground_truth, popv")
+@click.option("--strategy", default="consensus", help="Strategy: single, consensus")
+@click.option("--model-names", default="Cells_Adult_Breast.pkl,Immune_All_High.pkl", help="CellTypist models (comma-separated)")
+@click.option("--fine-grained/--coarse", default=False, help="Fine-grained vs broad categories")
+@click.option("--input-artifacts", "-i", default=None, help="Input artifacts JSON from data-loader")
+@click.option("--output-artifacts", "-o", default=None, help="Save artifacts JSON")
+def step_annotate(annotator, strategy, model_names, fine_grained, input_artifacts, output_artifacts):
+    """Annotate cell types from gene expression."""
+    from dapidl.pipeline.base import StepArtifacts
+    from dapidl.pipeline.steps.annotation import AnnotationStep, AnnotationStepConfig
+
+    prev = _load_artifacts(input_artifacts)
+    config = AnnotationStepConfig(
+        annotator=annotator,
+        strategy=strategy,
+        model_names=model_names.split(","),
+        fine_grained=fine_grained,
+    )
+    step = AnnotationStep(config)
+    console.print("[cyan]Running Annotation step...[/cyan]")
+    result = step.execute(StepArtifacts(inputs={}, outputs=prev))
+
+    console.print("[green]✓ Annotation complete[/green]")
+    for k, v in result.outputs.items():
+        if not isinstance(v, dict) or len(str(v)) < 200:
+            console.print(f"  {k}: {v}")
+
+    combined = {**prev, **result.outputs}
+    _save_artifacts(combined, output_artifacts)
+
+
+@step_group.command(name="segment")
+@click.option("--segmenter", default="native", help="Method: cellpose, native")
+@click.option("--diameter", default=40, help="Nucleus diameter in pixels")
+@click.option("--input-artifacts", "-i", default=None, help="Input artifacts JSON from data-loader")
+@click.option("--output-artifacts", "-o", default=None, help="Save artifacts JSON")
+def step_segment(segmenter, diameter, input_artifacts, output_artifacts):
+    """Segment nuclei from DAPI images."""
+    from dapidl.pipeline.base import StepArtifacts
+    from dapidl.pipeline.steps.segmentation import SegmentationStep, SegmentationStepConfig
+
+    prev = _load_artifacts(input_artifacts)
+    config = SegmentationStepConfig(
+        segmenter=segmenter,
+        diameter=diameter,
+    )
+    step = SegmentationStep(config)
+    console.print("[cyan]Running Segmentation step...[/cyan]")
+    result = step.execute(StepArtifacts(inputs={}, outputs=prev))
+
+    console.print("[green]✓ Segmentation complete[/green]")
+    for k, v in result.outputs.items():
+        if not isinstance(v, dict) or len(str(v)) < 200:
+            console.print(f"  {k}: {v}")
+
+    combined = {**prev, **result.outputs}
+    _save_artifacts(combined, output_artifacts)
+
+
+@step_group.command(name="lmdb")
+@click.option("--patch-size", default=128, help="Patch size: 32, 64, 128, 256")
+@click.option("--normalization", default="adaptive", help="Method: adaptive, percentile, minmax")
+@click.option("--input-artifacts", "-i", default=None, help="Input artifacts JSON from annotate")
+@click.option("--output-artifacts", "-o", default=None, help="Save artifacts JSON")
+def step_lmdb(patch_size, normalization, input_artifacts, output_artifacts):
+    """Create LMDB training dataset from annotated data."""
+    from dapidl.pipeline.base import StepArtifacts
+    from dapidl.pipeline.steps.lmdb_creation import LMDBCreationConfig, LMDBCreationStep
+
+    prev = _load_artifacts(input_artifacts)
+    config = LMDBCreationConfig(
+        patch_size=patch_size,
+        normalization_method=normalization,
+    )
+    step = LMDBCreationStep(config)
+    console.print("[cyan]Running LMDB Creation step...[/cyan]")
+    result = step.execute(StepArtifacts(inputs={}, outputs=prev))
+
+    console.print("[green]✓ LMDB creation complete[/green]")
+    for k, v in result.outputs.items():
+        if not isinstance(v, dict) or len(str(v)) < 200:
+            console.print(f"  {k}: {v}")
+
+    combined = {**prev, **result.outputs}
+    _save_artifacts(combined, output_artifacts)
+
+
+@step_group.command(name="train")
+@click.option("--backbone", default="efficientnetv2_rw_s", help="CNN backbone")
+@click.option("--epochs", default=50, help="Training epochs")
+@click.option("--batch-size", default=128, help="Batch size")
+@click.option("--learning-rate", default=3e-4, help="Learning rate")
+@click.option("--input-artifacts", "-i", default=None, help="Input artifacts JSON from lmdb")
+@click.option("--output-artifacts", "-o", default=None, help="Save artifacts JSON")
+def step_train(backbone, epochs, batch_size, learning_rate, input_artifacts, output_artifacts):
+    """Train DAPI cell type classifier."""
+    from dapidl.pipeline.base import StepArtifacts
+    from dapidl.pipeline.steps.training import TrainingStep, TrainingStepConfig
+
+    prev = _load_artifacts(input_artifacts)
+    config = TrainingStepConfig(
+        backbone=backbone,
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+    )
+    step = TrainingStep(config)
+    console.print("[cyan]Running Training step...[/cyan]")
+    result = step.execute(StepArtifacts(inputs={}, outputs=prev))
+
+    console.print("[green]✓ Training complete[/green]")
+    for k, v in result.outputs.items():
+        if not isinstance(v, dict) or len(str(v)) < 200:
+            console.print(f"  {k}: {v}")
+
+    combined = {**prev, **result.outputs}
+    _save_artifacts(combined, output_artifacts)
+
+
+@step_group.command(name="cl-standardize")
+@click.option("--target-level", default="coarse", help="Level: broad, coarse, fine")
+@click.option("--fuzzy-threshold", default=0.85, help="Fuzzy matching threshold")
+@click.option("--input-artifacts", "-i", default=None, help="Input artifacts JSON from annotate")
+@click.option("--output-artifacts", "-o", default=None, help="Save artifacts JSON")
+def step_cl_standardize(target_level, fuzzy_threshold, input_artifacts, output_artifacts):
+    """Standardize annotations to Cell Ontology terms."""
+    from dapidl.pipeline.base import StepArtifacts
+    from dapidl.pipeline.steps.cl_standardization import (
+        CLStandardizationConfig,
+        CLStandardizationStep,
+    )
+
+    prev = _load_artifacts(input_artifacts)
+    config = CLStandardizationConfig(target_level=target_level, fuzzy_threshold=fuzzy_threshold)
+    step = CLStandardizationStep(config=config)
+    console.print("[cyan]Running CL Standardization step...[/cyan]")
+    result = step.execute(StepArtifacts(inputs={}, outputs=prev))
+
+    console.print("[green]✓ CL Standardization complete[/green]")
+    for k, v in result.outputs.items():
+        if not isinstance(v, dict) or len(str(v)) < 200:
+            console.print(f"  {k}: {v}")
+
+    combined = {**prev, **result.outputs}
+    _save_artifacts(combined, output_artifacts)
+
+
 if __name__ == "__main__":
     main()
