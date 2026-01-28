@@ -222,6 +222,63 @@ COARSE_TERMS = {
         level=HierarchyLevel.COARSE,
         markers=["LYVE1", "PROX1", "PDPN"],
     ),
+    # === Neural subtypes ===
+    "CL:0000679": CLTerm(
+        "CL:0000679",
+        "glutamatergic neuron",
+        ["excitatory neuron", "Glut neuron"],
+        parent_id="CL:0000540",
+        level=HierarchyLevel.COARSE,
+        markers=["SLC17A7", "SLC17A6", "GRIN1"],
+    ),
+    "CL:0000617": CLTerm(
+        "CL:0000617",
+        "GABAergic neuron",
+        ["inhibitory neuron", "GABA neuron", "interneuron"],
+        parent_id="CL:0000540",
+        level=HierarchyLevel.COARSE,
+        markers=["GAD1", "GAD2", "SLC32A1"],
+    ),
+    "CL:0000128": CLTerm(
+        "CL:0000128",
+        "oligodendrocyte",
+        ["Oligo", "myelinating glia"],
+        parent_id="CL:0000540",  # Technically parent is glial cell
+        level=HierarchyLevel.COARSE,
+        markers=["MBP", "MOG", "OLIG2"],
+    ),
+    "CL:0000127": CLTerm(
+        "CL:0000127",
+        "astrocyte",
+        ["Astro", "astroglial cell"],
+        parent_id="CL:0000540",  # Technically parent is glial cell
+        level=HierarchyLevel.COARSE,
+        markers=["GFAP", "AQP4", "SLC1A3"],
+    ),
+    "CL:0000129": CLTerm(
+        "CL:0000129",
+        "microglial cell",
+        ["microglia", "brain macrophage"],
+        parent_id="CL:0000540",  # Technically parent is glial cell
+        level=HierarchyLevel.COARSE,
+        markers=["CX3CR1", "P2RY12", "TMEM119"],
+    ),
+    "CL:0002608": CLTerm(
+        "CL:0002608",
+        "hippocampal pyramidal neuron",
+        ["CA1 neuron", "CA3 neuron", "hippocampal neuron"],
+        parent_id="CL:0000679",  # Child of glutamatergic
+        level=HierarchyLevel.COARSE,
+        markers=["PROX1", "NEUROD1"],
+    ),
+    "CL:0002453": CLTerm(
+        "CL:0002453",
+        "oligodendrocyte precursor cell",
+        ["OPC", "NG2 glia"],
+        parent_id="CL:0000128",  # Child of oligodendrocyte
+        level=HierarchyLevel.COARSE,
+        markers=["PDGFRA", "CSPG4"],
+    ),
 }
 
 
@@ -654,7 +711,7 @@ def get_broad_category(cl_id: str) -> str:
     return "Unknown"
 
 
-# Coarse categories for DAPIDL training (~15 classes)
+# Coarse categories for DAPIDL training (~20 classes)
 DAPIDL_COARSE_CATEGORIES = [
     # Immune - Lymphoid
     "T_Cell",
@@ -678,6 +735,12 @@ DAPIDL_COARSE_CATEGORIES = [
     # Endothelial
     "Vascular_Endothelial",
     "Lymphatic_Endothelial",
+    # Neural
+    "Glutamatergic_Neuron",
+    "GABAergic_Neuron",
+    "Oligodendrocyte",
+    "Astrocyte",
+    "Microglia",
 ]
 
 # Mapping from CL IDs to DAPIDL coarse categories
@@ -742,6 +805,15 @@ CL_TO_COARSE_CATEGORY = {
     # Endothelial
     "CL:0000115": "Vascular_Endothelial",
     "CL:0002138": "Lymphatic_Endothelial",
+    # Neural
+    "CL:0000540": "Glutamatergic_Neuron",  # Default neuron → excitatory
+    "CL:0000679": "Glutamatergic_Neuron",
+    "CL:0000617": "GABAergic_Neuron",
+    "CL:0002608": "Glutamatergic_Neuron",  # Hippocampal pyramidal → excitatory
+    "CL:0000128": "Oligodendrocyte",
+    "CL:0002453": "Oligodendrocyte",  # OPC → Oligodendrocyte
+    "CL:0000127": "Astrocyte",
+    "CL:0000129": "Microglia",
 }
 
 

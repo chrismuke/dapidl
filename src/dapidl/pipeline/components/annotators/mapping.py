@@ -98,6 +98,37 @@ CELL_TYPE_HIERARCHY: dict[str, list[str]] = {
         "mesothelial cell",
         "luminal cell of prostate",
         "sebum secreting cell",
+        # Human_Lung_Atlas.pkl - alveolar types
+        "AT1",  # alveolar type 1
+        "AT2",  # alveolar type 2
+        "AT2 proliferating",
+        "Club (nasal)",
+        "Club (non-nasal)",
+        "Goblet (nasal)",
+        "Goblet (bronchial)",
+        "Multiciliated (nasal)",
+        "Multiciliated (non-nasal)",
+        "SMG duct",  # submandibular gland duct
+        "SMG serous",
+        "SMG mucous",
+        "Deuterosomal",
+        "Suprabasal",
+        "Surface epithelium",
+        "Hillock-like",  # transitional epithelium
+        # Developing_Human_Organs.pkl
+        "Distal lung epithelium",
+        "Gastrointestinal epithelium",
+        "Intestinal epithelium",
+        # Cells_Intestinal_Tract.pkl
+        "BEST4+ epithelial",
+        "Colonocyte",
+        "Crypt",  # intestinal crypt
+        "FDCSP epithelium",
+        # Cells_Human_Tonsil.pkl
+        "Squamous epithelium",
+        # Adult_Human_Skin.pkl - keratinocyte subtypes
+        "Undifferentiated_KC",  # keratinocyte
+        "Differentiated_KC",
     ],
     "Immune": [
         # CellTypist breast model
@@ -171,6 +202,119 @@ CELL_TYPE_HIERARCHY: dict[str, list[str]] = {
         "leukocyte",
         "myeloid cell",
         "myeloid leukocyte",
+        # Immune_All_High.pkl - additional immune types
+        "Cycling cells",  # proliferating immune cells
+        "Double-positive thymocytes",
+        "Double-negative thymocytes",
+        "ILC",  # innate lymphoid cells
+        "MNP",  # mononuclear phagocytes
+        "Myelocytes",
+        # Immune_All_Low.pkl - detailed immune subtypes
+        "Age-associated B cells",
+        "CD16+ NK cells",
+        "CD16- NK cells",
+        "CD16+CD56- NK",
+        "CD16-CD56+ NK",
+        "CD16-CD56dim NK",
+        "CRTAM+ gamma-delta T cells",
+        "Cycling B cells",
+        "Cycling NK cells",
+        "Cycling T cells",
+        "Cycling B cell",
+        "Cycling plasma cell",
+        "Early erythroid",
+        "Erythroblast",
+        "Follicular B cells",
+        "GC B cell",  # germinal center B cell
+        "IgA plasma cell",
+        "IgG plasma cell",
+        "Large pre-B cells",
+        "Small pre-B cells",
+        "MAIT cells",  # mucosal-associated invariant T cells
+        "Memory B cells",
+        "MBC FCRL5+",  # memory B cell
+        "Naive B cells",
+        "NBC IFN-activated",  # naive B cell
+        "Naive CD8 T",
+        "SCM CD8 T",  # stem cell memory
+        "CM CD8 T",  # central memory
+        "RM CD8 T",  # resident memory
+        "RM CD8 activated T",
+        "ZNF683+ CD8 T",
+        "SELL+ CD4 T",
+        "SELL+ CD8 T",
+        "Activated CD4 T",
+        "Activated CD8 T",
+        "Activated T",
+        "Tcm/Naive cytotoxic T cells",
+        "Tcm/Naive helper T cells",
+        "Tem/Effector helper T cells",
+        "Tem/Temra cytotoxic T cells",
+        "Tem/Trm cytotoxic T cells",
+        "Trm cytotoxic T cells",
+        "Type 1 helper T cells",
+        "Type 17 helper T cells",
+        "Resident NK",
+        # Cells_Intestinal_Tract.pkl - additional immune
+        "CLC+ Mast cell",
+        "BEST2+ Goblet cell",  # sometimes classified as immune-associated
+        "Erythrophagocytic macrophages",
+        "Intermediate macrophages",
+        "LYVE1+ Macrophage",
+        "MMP9+ Inflammatory macrophage",
+        # Cells_Human_Tonsil.pkl - tonsil-specific immune
+        "C1Q Slan-like",  # dendritic-like
+        "CM Pre-non-Tfh",
+        "CM PreTfh",
+        "Cycling",  # cycling immune cells in tonsil
+        # Adult_Human_Skin.pkl - skin immune
+        "ILC1_3",
+        "ILC1_NK",
+        "ILC2",
+        "Inf_mac",  # inflammatory macrophage
+        "LC",  # Langerhans cell
+        "Tc",  # cytotoxic T cell
+        # Cells_Human_Tonsil.pkl - B cell lineage (germinal center)
+        "DZ early Sphase",  # dark zone B cells
+        "DZ late Sphase",
+        "DZ late G2Mphase",
+        "DZ non proliferative",
+        "DZ migratory PC precursor",
+        "DZ_LZ transition",
+        "LZ non proliferative",
+        "LZ Tbet",
+        "MBC derived PC precursor",
+        "IgD PC precursor",
+        "Precursor MBCs",  # memory B cell precursors
+        "ncsMBC",  # non-class-switched memory B cells
+        "csMBC FCRL4/5+",  # class-switched memory B cells
+        "Early MBC",
+        "Early GC-commited NBC",
+        "Proliferative NBC",
+        "Naive B",
+        "Immature B",
+        # Cells_Human_Tonsil.pkl - T cell lineage
+        "Th",  # T helper cells
+        "Tfr",  # T follicular regulatory
+        "T-Eff-Mem",  # effector memory T
+        "T-Trans-Mem",  # transitional memory T
+        "Eff-Tregs",  # effector Tregs
+        "Eff-Tregs-IL32",
+        "DN",  # double negative T cells
+        "Tpex",  # progenitor exhausted T cells
+        "T(agonist)",
+        "MAIT/CD161+TRDV2+ gd T-cells",
+        # Additional dendritic cell types
+        "aDC3",  # activated DC
+        "MigDC",  # migratory DC
+        "Migratory DCs",
+        "migLC",  # migratory Langerhans cells
+        "moDC",  # monocyte-derived DC
+        # Liver-specific immune
+        "Hofbauer cells",  # fetal macrophages
+        # ILC subtypes
+        "LTi-like NCR+ ILC3",
+        "LTi-like NCR- ILC3",
     ],
     "Stromal": [
         # CellTypist breast model
@@ -220,6 +364,96 @@ CELL_TYPE_HIERARCHY: dict[str, list[str]] = {
         "capillary endothelial cell",
         "arterial endothelial cell",
         "venous endothelial cell",
+        # Human_Lung_Atlas.pkl - lung stromal
+        "Adventitial fibroblasts",
+        "Peribronchial fibroblasts",
+        "Subpleural fibroblasts",
+        "Immature pericyte",
+        "EC aerocyte capillary",
+        "EC arterial",
+        "EC general capillary",
+        "EC venous pulmonary",
+        "EC venous systemic",
+        "Interstitial Mph perivascular",
+        # Developing_Human_Organs.pkl - developing stromal
+        "Mesenchyme subtype 1",
+        "Mesenchyme subtype 2",
+        "Mesenchyme subtype 3",
+        "Mesenchyme subtype 4",
+        "Mesenchyme subtype 5",
+        "Proliferative mesenchyme",
+        "Mesoderm 1 (HAND1+)",  # mesoderm subtype
+        "PNS glia",  # peripheral nervous system glia
+        "PNS neuron",
+        "Schwann_1",  # Schwann cell subtype
+        "cycling ENCC/glia",  # cycling enteric neural crest/glia
+        "ENCC/glia Progenitor",
+        "Glia 2 (ELN+)",
+        "Glia 3 (BCAN+)",
+        # Cells_Intestinal_Tract.pkl - intestinal stromal
+        "Stromal 1 (CCL11+)",
+        "Stromal 1 (ADAMDEC1+)",
+        "Stromal 2 (CH25H+)",
+        "Stromal 2 (NPY+)",
+        "Stromal 3 (C7+)",
+        "Stromal 3 (KCNN3+)",
+        "Stromal 4 (MMP1+)",
+        "CLDN10+ cells",  # often stromal-associated
+        "cycling stromal",
+        "Distal progenitor",  # intestinal progenitor (stromal-like)
+        "Fetal arterial EC",  # fetal endothelial
+        "Fetal venous EC",
+        "LEC6 (ADAMTS4+)",  # lymphatic endothelial
+        # Cells_Human_Tonsil.pkl - tonsil stromal
+        "COL27A1+ FDC",  # follicular dendritic cell (stromal-like)
+        "FDCSP+ FDC",
+        # Adult_Human_Skin.pkl - skin fibroblasts
+        "F1",  # fibroblast subtype 1
+        "F2",  # fibroblast subtype 2
+        "F3",  # fibroblast subtype 3
+        "LE1",  # lymphatic endothelial
+        "LE2",
+        "VE1",  # vascular endothelial
+        "VE2",
+        "VE3",
+        # Adult_Human_Vascular.pkl - vascular cell types
+        "art_ec_1",  # arterial endothelial
+        "art_ec_2",
+        "art_smc",  # arterial smooth muscle
+        "brain_art_ec",
+        "brain_art_smc",  # brain arterial smooth muscle
+        "aorta_coronary_smc",
+        "cap_ec",  # capillary endothelial
+        "cap_pc",  # capillary pericyte
+        "cap_lec",  # capillary lymphatic endothelial
+        "adip_cap_ec",  # adipose capillary endothelial
+        "kidney_cap_ec",  # kidney capillary endothelial
+        "liver_pc",  # liver pericyte
+        "liver_hsec",  # liver hepatic sinusoidal endothelial
+        # Additional Adult_Human_Vascular.pkl types
+        "kidney_art_ec",  # kidney arterial endothelial
+        "uterine_pc",  # uterine pericyte
+        "uterine_smc",  # uterine smooth muscle
+        "endometrium_cap_ec",  # endometrium capillary endothelial
+        "ven_ec_1",  # venous endothelial subtypes
+        "ven_ec_2",
+        "pul_cap_ec",  # pulmonary capillary endothelial
+        "pul_pc",  # pulmonary pericyte
+        "glomeruli_ec",  # glomerular endothelial
+        "myo_cap_ec",  # myocardial capillary endothelial
+        "pericentral_cap_ec",  # pericentral capillary
+        "periportal_cap_ec",  # periportal capillary
+        "ceiling_lec",  # ceiling lymphatic endothelial
+        "perifollicular_sinus_lec",  # perifollicular sinus lymphatic
+        "SMC (PART1/CAPN3+)",  # smooth muscle cell subtype
+        "Mature venous EC",
+        "heart_pc",  # heart pericyte
+        "floor_lec",  # floor lymphatic endothelial
+        "littoral_EC",  # littoral cell (splenic endothelial)
+        "bridging_lec",  # bridging lymphatic endothelial
+        "vein_ec",  # venous endothelial
+        "vein_smc",  # venous smooth muscle
+        "collecting_lec",  # collecting lymphatic
     ],
 }
 

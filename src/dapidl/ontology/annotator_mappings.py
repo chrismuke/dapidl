@@ -415,6 +415,84 @@ PATHOLOGY_TO_CL = {
     "mast cells": "CL:0000097",
 }
 
+# Mouse Brain (Xenium, CellTypist Mouse_Isocortex_Hippocampus)
+# Allen Brain Atlas nomenclature
+MOUSE_BRAIN_GT_TO_CL = {
+    # ===================================================================
+    # Mouse_Isocortex_Hippocampus.pkl labels (simple format)
+    # ===================================================================
+
+    # Cortical Glutamatergic Neurons (IT = Intratelencephalic, PT = Pyramidal tract)
+    "L4/5 IT CTX": "CL:0000679",  # Glutamatergic neuron
+    "L2/3 IT CTX": "CL:0000679",  # Glutamatergic neuron
+    "L2/3 IT ENTl": "CL:0000679",  # Entorhinal cortex IT neuron
+    "L5 PT CTX": "CL:0000679",  # Layer 5 pyramidal tract neuron
+    "L5/6 IT TPE-ENT": "CL:0000679",  # Layer 5/6 IT neuron
+    "L6 IT CTX": "CL:0000679",  # Layer 6 IT neuron
+    "L6 CT CTX": "CL:0000679",  # Layer 6 corticothalamic neuron
+    "L6b CTX": "CL:0000679",  # Layer 6b neuron
+    "L6 IT ENTl": "CL:0000679",  # Layer 6 IT entorhinal
+    "L2/3 IT PPP": "CL:0000679",  # Layer 2/3 IT perirhinal
+    "NP PPP": "CL:0000679",  # Near-projecting pyramidal
+    "CT SUB": "CL:0000679",  # Corticothalamic subiculum
+
+    # GABAergic Interneurons
+    "Vip": "CL:0000617",  # VIP+ GABAergic interneuron
+    "Lamp5": "CL:0000617",  # Lamp5+ GABAergic interneuron
+    "Sst": "CL:0000617",  # Somatostatin+ interneuron
+    "Pvalb": "CL:0000617",  # Parvalbumin+ interneuron
+
+    # Hippocampal neurons
+    "DG": "CL:0000679",  # Dentate gyrus granule cell
+    "CA1-ProS": "CL:0002608",  # Hippocampal pyramidal neuron
+    "CA2-IG-FC": "CL:0002608",  # Hippocampal pyramidal neuron
+    "SUB-ProS": "CL:0002608",  # Subiculum pyramidal neuron
+
+    # Glial cells
+    "Oligo": "CL:0000128",  # Oligodendrocyte
+    "OPC": "CL:0002453",  # Oligodendrocyte precursor cell
+    "Astro": "CL:0000127",  # Astrocyte
+    "Micro-PVM": "CL:0000129",  # Microglia
+
+    # Vascular
+    "Endo": "CL:0000115",  # Endothelial cell
+    "VLMC": "CL:0000669",  # Vascular leptomeningeal cell (pericyte-like)
+
+    # Generic neuron mapping for unspecified types
+    "Neuron": "CL:0000540",  # Neuron
+
+    # ===================================================================
+    # Mouse_Whole_Brain.pkl labels (cluster ID prefix format)
+    # These are the same cell types with Allen Brain Atlas cluster IDs
+    # ===================================================================
+
+    # Glutamatergic neurons (suffix "Glut")
+    "006 L4/5 IT CTX Glut": "CL:0000679",
+    "007 L2/3 IT CTX Glut": "CL:0000679",
+    "003 L5/6 IT TPE-ENT Glut": "CL:0000679",
+    "005 L5 IT CTX Glut": "CL:0000679",
+    "022 L5 ET CTX Glut": "CL:0000679",
+    "016 CA1-ProS Glut": "CL:0002608",
+    "012 MEA Slc17a7 Glut": "CL:0000679",
+    "134 PH-ant-LHA Otp Bsx Glut": "CL:0000679",
+    "222 PB Evx2 Glut": "CL:0000679",
+    "170 PAG-MRN Tfap2b Glut": "CL:0000679",
+    "167 PRC-PAG Tcf7l2 Irx2 Glut": "CL:0000679",
+    "168 SPA-SPFm-SPFp-POL-PIL-PoT Sp9 Glut": "CL:0000679",
+    "118 ADP-MPO Trp73 Glut": "CL:0000679",
+    "245 SPVI-SPVC Tlx3 Ebf3 Glut": "CL:0000679",
+
+    # GABAergic neurons (suffix "Gaba")
+    "049 Lamp5 Gaba": "CL:0000617",
+    "046 Vip Gaba": "CL:0000617",
+    "090 BST-MPN Six3 Nrgn Gaba": "CL:0000617",
+    "063 STR D1 Sema5a Gaba": "CL:0000617",
+    "210 PRT Mecom Gaba": "CL:0000617",
+
+    # Glycinergic/GABAergic neurons
+    "285 MY Lhx1 Gly-Gaba": "CL:0000617",
+}
+
 
 # =============================================================================
 # Factory Functions
@@ -453,6 +531,7 @@ def get_gt_mappings(dataset: str) -> dict[str, str]:
         "xenium_breast": XENIUM_BREAST_GT_TO_CL,
         "merscope_breast": MERSCOPE_BREAST_GT_TO_CL,
         "pathology": PATHOLOGY_TO_CL,
+        "mouse_brain": MOUSE_BRAIN_GT_TO_CL,
     }
     return gt_maps.get(dataset.lower(), {})
 
@@ -477,7 +556,7 @@ def get_all_gt_mappings() -> dict[str, str]:
         Dict with all GT label → CL ID mappings.
     """
     combined = {}
-    for name in ["xenium_breast", "merscope_breast", "pathology"]:
+    for name in ["xenium_breast", "merscope_breast", "pathology", "mouse_brain"]:
         combined.update(get_gt_mappings(name))
     return combined
 
@@ -495,7 +574,7 @@ def print_mapping_stats() -> None:
     print("\nGround Truth Mapping Statistics")
     print("-" * 60)
 
-    for name in ["xenium_breast", "merscope_breast", "pathology"]:
+    for name in ["xenium_breast", "merscope_breast", "pathology", "mouse_brain"]:
         maps = get_gt_mappings(name)
         print(f"{name:15} {len(maps):4} mappings")
 
