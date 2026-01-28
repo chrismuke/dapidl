@@ -1004,12 +1004,10 @@ class CellTypeAnnotator:
             DataFrame with cell_id, predicted_type, broad_category, confidence
         """
         import rpy2.robjects as ro
-        from rpy2.robjects import numpy2ri, pandas2ri
         from rpy2.robjects.packages import importr
 
-        # Activate automatic conversion
-        numpy2ri.activate()
-        pandas2ri.activate()
+        # Note: numpy2ri.activate() and pandas2ri.activate() are deprecated in rpy2 3.x
+        # We use explicit conversions instead
 
         logger.info(f"Running SingleR annotation with {self.singler_reference} reference...")
 
@@ -1045,14 +1043,12 @@ class CellTypeAnnotator:
 
         # Convert to R matrix with gene names as rows, cells as columns
         # SingleR expects genes x cells
+        cell_names = [str(cid) for cid in adata.obs_names]
         expr_r = ro.r.matrix(
             ro.FloatVector(expr_norm.T.flatten()),
             nrow=len(genes),
             ncol=expr_norm.shape[0],
-            dimnames=ro.ListVector({
-                '': ro.StrVector(genes),
-                '': ro.StrVector([str(cid) for cid in adata.obs_names])
-            })
+            dimnames=ro.r.list(ro.StrVector(genes), ro.StrVector(cell_names))
         )
 
         # Get reference gene names and find intersection
@@ -1069,10 +1065,7 @@ class CellTypeAnnotator:
             ro.FloatVector(expr_norm[:, gene_indices].T.flatten()),
             nrow=len(common_genes),
             ncol=expr_norm.shape[0],
-            dimnames=ro.ListVector({
-                '': ro.StrVector(common_genes),
-                '': ro.StrVector([str(cid) for cid in adata.obs_names])
-            })
+            dimnames=ro.r.list(ro.StrVector(common_genes), ro.StrVector(cell_names))
         )
 
         ref_subset = ro.r['['](ref_data, ro.StrVector(common_genes), True)
@@ -1116,10 +1109,6 @@ class CellTypeAnnotator:
         logger.info(f"SingleR annotation complete: {len(result_df)} cells")
         for cat, count in result_df.group_by('broad_category').len().iter_rows():
             logger.info(f"  {cat}: {count} ({100*count/len(result_df):.1f}%)")
-
-        # Deactivate conversion
-        numpy2ri.deactivate()
-        pandas2ri.deactivate()
 
         return result_df
 

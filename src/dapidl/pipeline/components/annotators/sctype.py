@@ -234,6 +234,15 @@ class ScTypeAnnotator:
 
     scType assigns cell types based on the expression of positive and
     negative marker genes without requiring a reference dataset.
+
+    Supports tissue-specific markers from ScTypeDB (Ianevski et al., 2022).
+
+    Available tissues:
+        Immune system, Pancreas, Liver, Eye, Kidney, Brain, Lung,
+        Adrenal, Heart, Intestine, Muscle, Placenta, Spleen, Stomach,
+        Thymus, Hippocampus
+
+    Common aliases work too: 'breast' → 'Immune system', 'colon' → 'Intestine'
     """
 
     name = "sctype"
@@ -241,16 +250,51 @@ class ScTypeAnnotator:
     def __init__(
         self,
         config: AnnotationConfig | None = None,
+        tissue: str | list[str] | None = None,
         custom_markers: dict | None = None,
+        include_immune: bool = True,
+        use_sctype_db: bool = True,
     ):
         """Initialize the scType annotator.
 
         Args:
             config: Annotation configuration
-            custom_markers: Custom marker definitions (overrides defaults)
+            tissue: Tissue type(s) for loading ScTypeDB markers.
+                   Examples: "Liver", "Brain", ["Lung", "Immune system"]
+                   If None, uses default generic markers.
+            custom_markers: Custom marker definitions (overrides ScTypeDB)
+            include_immune: Always include immune cell markers (default True).
+                          Immune cells are present in most tissues.
+            use_sctype_db: Use ScTypeDB for tissue-specific markers (default True).
+                          If False, uses built-in DEFAULT_MARKERS only.
         """
         self.config = config or AnnotationConfig()
-        self.markers = custom_markers or DEFAULT_MARKERS
+        self.tissue = tissue
+        self.include_immune = include_immune
+        self.use_sctype_db = use_sctype_db
+
+        # Determine markers to use
+        if custom_markers:
+            # Custom markers override everything
+            self.markers = custom_markers
+            logger.info(f"Using custom markers: {len(custom_markers)} cell types")
+        elif tissue and use_sctype_db:
+            # Load from ScTypeDB
+            try:
+                from dapidl.pipeline.components.annotators.sctype_db import (
+                    get_tissue_markers,
+                    AVAILABLE_TISSUES,
+                )
+                self.markers = get_tissue_markers(tissue, include_immune=include_immune)
+                logger.info(f"Loaded ScTypeDB markers for tissue '{tissue}': {len(self.markers)} cell types")
+            except (ImportError, FileNotFoundError, ValueError) as e:
+                logger.warning(f"Could not load ScTypeDB for tissue '{tissue}': {e}")
+                logger.warning("Falling back to default markers")
+                self.markers = DEFAULT_MARKERS
+        else:
+            # Default generic markers
+            self.markers = DEFAULT_MARKERS
+            logger.debug(f"Using default markers: {len(self.markers)} cell types")
 
     def annotate(
         self,

@@ -14,6 +14,7 @@ Requires R with SingleR and celldex packages installed:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -37,8 +38,36 @@ SINGLER_REFERENCES = {
 }
 
 
+def _fix_libstdcxx() -> None:
+    """Fix libstdc++ version conflict between conda and system libraries.
+
+    When miniconda is installed, its older libstdc++.so.6 may lack GLIBCXX_3.4.30
+    required by system libraries like libicuuc.so.74. This function uses ctypes
+    to preload the system libstdc++ before rpy2 tries to load R.
+
+    If you encounter errors like:
+        GLIBCXX_3.4.30 not found (required by /lib/x86_64-linux-gnu/libicuuc.so.74)
+
+    Fix by updating miniconda's libstdcxx-ng:
+        conda install -c conda-forge libstdcxx-ng
+    """
+    import ctypes
+
+    system_libstdcxx = Path("/usr/lib/x86_64-linux-gnu/libstdc++.so.6")
+    if system_libstdcxx.exists():
+        try:
+            # Preload system libstdc++ with RTLD_GLOBAL to make symbols available
+            ctypes.CDLL(str(system_libstdcxx), mode=ctypes.RTLD_GLOBAL)
+            logger.debug(f"Preloaded system libstdc++ from {system_libstdcxx}")
+        except OSError as e:
+            logger.debug(f"Could not preload system libstdc++: {e}")
+
+
 def is_singler_available() -> bool:
     """Check if rpy2 and SingleR R packages are available."""
+    # Fix libstdc++ before importing rpy2
+    _fix_libstdcxx()
+
     try:
         import rpy2.robjects as ro
         from rpy2.robjects.packages import importr
@@ -47,7 +76,8 @@ def is_singler_available() -> bool:
         importr("SingleR")
         importr("celldex")
         return True
-    except Exception:
+    except Exception as e:
+        logger.debug(f"SingleR not available: {e}")
         return False
 
 
@@ -161,12 +191,7 @@ class SingleRAnnotator:
         """
         import numpy as np
         import rpy2.robjects as ro
-        from rpy2.robjects import numpy2ri, pandas2ri
         from rpy2.robjects.packages import importr
-
-        # Activate automatic conversion
-        numpy2ri.activate()
-        pandas2ri.activate()
 
         logger.info(f"Running SingleR annotation with {reference} reference...")
 
@@ -213,16 +238,15 @@ class SingleRAnnotator:
 
         # Subset to common genes
         gene_indices = [genes.index(g) for g in common_genes]
+
+        # Create matrix with dimnames using list (genes as rows, cells as columns)
+        cell_names = [str(cid) for cid in adata.obs_names]
+        dimnames = ro.r.list(ro.StrVector(common_genes), ro.StrVector(cell_names))
         expr_subset = ro.r.matrix(
             ro.FloatVector(expr_norm[:, gene_indices].T.flatten()),
             nrow=len(common_genes),
             ncol=expr_norm.shape[0],
-            dimnames=ro.ListVector(
-                {
-                    "": ro.StrVector(common_genes),
-                    "": ro.StrVector([str(cid) for cid in adata.obs_names]),
-                }
-            ),
+            dimnames=dimnames,
         )
 
         ref_subset = ro.r["["](ref_data, ro.StrVector(common_genes), True)
@@ -268,10 +292,6 @@ class SingleRAnnotator:
         logger.info(f"SingleR annotation complete: {len(result_df)} cells")
         for cat, count in result_df.group_by("broad_category").len().iter_rows():
             logger.info(f"  {cat}: {count} ({100*count/len(result_df):.1f}%)")
-
-        # Deactivate conversion
-        numpy2ri.deactivate()
-        pandas2ri.deactivate()
 
         return result_df
 
