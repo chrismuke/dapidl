@@ -259,12 +259,12 @@ class TrainingStep(PipelineStep):
             output_dir = patches_path.parent.parent / "training"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Training {num_classes}-class classifier")
+        logger.info(f"Training {num_classes}-class classifier (from class_mapping)")
         logger.info(f"Backbone: {cfg.backbone}")
         logger.info(f"Output: {output_dir}")
 
-        # Create data loaders
-        train_loader, val_loader, test_loader, class_weights = self._create_dataloaders(
+        # Create data loaders (may update num_classes if dataset has unexpected labels)
+        train_loader, val_loader, test_loader, class_weights, num_classes = self._create_dataloaders(
             patches_path, class_mapping, cfg
         )
 
@@ -398,12 +398,22 @@ class TrainingStep(PipelineStep):
                 dataset, [n_train, n_val, n_test]
             )
 
-        # Calculate class weights
+        # Calculate class weights (also validates actual num_classes from data)
+        num_classes = len(class_mapping)
         class_weights = None
         if cfg.use_weighted_loss:
-            class_weights = self._calculate_class_weights(
-                train_dataset, len(class_mapping), cfg.max_weight_ratio
+            class_weights, num_classes = self._calculate_class_weights(
+                train_dataset, num_classes, cfg.max_weight_ratio
             )
+        else:
+            # Still scan for actual max label to set num_classes correctly
+            max_label = 0
+            for i in range(min(len(train_dataset), 1000)):
+                _, label = train_dataset[i]
+                max_label = max(max_label, label)
+            if max_label >= num_classes:
+                logger.warning(f"Dataset has labels up to {max_label}, expanding num_classes from {num_classes} to {max_label + 1}")
+                num_classes = max_label + 1
 
         # Create sampler for training
         sampler = None
@@ -442,7 +452,7 @@ class TrainingStep(PipelineStep):
 
         logger.info(f"Train: {n_train}, Val: {n_val}, Test: {n_test}")
 
-        return train_loader, val_loader, test_loader, class_weights
+        return train_loader, val_loader, test_loader, class_weights, num_classes
 
     def _create_lmdb_dataset(self, path: Path, cfg: TrainingStepConfig):
         """Create dataset from LMDB."""
@@ -645,8 +655,8 @@ class TrainingStep(PipelineStep):
         min_weight = weights.min()
         weights = np.minimum(weights, min_weight * max_ratio)
 
-        logger.info(f"Class weights: {weights}")
-        return torch.FloatTensor(weights)
+        logger.info(f"Class weights ({num_classes} classes): {weights}")
+        return torch.FloatTensor(weights), num_classes
 
     def _get_sample_weights(self, dataset, class_weights) -> list:
         """Get per-sample weights for WeightedRandomSampler."""
