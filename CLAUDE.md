@@ -102,6 +102,19 @@ uv run dapidl annotate -x /path/to/xenium -o ./annotated -m Cells_Adult_Breast.p
 # Create hardlinked dataset with custom CSV
 uv run dapidl create-dataset -x /path/to/xenium -o ./output -c annotations.csv
 
+# ClearML Pipeline (unified, supports 1-N datasets via -t flags)
+# Single dataset
+uv run dapidl clearml-pipeline run -t lung bf8f913f xenium 2 --local --epochs 10
+# Multiple datasets
+uv run dapidl clearml-pipeline run \
+    -t lung bf8f913f xenium 2 \
+    -t heart 482be038 xenium 2 \
+    --epochs 50 --sampling sqrt
+# Prepare-only (no training, creates LMDB for later use)
+uv run dapidl clearml-pipeline run -t lung bf8f913f xenium 2 --skip-training --local
+# Remote execution (ClearML agents)
+uv run dapidl clearml-pipeline run -t breast abc123 xenium 1
+
 # Lint
 uv run ruff check src/
 uv run ruff format src/
@@ -170,10 +183,10 @@ DAPIDL includes a validation framework to verify CellTypist predictions using or
 ### Usage:
 ```bash
 # Run pipeline with validation step
-uv run dapidl clearml-pipeline run --dataset-id abc123 --validate
+uv run dapidl clearml-pipeline run -t breast abc123 xenium 2 --validate
 
 # Or run locally
-uv run dapidl clearml-pipeline run --local-path /path/to/data --local --validate
+uv run dapidl clearml-pipeline run -t breast /path/to/data xenium 1 --local --validate
 ```
 
 ### Interpretation:
