@@ -2778,22 +2778,16 @@ def create_base_tasks(project: str, include_universal: bool) -> None:
     This registers each pipeline step as a ClearML Task, which is required
     before running the pipeline remotely. Only needs to be run once.
     """
-    from dapidl.pipeline import PipelineConfig, create_pipeline
+    from dapidl.pipeline.unified_config import DAPIDLPipelineConfig
+    from dapidl.pipeline.unified_controller import UnifiedPipelineController
 
     console.print("[bold blue]Creating ClearML Base Tasks[/bold blue]\n")
 
-    config = PipelineConfig(project=project)
-    pipeline = create_pipeline(config)
+    config = DAPIDLPipelineConfig(project=project)
+    controller = UnifiedPipelineController(config)
 
-    console.print("[cyan]Registering pipeline steps...[/cyan]")
-    pipeline.create_base_tasks()
-
-    if include_universal:
-        from dapidl.pipeline.universal_controller import UniversalPipelineConfig, UniversalDAPIPipelineController
-        console.print("[cyan]Registering universal training step...[/cyan]")
-        universal_config = UniversalPipelineConfig(project=project)
-        universal = UniversalDAPIPipelineController(universal_config)
-        universal.create_base_tasks()
+    console.print("[cyan]Registering all pipeline steps...[/cyan]")
+    controller.create_base_tasks()
 
     console.print("\n[green]✓ Base tasks created![/green]")
     console.print(f"  Project: {project}")
