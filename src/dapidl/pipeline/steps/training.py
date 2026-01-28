@@ -624,9 +624,17 @@ class TrainingStep(PipelineStep):
         import torch
 
         # Count samples per class
+        # Use num_classes but handle labels that exceed it (e.g. stale LMDB with more classes)
         counts = np.zeros(num_classes)
         for i in range(len(dataset)):
             _, label = dataset[i]
+            if label >= num_classes:
+                # Expand counts array to accommodate unexpected labels
+                new_counts = np.zeros(label + 1)
+                new_counts[:num_classes] = counts
+                counts = new_counts
+                num_classes = label + 1
+                logger.warning(f"Label {label} exceeds expected num_classes, expanding to {num_classes}")
             counts[label] += 1
 
         # Inverse frequency weights
