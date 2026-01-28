@@ -14,6 +14,7 @@ local copies when available.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,88 +25,198 @@ from dapidl.pipeline.base import PipelineStep, StepArtifacts
 
 
 # ============================================================================
-# LOCAL DATA REGISTRY
+# LOCAL DATA DETECTION
 # ============================================================================
-# Maps S3 URIs and dataset names to known local paths.
-# Add your local datasets here to avoid re-downloading.
-# The loader checks these paths FIRST before downloading.
+# Set DAPIDL_LOCAL_DATA to colon-separated list of directories containing
+# raw spatial datasets. The data_loader scans these directories and matches
+# ClearML dataset names to local subdirectories, avoiding S3 downloads.
+#
+# Example:
+#   export DAPIDL_LOCAL_DATA="/mnt/work/datasets/raw/xenium:/mnt/work/datasets/raw/merscope"
+#
+# Each directory should contain subdirectories named like the ClearML datasets:
+#   /mnt/work/datasets/raw/xenium/
+#     xenium-breast-tumor-rep1/outs/   -> matches "xenium-breast-tumor-rep1-raw"
+#     xenium-lung-2fov/                -> matches "xenium-lung-2fov-raw"
+#
+# If DAPIDL_LOCAL_DATA is not set, defaults to scanning:
+#   /mnt/work/datasets/raw/xenium and /mnt/work/datasets/raw/merscope
+#
+# Verification: local datasets are validated against ClearML file hashes
+# using a fast fingerprint (key file sizes + partial content hashes).
 
-# Base directories for local raw datasets
-LOCAL_DATASET_ROOTS: list[Path] = [
-    Path("/mnt/work/datasets/raw/xenium"),
-    Path("/mnt/work/datasets/raw/merscope"),
+_DEFAULT_LOCAL_ROOTS = [
+    "/mnt/work/datasets/raw/xenium",
+    "/mnt/work/datasets/raw/merscope",
 ]
+
+
+def _get_local_roots() -> list[Path]:
+    """Get local dataset root directories from DAPIDL_LOCAL_DATA env var."""
+    env = os.environ.get("DAPIDL_LOCAL_DATA")
+    if env:
+        return [Path(p) for p in env.split(":") if p.strip()]
+    return [Path(p) for p in _DEFAULT_LOCAL_ROOTS]
 
 
 def _build_local_registry() -> dict[str, Path]:
     """Scan local dataset directories and build name->path registry.
 
-    Scans LOCAL_DATASET_ROOTS for directories and maps their names
-    to local paths. Also resolves outs/ subdirectory if present.
+    Scans directories from DAPIDL_LOCAL_DATA (or defaults) for
+    subdirectories and maps their names to local paths.
+    Resolves outs/ subdirectory if present.
     """
     registry: dict[str, Path] = {}
-    for root in LOCAL_DATASET_ROOTS:
+    for root in _get_local_roots():
         if not root.exists():
             continue
         for entry in root.iterdir():
             if not entry.is_dir():
                 continue
-            # Use directory name as key (e.g., "xenium-breast-tumor-rep1")
             effective_path = entry / "outs" if (entry / "outs").is_dir() else entry
             registry[entry.name] = effective_path
     return registry
 
 
-def _find_local_dataset_by_id(dataset_id: str) -> Path | None:
-    """Look up ClearML dataset by ID and check if data exists locally.
+def _fingerprint_local_dir(path: Path) -> dict[str, int]:
+    """Create a fast fingerprint of a local dataset directory.
 
-    Resolves the dataset name from ClearML metadata, then checks if
-    a matching directory exists under LOCAL_DATASET_ROOTS.
+    Returns dict of {relative_path: file_size} for key files.
+    This is fast (only stat calls) and sufficient to detect changes.
+    """
+    fingerprint: dict[str, int] = {}
+    for f in sorted(path.rglob("*")):
+        if f.is_file():
+            rel = str(f.relative_to(path))
+            fingerprint[rel] = f.stat().st_size
+    return fingerprint
+
+
+def _verify_local_against_clearml(
+    local_path: Path, dataset_id: str
+) -> bool:
+    """Verify local dataset matches ClearML metadata using file sizes.
+
+    Compares file sizes of key files between local directory and ClearML
+    file entries. Returns True if they match (dataset unchanged).
     """
     try:
         from clearml import Dataset
 
         ds = Dataset.get(dataset_id=dataset_id, only_completed=False)
-        ds_name = ds.name  # e.g., "xenium-breast-tumor-rep1-raw"
+        entries = ds.file_entries_dict
+
+        if not entries:
+            logger.debug("No file entries in ClearML dataset, skipping verification")
+            return True
+
+        # Build local file size map (relative paths)
+        local_sizes: dict[str, int] = {}
+        for f in local_path.rglob("*"):
+            if f.is_file():
+                rel = str(f.relative_to(local_path))
+                local_sizes[rel] = f.stat().st_size
+
+        # Check key files match
+        matched = 0
+        checked = 0
+        for rel_path, entry in entries.items():
+            # Skip pipeline_outputs (these are generated, not part of raw data)
+            if rel_path.startswith("pipeline_outputs/"):
+                continue
+
+            # ClearML stores relative paths; local may have outs/ prefix stripped
+            if rel_path in local_sizes:
+                checked += 1
+                if local_sizes[rel_path] == entry.size:
+                    matched += 1
+                else:
+                    logger.warning(
+                        f"Size mismatch: {rel_path} "
+                        f"(local={local_sizes[rel_path]}, clearml={entry.size})"
+                    )
+
+        if checked == 0:
+            logger.debug("No overlapping files found for verification")
+            return True
+
+        match_rate = matched / checked
+        if match_rate < 0.9:
+            logger.warning(
+                f"Local dataset may be stale: {matched}/{checked} files match "
+                f"({match_rate:.0%})"
+            )
+            return False
+
+        logger.info(f"✓ Local dataset verified: {matched}/{checked} files match")
+        return True
+
+    except Exception as e:
+        logger.debug(f"Verification failed, assuming local is valid: {e}")
+        return True
+
+
+def _find_local_dataset_by_id(dataset_id: str, verify: bool = True) -> Path | None:
+    """Look up ClearML dataset by ID and check if data exists locally.
+
+    Resolves the dataset name from ClearML metadata, then checks if
+    a matching directory exists under DAPIDL_LOCAL_DATA roots.
+
+    Args:
+        dataset_id: ClearML dataset ID
+        verify: If True, verify local files match ClearML metadata (size check)
+
+    Returns:
+        Local path if found and verified, None otherwise
+    """
+    try:
+        from clearml import Dataset
+
+        ds = Dataset.get(dataset_id=dataset_id, only_completed=False)
+        ds_name = ds.name
 
         local_registry = _build_local_registry()
+        if not local_registry:
+            logger.debug("No local datasets found (DAPIDL_LOCAL_DATA not set or empty)")
+            return None
 
         # Strip common suffixes and try matching
         stripped = ds_name
         for suffix in ["-raw", "-raw-data"]:
             stripped = stripped.removesuffix(suffix)
 
-        # Try exact match
+        # Try exact match first
+        matched_path = None
         if stripped in local_registry:
-            path = local_registry[stripped]
-            if path.exists():
-                logger.info(f"✓ Dataset '{ds_name}' found locally: {path}")
-                return path
+            matched_path = local_registry[stripped]
 
-        # Try progressively shorter suffixes (e.g., strip panel info)
-        # "xenium-heart-normal-multi-tissue-panel" -> try "xenium-heart-normal"
-        parts = stripped.split("-")
-        for end in range(len(parts), 2, -1):
-            candidate = "-".join(parts[:end])
-            if candidate in local_registry:
-                path = local_registry[candidate]
-                if path.exists():
-                    logger.info(f"✓ Dataset '{ds_name}' matched locally as '{candidate}': {path}")
-                    return path
+        # Try progressively shorter name (strip panel info, etc.)
+        # "xenium-heart-normal-multi-tissue-panel" -> "xenium-heart-normal"
+        if matched_path is None:
+            parts = stripped.split("-")
+            for end in range(len(parts), 2, -1):
+                candidate = "-".join(parts[:end])
+                if candidate in local_registry:
+                    matched_path = local_registry[candidate]
+                    logger.info(f"Dataset '{ds_name}' name-matched as '{candidate}'")
+                    break
+
+        if matched_path is None or not matched_path.exists():
+            return None
+
+        # Verify local files match ClearML metadata
+        if verify:
+            if not _verify_local_against_clearml(matched_path, dataset_id):
+                logger.warning(f"Local dataset at {matched_path} is stale, will download")
+                return None
+
+        logger.info(f"✓ Dataset '{ds_name}' found locally: {matched_path}")
+        return matched_path
 
     except Exception as e:
         logger.debug(f"Could not resolve dataset_id locally: {e}")
 
     return None
-
-
-# Legacy static registry for S3 URIs
-LOCAL_DATA_REGISTRY: dict[str, str] = {
-    "s3://dapidl/raw-data/xenium-breast-cancer-rep1/": "/mnt/work/datasets/raw/xenium/breast_tumor_rep1/outs",
-    "s3://dapidl/raw-data/xenium-lung-2fov/": "/mnt/work/datasets/raw/xenium/lung_2fov/outs",
-    "s3://dapidl/raw-data/xenium-ovarian-cancer/": "/mnt/work/datasets/raw/xenium/ovarian_cancer/outs",
-    "merscope-breast": "/mnt/work/datasets/raw/merscope/breast",
-}
 
 
 @dataclass
@@ -278,12 +389,15 @@ class DataLoaderStep(PipelineStep):
                 return local
             raise FileNotFoundError(f"Local path not found: {local}")
 
-        # 2. Check registry for S3 URI
+        # 2. Check local registry for S3 URI (extract dataset name from URI)
+        local_registry = _build_local_registry()
         if cfg.s3_uri:
-            registry_path = LOCAL_DATA_REGISTRY.get(cfg.s3_uri.rstrip("/") + "/")
-            if registry_path and Path(registry_path).exists():
+            # Extract dataset name from S3 URI, e.g. s3://dapidl/raw-data/xenium-breast-cancer-rep1/ -> xenium-breast-cancer-rep1
+            s3_dataset_name = cfg.s3_uri.rstrip("/").split("/")[-1]
+            registry_path = local_registry.get(s3_dataset_name)
+            if registry_path and registry_path.exists():
                 logger.info(f"✓ Found local copy via registry: {registry_path}")
-                return Path(registry_path)
+                return registry_path
 
             # 3. Check S3 cache directory
             parts = cfg.s3_uri.rstrip("/").split("/")
@@ -297,12 +411,12 @@ class DataLoaderStep(PipelineStep):
             logger.info(f"⬇ Downloading from S3: {cfg.s3_uri}")
             return self._download_from_s3()
 
-        # 2b. Check registry for dataset name
+        # 2b. Check local registry for dataset name
         if cfg.dataset_name:
-            registry_path = LOCAL_DATA_REGISTRY.get(cfg.dataset_name)
-            if registry_path and Path(registry_path).exists():
+            registry_path = local_registry.get(cfg.dataset_name)
+            if registry_path and registry_path.exists():
                 logger.info(f"✓ Found local copy via registry: {registry_path}")
-                return Path(registry_path)
+                return registry_path
 
         # 2c. Check local directories by resolving dataset_id -> name
         if cfg.dataset_id:

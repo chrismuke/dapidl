@@ -292,6 +292,29 @@ All datasets are organized under `~/datasets/` (symlink to `/mnt/work/datasets/`
     └── xenium-breast-xenium-{coarse,finegrained}-p{32,64,128,256}/
 ```
 
+### Local Dataset Auto-Detection (`DAPIDL_LOCAL_DATA`)
+
+The pipeline's `data_loader` step automatically detects locally available datasets to avoid redundant S3/ClearML downloads. It scans configured directories and matches ClearML dataset names to local subdirectories.
+
+**Environment variable:**
+```bash
+export DAPIDL_LOCAL_DATA="/mnt/work/datasets/raw/xenium:/mnt/work/datasets/raw/merscope"
+```
+
+- Colon-separated list of directories containing raw spatial datasets
+- Each directory should contain subdirectories named like the ClearML datasets
+- Automatically handles `outs/` subdirectories (Xenium convention)
+- If not set, defaults to `/mnt/work/datasets/raw/xenium` and `/mnt/work/datasets/raw/merscope`
+
+**Fallback order:**
+1. Explicit `local_path` in config (highest priority)
+2. Local registry lookup by S3 URI or dataset name
+3. Local lookup by ClearML dataset ID (queries ClearML for name, then matches locally)
+4. S3 cache directory (`~/.cache/dapidl/s3_downloads/`)
+5. Download from S3 or ClearML (last resort)
+
+**Verification:** When resolving by ClearML dataset ID, file sizes are compared against ClearML metadata. If fewer than 90% of files match, the local copy is considered stale and falls back to downloading.
+
 ### Local Xenium Datasets
 
 | Dataset | Location | Size | Cells | Notes |
