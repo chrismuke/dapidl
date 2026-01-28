@@ -91,6 +91,20 @@ wandb/
 /data/
 /datasets/
 *.zarr
+*.h5ad
+*.pkl
+*.lmdb
+
+# Experiment outputs (run from repo root)
+*.log
+*.parquet
+*.db
+*.csv
+!pyproject.toml
+
+# Tool configs (local)
+.serena/
+.claude/hookify.*.local.md
 
 # OS
 .DS_Store
