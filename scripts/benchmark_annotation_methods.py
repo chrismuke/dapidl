@@ -1,73 +1,145 @@
 #!/usr/bin/env python3
 """
-Benchmark Cell Type Annotation Methods with ClearML Tracking.
+Comprehensive Benchmark of Cell Type Annotation Methods with ClearML Tracking.
 
-Compares SingleR, CellTypist, scType, and ensemble combinations
-on spatial transcriptomics datasets with ground truth.
+Tests ALL combinations of annotation methods:
+- SingleR single models (HPCA, Blueprint, Monaco, Novershtern)
+- SingleR all models ensemble
+- CellTypist single models (Breast, Immune_High, Immune_Low)
+- CellTypist tissue-specific ensemble
+- CellTypist universal ensemble (10 models)
+- CellTypist all models
+- PopV-style combined (CellTypist + SingleR)
+
+Features:
+- Ground truth comparison
+- Confusion matrices
+- UMAP visualization (GT vs predicted)
+- ClearML experiment tracking
+- Xenium Explorer CSV export
 
 Usage:
-    # Single method
-    python benchmark_annotation_methods.py --methods celltypist --dataset rep1
+    # Run all methods on both datasets
+    uv run python scripts/benchmark_annotation_methods.py
 
-    # Multiple methods
-    python benchmark_annotation_methods.py --methods singler celltypist sctype --dataset rep1
+    # Test specific methods
+    uv run python scripts/benchmark_annotation_methods.py --methods singler_hpca celltypist_breast
 
-    # All ensemble combinations
-    python benchmark_annotation_methods.py --all-combinations --dataset rep1 rep2
+    # Sample for faster testing
+    uv run python scripts/benchmark_annotation_methods.py --sample-size 5000
+
+    # Skip ClearML (local only)
+    uv run python scripts/benchmark_annotation_methods.py --no-clearml
 """
 
 import sys
-from pathlib import Path
+import json
+import tempfile
+import time
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from enum import Enum
 from itertools import combinations
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import polars as pl
-import pandas as pd
+import anndata as ad
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import polars as pl
 import scanpy as sc
-import h5py
+import seaborn as sns
 from loguru import logger
 from sklearn.metrics import (
     accuracy_score,
+    classification_report,
+    cohen_kappa_score,
+    confusion_matrix,
     f1_score,
+    matthews_corrcoef,
     precision_score,
     recall_score,
-    classification_report,
-    confusion_matrix,
-    cohen_kappa_score,
-    matthews_corrcoef,
 )
-from collections import defaultdict
-import subprocess
-import tempfile
 
 # Try to import ClearML
 try:
-    from clearml import Task, Logger
+    from clearml import Task
     CLEARML_AVAILABLE = True
 except ImportError:
     CLEARML_AVAILABLE = False
     logger.warning("ClearML not available - results won't be logged")
 
 
-# Dataset configurations
+class AnnotationMethod(str, Enum):
+    """Available annotation methods."""
+    # SingleR single references
+    SINGLER_HPCA = "singler_hpca"
+    SINGLER_BLUEPRINT = "singler_blueprint"
+    SINGLER_MONACO = "singler_monaco"
+    SINGLER_NOVERSHTERN = "singler_novershtern"
+    SINGLER_ALL = "singler_all"  # All 4 references combined
+
+    # CellTypist single
+    CELLTYPIST_BREAST = "celltypist_breast"
+    CELLTYPIST_IMMUNE_HIGH = "celltypist_immune_high"
+    CELLTYPIST_IMMUNE_LOW = "celltypist_immune_low"
+
+    # CellTypist ensembles
+    CELLTYPIST_TISSUE = "celltypist_tissue"  # Breast + Immune
+    CELLTYPIST_UNIVERSAL = "celltypist_universal"  # 10 models
+    CELLTYPIST_ALL = "celltypist_all"  # All available human models
+
+    # Combined (PopV-style)
+    POPV_MINIMAL = "popv_minimal"  # 2 CT + 2 SR
+    POPV_STANDARD = "popv_standard"  # 5 CT + 2 SR
+    POPV_COMPREHENSIVE = "popv_comprehensive"  # 10 CT + 4 SR
+
+
+# CellTypist model sets
+CELLTYPIST_MODELS = {
+    "breast": ["Cells_Adult_Breast.pkl"],
+    "immune_high": ["Immune_All_High.pkl"],
+    "immune_low": ["Immune_All_Low.pkl"],
+    "tissue": [
+        "Cells_Adult_Breast.pkl",
+        "Immune_All_High.pkl",
+    ],
+    "universal": [
+        "Cells_Adult_Breast.pkl",
+        "Immune_All_High.pkl",
+        "Immune_All_Low.pkl",
+        "Human_Lung_Atlas.pkl",
+        "Healthy_Human_Liver.pkl",
+        "Cells_Intestinal_Tract.pkl",
+        "Pan_Fetal_Human.pkl",
+        "Developing_Human_Brain.pkl",
+        "Adult_Human_MTG.pkl",
+        "Human_Cell_Landscape.pkl",
+    ],
+}
+
+# SingleR reference names
+SINGLER_REFERENCES = ["hpca", "blueprint", "monaco", "novershtern"]
+
+# Dataset configuration
 DATASETS = {
     "rep1": {
-        "xenium_path": Path("/home/chrism/datasets/raw/xenium/breast_tumor_rep1/outs"),
-        "gt_path": Path("/home/chrism/.clearml/cache/storage_manager/datasets/ds_ee53f76b00c0400d83a303408b5ea8e2/celltypes_ground_truth_rep1_supervised.xlsx"),
+        "xenium_path": Path.home() / "datasets/raw/xenium/breast_tumor_rep1/outs",
+        "gt_path": Path.home() / "datasets/raw/xenium/breast_tumor_rep1/celltypes_ground_truth_rep1_supervised.xlsx",
         "name": "Xenium Breast Rep1",
     },
     "rep2": {
-        "xenium_path": Path("/home/chrism/datasets/raw/xenium/breast_tumor_rep2/outs"),
-        "gt_path": Path("/home/chrism/.clearml/cache/storage_manager/datasets/ds_d73638c8e809416a8b94697d20b2d971/celltypes_ground_truth_rep2_supervised.xlsx"),
+        "xenium_path": Path.home() / "datasets/raw/xenium/breast_tumor_rep2/outs",
+        "gt_path": Path.home() / "datasets/raw/xenium/breast_tumor_rep2/celltypes_ground_truth_rep2_supervised.xlsx",
         "name": "Xenium Breast Rep2",
     },
 }
 
-# Ground truth label mapping
-GT_TO_BROAD = {
+# Ground truth to broad category mapping
+GT_BROAD_MAP = {
     "DCIS_1": "Epithelial",
     "DCIS_2": "Epithelial",
     "Invasive_Tumor": "Epithelial",
@@ -86,167 +158,144 @@ GT_TO_BROAD = {
     "Perivascular-Like": "Immune",
     "Stromal": "Stromal",
     "Stromal_&_T_Cell_Hybrid": "Stromal",
-    "Endothelial": "Endothelial",
+    "Endothelial": "Stromal",  # Merge into Stromal for 3-class
 }
 
 
-def load_xenium_data(xenium_path: Path) -> sc.AnnData:
-    """Load Xenium expression data."""
+@dataclass
+class MethodResult:
+    """Results from a single annotation method."""
+    method: str
+    predictions: pl.DataFrame
+    accuracy: float = 0.0
+    macro_f1: float = 0.0
+    weighted_f1: float = 0.0
+    per_class_f1: dict = field(default_factory=dict)
+    precision: float = 0.0
+    recall: float = 0.0
+    kappa: float = 0.0
+    mcc: float = 0.0
+    confusion_matrix: np.ndarray = None
+    class_labels: list = field(default_factory=list)
+    runtime_seconds: float = 0.0
+
+
+def load_xenium_adata(xenium_path: Path, sample_size: int | None = None) -> ad.AnnData:
+    """Load Xenium data as AnnData."""
+    import h5py
+    from scipy.sparse import csc_matrix
+
     h5_path = xenium_path / "cell_feature_matrix.h5"
     logger.info(f"Loading Xenium data from {h5_path}")
 
-    with h5py.File(h5_path, 'r') as f:
-        data = f['matrix/data'][:]
-        indices = f['matrix/indices'][:]
-        indptr = f['matrix/indptr'][:]
-        shape = f['matrix/shape'][:]
-        barcodes = [b.decode() for b in f['matrix/barcodes'][:]]
-        genes = [g.decode() for g in f['matrix/features/name'][:]]
+    with h5py.File(h5_path, "r") as f:
+        data = f["matrix/data"][:]
+        indices = f["matrix/indices"][:]
+        indptr = f["matrix/indptr"][:]
+        shape = f["matrix/shape"][:]
+        barcodes = [b.decode() for b in f["matrix/barcodes"][:]]
+        genes = [g.decode() for g in f["matrix/features/name"][:]]
 
-    from scipy.sparse import csc_matrix
     X = csc_matrix((data, indices, indptr), shape=shape).T
-    adata = sc.AnnData(X=X)
+    adata = ad.AnnData(X=X)
     adata.obs_names = barcodes
     adata.var_names = genes
     adata.obs["cell_id"] = barcodes
 
     logger.info(f"Loaded {adata.n_obs} cells x {adata.n_vars} genes")
+
+    # Sample if requested
+    if sample_size and sample_size < adata.n_obs:
+        logger.info(f"Sampling {sample_size} from {adata.n_obs} cells")
+        indices = np.random.choice(adata.n_obs, sample_size, replace=False)
+        adata = adata[indices].copy()
+
     return adata
 
 
 def load_ground_truth(gt_path: Path) -> pl.DataFrame:
-    """Load and process ground truth annotations."""
+    """Load ground truth annotations."""
     logger.info(f"Loading ground truth from {gt_path}")
-    df = pd.read_excel(gt_path)
-    gt_df = pl.from_pandas(df)
+    pd_df = pd.read_excel(gt_path)
 
-    # Standardize column names
-    gt_df = gt_df.rename({"Barcode": "cell_id", "Cluster": "gt_type"})
-    gt_df = gt_df.with_columns(pl.col("cell_id").cast(pl.Utf8))
+    df = pl.DataFrame({
+        "cell_id": [str(b) for b in pd_df["Barcode"]],
+        "gt_type": pd_df["Cluster"].astype(str).tolist(),
+    })
 
     # Map to broad categories
-    gt_df = gt_df.with_columns(
-        pl.col("gt_type").map_elements(
-            lambda x: GT_TO_BROAD.get(x, "Unknown"),
-            return_dtype=pl.Utf8
-        ).alias("gt_broad")
+    df = df.with_columns(
+        pl.col("gt_type")
+        .map_elements(lambda x: GT_BROAD_MAP.get(x, "Unknown"), return_dtype=pl.Utf8)
+        .alias("gt_broad")
     )
 
-    return gt_df
+    logger.info(f"Loaded {len(df)} cells, {df['gt_type'].n_unique()} types")
+    return df
 
 
-def run_singler(adata: sc.AnnData, output_dir: Path) -> pl.DataFrame | None:
-    """Run SingleR annotation via R script."""
-    try:
-        # Create R script - SingleR expects genes x cells matrix
-        r_script = f'''
-library(SingleR)
-library(celldex)
-library(Matrix)
-
-# Load expression from CSV (genes x cells format)
-expr <- as.matrix(read.csv("{output_dir}/expr_matrix.csv", row.names=1, check.names=FALSE))
-cat("Expression matrix dimensions:", dim(expr), "\\n")
-
-# Load reference
-ref <- BlueprintEncodeData()
-cat("Reference genes:", length(rownames(ref)), "\\n")
-
-# Find common genes
-common_genes <- intersect(rownames(expr), rownames(ref))
-cat("Common genes:", length(common_genes), "\\n")
-
-if (length(common_genes) < 50) {{
-    stop(paste("Too few common genes:", length(common_genes)))
-}}
-
-# Subset to common genes
-expr_sub <- expr[common_genes, , drop=FALSE]
-ref_sub <- ref[common_genes, , drop=FALSE]
-
-# Run SingleR
-results <- SingleR(test = expr_sub, ref = ref_sub, labels = ref_sub$label.main)
-
-# Save results
-write.csv(data.frame(
-    cell_id = colnames(expr_sub),
-    singler_label = results$labels,
-    singler_pruned = results$pruned.labels
-), "{output_dir}/singler_results.csv", row.names = FALSE)
-'''
-        # Save expression matrix for R (genes x cells, transposed)
-        expr_df = pd.DataFrame(
-            adata.X.toarray().T if hasattr(adata.X, 'toarray') else adata.X.T,
-            index=adata.var_names,  # genes as rows
-            columns=adata.obs_names  # cells as columns
-        )
-        expr_df.to_csv(output_dir / "expr_matrix.csv")
-        logger.info(f"Saved expression matrix: {expr_df.shape[0]} genes x {expr_df.shape[1]} cells")
-
-        # Save and run R script
-        script_path = output_dir / "run_singler.R"
-        with open(script_path, 'w') as f:
-            f.write(r_script)
-
-        logger.info("Running SingleR...")
-        result = subprocess.run(
-            ["Rscript", str(script_path)],
-            capture_output=True,
-            text=True,
-            timeout=600,
-            cwd=str(output_dir)
-        )
-
-        if result.returncode == 0:
-            df = pl.read_csv(output_dir / "singler_results.csv")
-            # Map to broad categories
-            singler_broad_map = {
-                "Epithelial cells": "Epithelial",
-                "Keratinocytes": "Epithelial",
-                "B-cells": "Immune",
-                "CD4+ T-cells": "Immune",
-                "CD8+ T-cells": "Immune",
-                "NK cells": "Immune",
-                "Macrophages": "Immune",
-                "Monocytes": "Immune",
-                "DC": "Immune",
-                "Neutrophils": "Immune",
-                "Eosinophils": "Immune",
-                "Fibroblasts": "Stromal",
-                "Adipocytes": "Stromal",
-                "Smooth muscle": "Stromal",
-                "Endothelial cells": "Endothelial",
-            }
-            df = df.with_columns(
-                pl.col("singler_label").map_elements(
-                    lambda x: singler_broad_map.get(x, "Unknown"),
-                    return_dtype=pl.Utf8
-                ).alias("pred_broad")
-            )
-            df = df.with_columns(pl.col("cell_id").cast(pl.Utf8))
-            return df
-        else:
-            logger.error(f"SingleR failed: {result.stderr}")
-            return None
-
-    except Exception as e:
-        logger.error(f"SingleR error: {e}")
-        return None
+def map_to_broad_category(label: str) -> str:
+    """Map fine-grained cell type to broad category."""
+    from dapidl.pipeline.components.annotators.mapping import map_to_broad_category as _map
+    return _map(label)
 
 
-def run_celltypist(adata: sc.AnnData, models: list[str] = None) -> pl.DataFrame:
-    """Run CellTypist with multiple models."""
+def run_singler(adata: ad.AnnData, reference: str) -> pl.DataFrame:
+    """Run SingleR with specified reference via rpy2."""
+    from dapidl.pipeline.components.annotators.singler import (
+        SingleRAnnotator,
+        is_singler_available,
+    )
+    from dapidl.pipeline.base import AnnotationConfig
+
+    if not is_singler_available():
+        raise RuntimeError("SingleR not available. Install R with SingleR and celldex packages.")
+
+    logger.info(f"Running SingleR ({reference})...")
+
+    config = AnnotationConfig()
+    config.singler_reference = reference
+
+    annotator = SingleRAnnotator(config)
+    result = annotator.annotate(adata=adata)
+
+    df = result.annotations_df.select([
+        pl.col("cell_id"),
+        pl.col("predicted_type"),
+        pl.col("broad_category").alias("pred_broad"),
+        pl.col("confidence"),
+    ])
+
+    return df
+
+
+def run_singler_ensemble(adata: ad.AnnData, references: list[str]) -> pl.DataFrame:
+    """Run multiple SingleR references and combine via voting."""
+    all_preds = []
+
+    for ref in references:
+        try:
+            df = run_singler(adata, ref)
+            all_preds.append({
+                "source": f"singler_{ref}",
+                "labels": df["pred_broad"].to_list(),
+                "confidences": df["confidence"].to_list(),
+            })
+        except Exception as e:
+            logger.warning(f"SingleR ({ref}) failed: {e}")
+
+    if not all_preds:
+        raise RuntimeError("All SingleR references failed")
+
+    return _combine_predictions(adata, all_preds)
+
+
+def run_celltypist(adata: ad.AnnData, models: list[str]) -> pl.DataFrame:
+    """Run CellTypist with specified models."""
     import celltypist
     from celltypist import models as ct_models
 
-    if models is None:
-        # Default models for breast tissue
-        models = [
-            "Cells_Adult_Breast.pkl",
-            "Immune_All_High.pkl",
-            "Adult_Human_Skin.pkl",
-            "Healthy_Human_Liver.pkl",
-        ]
+    logger.info(f"Running CellTypist ({len(models)} models)...")
 
     # Normalize data
     adata_norm = adata.copy()
@@ -254,7 +303,6 @@ def run_celltypist(adata: sc.AnnData, models: list[str] = None) -> pl.DataFrame:
     sc.pp.log1p(adata_norm)
 
     all_preds = []
-    all_confs = []
 
     for model_name in models:
         try:
@@ -262,280 +310,375 @@ def run_celltypist(adata: sc.AnnData, models: list[str] = None) -> pl.DataFrame:
             model = ct_models.Model.load(model=model_name)
 
             predictions = celltypist.annotate(
-                adata_norm,
-                model=model,
-                majority_voting=False,
+                adata_norm, model=model, majority_voting=False
             )
 
-            preds = predictions.predicted_labels.predicted_labels.tolist()
-            confs = predictions.probability_matrix.max(axis=1).tolist()
-
-            all_preds.append(preds)
-            all_confs.append(confs)
+            all_preds.append({
+                "source": f"celltypist_{model_name}",
+                "labels": [
+                    map_to_broad_category(l)
+                    for l in predictions.predicted_labels.predicted_labels.tolist()
+                ],
+                "confidences": predictions.probability_matrix.max(axis=1).tolist(),
+            })
 
         except Exception as e:
             logger.warning(f"CellTypist {model_name} failed: {e}")
-            continue
 
-    # Ensemble: confidence-weighted voting
-    cell_ids = list(adata.obs_names)
-    n_cells = len(cell_ids)
+    if not all_preds:
+        raise RuntimeError("All CellTypist models failed")
 
-    broad_map = {
-        "Epithelial cell": "Epithelial",
-        "Luminal epithelial cell": "Epithelial",
-        "Basal cell": "Epithelial",
-        "T cell": "Immune",
-        "B cell": "Immune",
-        "Macrophage": "Immune",
-        "Monocyte": "Immune",
-        "NK cell": "Immune",
-        "Dendritic cell": "Immune",
-        "Mast cell": "Immune",
-        "Fibroblast": "Stromal",
-        "Smooth muscle cell": "Stromal",
-        "Adipocyte": "Stromal",
-        "Pericyte": "Stromal",
-        "Endothelial cell": "Endothelial",
-        "Vascular endothelial cell": "Endothelial",
-    }
+    return _combine_predictions(adata, all_preds)
 
-    def map_to_broad(label):
-        if label in broad_map:
-            return broad_map[label]
-        label_lower = label.lower()
-        if any(x in label_lower for x in ["epithelial", "keratinocyte", "luminal", "basal"]):
-            return "Epithelial"
-        if any(x in label_lower for x in ["t cell", "b cell", "macrophage", "monocyte", "dendritic", "nk cell", "mast", "immune"]):
-            return "Immune"
-        if any(x in label_lower for x in ["fibroblast", "stromal", "smooth muscle", "pericyte", "adipocyte"]):
-            return "Stromal"
-        if any(x in label_lower for x in ["endothelial", "vascular"]):
-            return "Endothelial"
-        return "Unknown"
 
-    final_preds = []
-    final_confs = []
+def run_combined(
+    adata: ad.AnnData,
+    celltypist_models: list[str],
+    singler_references: list[str],
+) -> pl.DataFrame:
+    """Run combined CellTypist + SingleR (PopV-style)."""
+    logger.info(
+        f"Running combined: {len(celltypist_models)} CT + {len(singler_references)} SR"
+    )
 
-    for cell_idx in range(n_cells):
-        votes = defaultdict(float)
-        for model_idx in range(len(all_preds)):
-            pred = all_preds[model_idx][cell_idx]
-            conf = all_confs[model_idx][cell_idx]
-            broad = map_to_broad(pred)
-            if broad != "Unknown":
-                votes[broad] += conf
+    all_preds = []
 
-        if votes:
-            best = max(votes, key=votes.get)
-            final_preds.append(best)
-            final_confs.append(votes[best] / len(all_preds))
-        else:
-            final_preds.append("Unknown")
-            final_confs.append(0.0)
+    # CellTypist predictions
+    adata_norm = adata.copy()
+    sc.pp.normalize_total(adata_norm, target_sum=1e4)
+    sc.pp.log1p(adata_norm)
+
+    import celltypist
+    from celltypist import models as ct_models
+
+    for model_name in celltypist_models:
+        try:
+            ct_models.download_models(model=[model_name])
+            model = ct_models.Model.load(model=model_name)
+            predictions = celltypist.annotate(
+                adata_norm, model=model, majority_voting=False
+            )
+            all_preds.append({
+                "source": f"celltypist_{model_name}",
+                "labels": [
+                    map_to_broad_category(l)
+                    for l in predictions.predicted_labels.predicted_labels.tolist()
+                ],
+                "confidences": predictions.probability_matrix.max(axis=1).tolist(),
+            })
+        except Exception as e:
+            logger.warning(f"CellTypist {model_name} failed: {e}")
+
+    # SingleR predictions
+    for ref in singler_references:
+        try:
+            df = run_singler(adata, ref)
+            all_preds.append({
+                "source": f"singler_{ref}",
+                "labels": df["pred_broad"].to_list(),
+                "confidences": df["confidence"].to_list(),
+            })
+        except Exception as e:
+            logger.warning(f"SingleR ({ref}) failed: {e}")
+
+    if not all_preds:
+        raise RuntimeError("All methods failed")
+
+    return _combine_predictions(adata, all_preds)
+
+
+def _combine_predictions(adata: ad.AnnData, all_preds: list[dict]) -> pl.DataFrame:
+    """Combine predictions via unweighted majority voting (PopV-style)."""
+    n_cells = len(all_preds[0]["labels"])
+    final_labels = []
+    final_confidences = []
+
+    for i in range(n_cells):
+        # Unweighted majority vote (popV style - beats confidence-weighted)
+        votes = [p["labels"][i] for p in all_preds]
+        vote_counts = Counter(votes)
+        winner = vote_counts.most_common(1)[0][0]
+
+        # Mean confidence of winning votes
+        winner_confs = [
+            p["confidences"][i] for p in all_preds if p["labels"][i] == winner
+        ]
+        confidence = np.mean(winner_confs)
+
+        final_labels.append(winner)
+        final_confidences.append(confidence)
 
     return pl.DataFrame({
-        "cell_id": [str(c) for c in cell_ids],
-        "pred_broad": final_preds,
-        "confidence": final_confs,
+        "cell_id": [str(c) for c in adata.obs_names],
+        "predicted_type": final_labels,
+        "pred_broad": final_labels,
+        "confidence": final_confidences,
     })
 
 
-def run_sctype(adata: sc.AnnData) -> pl.DataFrame:
-    """Run scType marker-based annotation."""
-    from dapidl.pipeline.components.annotators.sctype import ScTypeAnnotator
+def run_method(adata: ad.AnnData, method: AnnotationMethod) -> pl.DataFrame:
+    """Run a specific annotation method."""
+    start_time = time.time()
 
-    annotator = ScTypeAnnotator()
-    result = annotator.annotate(adata=adata)
+    if method == AnnotationMethod.SINGLER_HPCA:
+        df = run_singler(adata, "hpca")
+    elif method == AnnotationMethod.SINGLER_BLUEPRINT:
+        df = run_singler(adata, "blueprint")
+    elif method == AnnotationMethod.SINGLER_MONACO:
+        df = run_singler(adata, "monaco")
+    elif method == AnnotationMethod.SINGLER_NOVERSHTERN:
+        df = run_singler(adata, "novershtern")
+    elif method == AnnotationMethod.SINGLER_ALL:
+        df = run_singler_ensemble(adata, SINGLER_REFERENCES)
 
-    return result.annotations_df.select([
-        pl.col("cell_id"),
-        pl.col("broad_category").alias("pred_broad"),
-        pl.col("confidence"),
-    ])
+    elif method == AnnotationMethod.CELLTYPIST_BREAST:
+        df = run_celltypist(adata, CELLTYPIST_MODELS["breast"])
+    elif method == AnnotationMethod.CELLTYPIST_IMMUNE_HIGH:
+        df = run_celltypist(adata, CELLTYPIST_MODELS["immune_high"])
+    elif method == AnnotationMethod.CELLTYPIST_IMMUNE_LOW:
+        df = run_celltypist(adata, CELLTYPIST_MODELS["immune_low"])
+    elif method == AnnotationMethod.CELLTYPIST_TISSUE:
+        df = run_celltypist(adata, CELLTYPIST_MODELS["tissue"])
+    elif method == AnnotationMethod.CELLTYPIST_UNIVERSAL:
+        df = run_celltypist(adata, CELLTYPIST_MODELS["universal"])
+    elif method == AnnotationMethod.CELLTYPIST_ALL:
+        # Get all available human models
+        from celltypist import models as ct_models
+        all_models = [m for m in ct_models.get_all_models() if "Human" in m][:20]
+        df = run_celltypist(adata, all_models)
 
-
-def run_ensemble(
-    predictions: dict[str, pl.DataFrame],
-    strategy: Literal["majority", "confidence_weighted"] = "confidence_weighted",
-) -> pl.DataFrame:
-    """Combine predictions from multiple methods.
-
-    Args:
-        predictions: Dict of method_name -> DataFrame with cell_id, pred_broad, confidence
-        strategy: How to combine predictions
-
-    Returns:
-        DataFrame with ensemble predictions
-    """
-    methods = list(predictions.keys())
-    if not methods:
-        raise ValueError("No predictions to ensemble")
-
-    # Start with first method's cell_ids
-    base_df = predictions[methods[0]].select(["cell_id"])
-
-    # Join all predictions
-    for method, df in predictions.items():
-        base_df = base_df.join(
-            df.select([
-                pl.col("cell_id"),
-                pl.col("pred_broad").alias(f"{method}_pred"),
-                pl.col("confidence").alias(f"{method}_conf") if "confidence" in df.columns else pl.lit(1.0).alias(f"{method}_conf"),
-            ]),
-            on="cell_id",
-            how="left"
+    elif method == AnnotationMethod.POPV_MINIMAL:
+        df = run_combined(
+            adata,
+            celltypist_models=["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
+            singler_references=["hpca", "blueprint"],
         )
-
-    # Ensemble prediction
-    pred_cols = [f"{m}_pred" for m in methods]
-    conf_cols = [f"{m}_conf" for m in methods]
-
-    if strategy == "majority":
-        # Simple majority vote
-        def majority_vote(row):
-            votes = [row[c] for c in pred_cols if row[c] and row[c] != "Unknown"]
-            if not votes:
-                return "Unknown"
-            from collections import Counter
-            return Counter(votes).most_common(1)[0][0]
-
-        base_df = base_df.with_columns(
-            pl.struct(pred_cols).map_elements(
-                majority_vote,
-                return_dtype=pl.Utf8
-            ).alias("pred_broad")
+    elif method == AnnotationMethod.POPV_STANDARD:
+        df = run_combined(
+            adata,
+            celltypist_models=[
+                "Cells_Adult_Breast.pkl",
+                "Immune_All_High.pkl",
+                "Immune_All_Low.pkl",
+                "Human_Lung_Atlas.pkl",
+                "Healthy_Human_Liver.pkl",
+            ],
+            singler_references=["hpca", "blueprint"],
         )
-
-    else:  # confidence_weighted
-        def weighted_vote(row):
-            votes = defaultdict(float)
-            for pred_col, conf_col in zip(pred_cols, conf_cols):
-                pred = row[pred_col]
-                conf = row[conf_col] if row[conf_col] else 0.5
-                if pred and pred != "Unknown":
-                    votes[pred] += conf
-            if not votes:
-                return "Unknown"
-            return max(votes, key=votes.get)
-
-        base_df = base_df.with_columns(
-            pl.struct(pred_cols + conf_cols).map_elements(
-                weighted_vote,
-                return_dtype=pl.Utf8
-            ).alias("pred_broad")
+    elif method == AnnotationMethod.POPV_COMPREHENSIVE:
+        df = run_combined(
+            adata,
+            celltypist_models=CELLTYPIST_MODELS["universal"],
+            singler_references=SINGLER_REFERENCES,
         )
+    else:
+        raise ValueError(f"Unknown method: {method}")
 
-    return base_df.select(["cell_id", "pred_broad"])
+    elapsed = time.time() - start_time
+    logger.info(f"  Completed in {elapsed:.1f}s")
+
+    return df
 
 
-def calculate_metrics(y_true: list, y_pred: list, labels: list = None) -> dict:
-    """Calculate comprehensive classification metrics."""
-    if labels is None:
-        labels = sorted(set(y_true + y_pred) - {"Unknown"})
+def evaluate_predictions(
+    predictions: pl.DataFrame,
+    ground_truth: pl.DataFrame,
+    method: str,
+) -> MethodResult:
+    """Evaluate predictions against ground truth."""
+    # Join predictions with ground truth
+    merged = predictions.join(
+        ground_truth.select(["cell_id", "gt_broad"]),
+        on="cell_id",
+        how="inner",
+    )
 
     # Filter out Unknown
-    valid = [(t, p) for t, p in zip(y_true, y_pred) if t != "Unknown" and p != "Unknown"]
-    if not valid:
-        return {"error": "No valid predictions"}
+    merged = merged.filter(
+        (pl.col("gt_broad") != "Unknown") & (pl.col("pred_broad") != "Unknown")
+    )
 
-    y_true_valid, y_pred_valid = zip(*valid)
+    y_true = merged["gt_broad"].to_list()
+    y_pred = merged["pred_broad"].to_list()
 
-    metrics = {
-        "n_cells": len(y_true_valid),
-        "n_classes": len(set(y_true_valid)),
-        "accuracy": accuracy_score(y_true_valid, y_pred_valid),
-        "macro_f1": f1_score(y_true_valid, y_pred_valid, average="macro", zero_division=0),
-        "weighted_f1": f1_score(y_true_valid, y_pred_valid, average="weighted", zero_division=0),
-        "macro_precision": precision_score(y_true_valid, y_pred_valid, average="macro", zero_division=0),
-        "macro_recall": recall_score(y_true_valid, y_pred_valid, average="macro", zero_division=0),
-        "cohen_kappa": cohen_kappa_score(y_true_valid, y_pred_valid),
-        "mcc": matthews_corrcoef(y_true_valid, y_pred_valid),
+    labels = sorted(set(y_true) | set(y_pred))
+
+    # Metrics
+    acc = accuracy_score(y_true, y_pred)
+    macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
+    weighted_f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+    precision = precision_score(y_true, y_pred, average="macro", zero_division=0)
+    recall = recall_score(y_true, y_pred, average="macro", zero_division=0)
+    kappa = cohen_kappa_score(y_true, y_pred)
+    mcc = matthews_corrcoef(y_true, y_pred)
+
+    # Per-class F1
+    report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
+    per_class_f1 = {
+        label: report[label]["f1-score"] for label in labels if label in report
     }
 
-    # Per-class metrics
-    for label in labels:
-        label_true = [1 if t == label else 0 for t in y_true_valid]
-        label_pred = [1 if p == label else 0 for p in y_pred_valid]
-
-        if sum(label_true) > 0:
-            metrics[f"{label}_f1"] = f1_score(label_true, label_pred, zero_division=0)
-            metrics[f"{label}_precision"] = precision_score(label_true, label_pred, zero_division=0)
-            metrics[f"{label}_recall"] = recall_score(label_true, label_pred, zero_division=0)
-            metrics[f"{label}_support"] = sum(label_true)
-
     # Confusion matrix
-    cm = confusion_matrix(y_true_valid, y_pred_valid, labels=labels)
-    metrics["confusion_matrix"] = cm.tolist()
-    metrics["confusion_labels"] = labels
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
 
-    return metrics
+    return MethodResult(
+        method=method,
+        predictions=merged,
+        accuracy=acc,
+        macro_f1=macro_f1,
+        weighted_f1=weighted_f1,
+        per_class_f1=per_class_f1,
+        precision=precision,
+        recall=recall,
+        kappa=kappa,
+        mcc=mcc,
+        confusion_matrix=cm,
+        class_labels=labels,
+    )
 
 
-def log_to_clearml(
-    task: Task,
-    method_name: str,
-    dataset_name: str,
-    metrics: dict,
-):
-    """Log metrics to ClearML."""
-    clearml_logger = task.get_logger()
+def create_confusion_matrix_plot(
+    result: MethodResult,
+    output_path: Path,
+    normalize: bool = True,
+) -> Path:
+    """Create confusion matrix visualization."""
+    fig, ax = plt.subplots(figsize=(10, 8))
 
-    # Scalar metrics
-    for key, value in metrics.items():
-        if isinstance(value, (int, float)) and not np.isnan(value):
-            clearml_logger.report_scalar(
-                title=f"{dataset_name}/{method_name}",
-                series=key,
-                value=value,
-                iteration=0
-            )
+    cm = result.confusion_matrix.astype(float)
+    if normalize:
+        row_sums = cm.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1
+        cm = cm / row_sums
 
-    # Confusion matrix
-    if "confusion_matrix" in metrics:
-        cm = np.array(metrics["confusion_matrix"])
-        labels = metrics["confusion_labels"]
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt=".2f" if normalize else "d",
+        cmap="Blues",
+        xticklabels=result.class_labels,
+        yticklabels=result.class_labels,
+        ax=ax,
+    )
 
-        clearml_logger.report_confusion_matrix(
-            title=f"Confusion Matrix - {method_name}",
-            series=dataset_name,
-            matrix=cm,
-            xlabels=labels,
-            ylabels=labels,
-            iteration=0
-        )
+    ax.set_xlabel("Predicted", fontsize=12)
+    ax.set_ylabel("Ground Truth", fontsize=12)
+    ax.set_title(
+        f"Confusion Matrix: {result.method}\nAccuracy: {result.accuracy:.3f}, Macro F1: {result.macro_f1:.3f}",
+        fontsize=14,
+    )
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved confusion matrix: {output_path}")
+    return output_path
+
+
+def create_umap_comparison(
+    adata: ad.AnnData,
+    result: MethodResult,
+    output_path: Path,
+) -> Path:
+    """Create UMAP visualization comparing GT vs predicted."""
+    logger.info("Computing UMAP...")
+
+    # Prepare data
+    adata_vis = adata.copy()
+    sc.pp.normalize_total(adata_vis, target_sum=1e4)
+    sc.pp.log1p(adata_vis)
+
+    # Highly variable genes
+    if adata_vis.n_vars > 2000:
+        sc.pp.highly_variable_genes(adata_vis, n_top_genes=2000, subset=True)
+
+    # PCA + UMAP
+    sc.pp.pca(adata_vis, n_comps=min(50, adata_vis.n_vars - 1))
+    sc.pp.neighbors(adata_vis, n_neighbors=15)
+    sc.tl.umap(adata_vis, min_dist=0.1)
+
+    # Add annotations
+    pred_df = result.predictions
+    gt_map = dict(zip(pred_df["cell_id"].to_list(), pred_df["gt_broad"].to_list()))
+    pred_map = dict(zip(pred_df["cell_id"].to_list(), pred_df["pred_broad"].to_list()))
+
+    adata_vis.obs["Ground Truth"] = [
+        gt_map.get(str(c), "Unknown") for c in adata_vis.obs_names
+    ]
+    adata_vis.obs["Predicted"] = [
+        pred_map.get(str(c), "Unknown") for c in adata_vis.obs_names
+    ]
+
+    # Filter to cells with both annotations
+    mask = (adata_vis.obs["Ground Truth"] != "Unknown") & (
+        adata_vis.obs["Predicted"] != "Unknown"
+    )
+    adata_vis = adata_vis[mask].copy()
+
+    # Plot
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+
+    sc.pl.umap(adata_vis, color="Ground Truth", ax=axes[0], show=False, title="Ground Truth")
+    sc.pl.umap(adata_vis, color="Predicted", ax=axes[1], show=False, title=f"Predicted ({result.method})")
+
+    plt.suptitle(
+        f"Accuracy: {result.accuracy:.3f}, Macro F1: {result.macro_f1:.3f}",
+        fontsize=14,
+        y=1.02,
+    )
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved UMAP comparison: {output_path}")
+    return output_path
+
+
+def export_xenium_csv(result: MethodResult, output_path: Path) -> Path:
+    """Export predictions as CSV for Xenium Explorer import."""
+    # Format for Xenium Explorer: Barcode, CellType column
+    df = result.predictions.select([
+        pl.col("cell_id").alias("Barcode"),
+        pl.col("pred_broad").alias(f"CellType_{result.method}"),
+        pl.col("predicted_type").alias(f"DetailedType_{result.method}")
+        if "predicted_type" in result.predictions.columns
+        else pl.col("pred_broad").alias(f"DetailedType_{result.method}"),
+        pl.col("confidence").alias(f"Confidence_{result.method}")
+        if "confidence" in result.predictions.columns
+        else pl.lit(1.0).alias(f"Confidence_{result.method}"),
+    ])
+
+    df.write_csv(output_path)
+    logger.info(f"Exported Xenium CSV: {output_path}")
+    return output_path
 
 
 def run_benchmark(
-    methods: list[str],
     datasets: list[str],
-    project_name: str = "DAPIDL/Annotation-Benchmark",
-    task_name: str = None,
-) -> dict:
-    """Run benchmark on specified methods and datasets.
-
-    Args:
-        methods: List of methods to run (singler, celltypist, sctype)
-        datasets: List of dataset keys (rep1, rep2)
-        project_name: ClearML project name
-        task_name: ClearML task name
-
-    Returns:
-        Dictionary of results
-    """
+    methods: list[AnnotationMethod],
+    output_dir: Path,
+    sample_size: int | None = None,
+    use_clearml: bool = True,
+    generate_umap: bool = True,
+    export_csv: bool = True,
+) -> dict[str, dict[str, MethodResult]]:
+    """Run complete benchmark."""
     # Initialize ClearML
     task = None
-    if CLEARML_AVAILABLE:
-        method_str = "+".join(sorted(methods))
+    if use_clearml and CLEARML_AVAILABLE:
         task = Task.init(
-            project_name=project_name,
-            task_name=task_name or f"Benchmark_{method_str}",
-            task_type=Task.TaskTypes.testing,
+            project_name="DAPIDL/Annotation-Benchmark",
+            task_name=f"Comprehensive_Benchmark_{len(methods)}_methods",
         )
         task.set_parameters({
-            "methods": methods,
             "datasets": datasets,
+            "methods": [m.value for m in methods],
+            "sample_size": sample_size,
         })
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = {}
 
@@ -544,196 +687,248 @@ def run_benchmark(
             logger.warning(f"Unknown dataset: {dataset_key}")
             continue
 
-        dataset_config = DATASETS[dataset_key]
+        config = DATASETS[dataset_key]
         logger.info(f"\n{'='*60}")
-        logger.info(f"Processing {dataset_config['name']}")
+        logger.info(f"DATASET: {config['name']}")
         logger.info(f"{'='*60}")
 
         # Load data
-        adata = load_xenium_data(dataset_config["xenium_path"])
-        gt_df = load_ground_truth(dataset_config["gt_path"])
+        adata = load_xenium_adata(config["xenium_path"], sample_size=sample_size)
+        ground_truth = load_ground_truth(config["gt_path"])
 
-        # Create temp directory for intermediate files
-        temp_dir = Path(tempfile.mkdtemp())
+        # Filter to common cells
+        adata_cells = set(str(c) for c in adata.obs_names)
+        gt_cells = set(ground_truth["cell_id"].to_list())
+        common_cells = adata_cells & gt_cells
 
-        # Run each method
-        predictions = {}
+        mask = [str(c) in common_cells for c in adata.obs_names]
+        adata = adata[mask].copy()
+        ground_truth = ground_truth.filter(pl.col("cell_id").is_in(list(common_cells)))
 
-        if "singler" in methods:
-            logger.info("\n--- Running SingleR ---")
-            singler_df = run_singler(adata, temp_dir)
-            if singler_df is not None:
-                predictions["singler"] = singler_df.select([
-                    pl.col("cell_id"),
-                    pl.col("pred_broad"),
-                    pl.lit(0.8).alias("confidence"),  # SingleR doesn't provide confidence
-                ])
+        logger.info(f"Common cells: {len(common_cells)}")
 
-        if "celltypist" in methods:
-            logger.info("\n--- Running CellTypist ---")
-            celltypist_df = run_celltypist(adata)
-            predictions["celltypist"] = celltypist_df
+        dataset_results = {}
+        dataset_dir = output_dir / dataset_key
+        dataset_dir.mkdir(parents=True, exist_ok=True)
 
-        if "sctype" in methods:
-            logger.info("\n--- Running scType ---")
-            sctype_df = run_sctype(adata)
-            predictions["sctype"] = sctype_df
+        for method in methods:
+            logger.info(f"\n--- Method: {method.value} ---")
 
-        # Evaluate individual methods
-        results = {}
+            try:
+                start = time.time()
+                predictions = run_method(adata, method)
+                runtime = time.time() - start
 
-        for method_name, pred_df in predictions.items():
-            logger.info(f"\n--- Evaluating {method_name} ---")
+                # Evaluate
+                result = evaluate_predictions(predictions, ground_truth, method.value)
+                result.runtime_seconds = runtime
+                dataset_results[method.value] = result
 
-            # Join with ground truth
-            eval_df = pred_df.join(gt_df, on="cell_id", how="inner")
-            eval_df = eval_df.filter(
-                (pl.col("gt_broad") != "Unknown") &
-                (pl.col("pred_broad") != "Unknown")
-            )
+                logger.info(f"  Accuracy: {result.accuracy:.3f}")
+                logger.info(f"  Macro F1: {result.macro_f1:.3f}")
+                logger.info(f"  Kappa: {result.kappa:.3f}")
+                logger.info(f"  Per-class F1: {result.per_class_f1}")
 
-            y_true = eval_df["gt_broad"].to_list()
-            y_pred = eval_df["pred_broad"].to_list()
+                # Create method output directory
+                method_dir = dataset_dir / method.value
+                method_dir.mkdir(parents=True, exist_ok=True)
 
-            metrics = calculate_metrics(y_true, y_pred)
-            results[method_name] = metrics
+                # Confusion matrix
+                cm_path = method_dir / "confusion_matrix.png"
+                create_confusion_matrix_plot(result, cm_path)
+                if task:
+                    task.upload_artifact(f"{dataset_key}/{method.value}/confusion_matrix", cm_path)
 
-            logger.info(f"  Accuracy: {metrics['accuracy']:.4f}")
-            logger.info(f"  Macro F1: {metrics['macro_f1']:.4f}")
-            logger.info(f"  Cohen's Kappa: {metrics['cohen_kappa']:.4f}")
+                # UMAP (optional - slow)
+                if generate_umap:
+                    umap_path = method_dir / "umap_comparison.png"
+                    try:
+                        create_umap_comparison(adata, result, umap_path)
+                        if task:
+                            task.upload_artifact(f"{dataset_key}/{method.value}/umap", umap_path)
+                    except Exception as e:
+                        logger.warning(f"UMAP failed: {e}")
 
-            if task:
-                log_to_clearml(task, method_name, dataset_key, metrics)
+                # Xenium CSV export
+                if export_csv:
+                    csv_path = method_dir / f"{method.value}_xenium.csv"
+                    export_xenium_csv(result, csv_path)
+                    if task:
+                        task.upload_artifact(f"{dataset_key}/{method.value}/xenium_csv", csv_path)
 
-        # Evaluate ensemble if multiple methods
-        if len(predictions) > 1:
-            logger.info("\n--- Evaluating Ensemble ---")
-            ensemble_df = run_ensemble(predictions)
+                # Log metrics to ClearML
+                if task:
+                    clearml_logger = task.get_logger()
+                    clearml_logger.report_scalar(
+                        title=dataset_key,
+                        series=method.value,
+                        value=result.macro_f1,
+                        iteration=0,
+                    )
+                    clearml_logger.report_confusion_matrix(
+                        title=f"Confusion Matrix - {method.value}",
+                        series=dataset_key,
+                        matrix=result.confusion_matrix,
+                        xlabels=result.class_labels,
+                        ylabels=result.class_labels,
+                        iteration=0,
+                    )
 
-            eval_df = ensemble_df.join(gt_df, on="cell_id", how="inner")
-            eval_df = eval_df.filter(
-                (pl.col("gt_broad") != "Unknown") &
-                (pl.col("pred_broad") != "Unknown")
-            )
+            except Exception as e:
+                logger.error(f"Method {method.value} failed: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
 
-            y_true = eval_df["gt_broad"].to_list()
-            y_pred = eval_df["pred_broad"].to_list()
+        all_results[dataset_key] = dataset_results
 
-            metrics = calculate_metrics(y_true, y_pred)
-            ensemble_name = "ensemble_" + "+".join(sorted(predictions.keys()))
-            results[ensemble_name] = metrics
+    # Save summary JSON
+    summary = {}
+    for dataset, results in all_results.items():
+        summary[dataset] = {
+            method: {
+                "accuracy": r.accuracy,
+                "macro_f1": r.macro_f1,
+                "weighted_f1": r.weighted_f1,
+                "precision": r.precision,
+                "recall": r.recall,
+                "kappa": r.kappa,
+                "mcc": r.mcc,
+                "per_class_f1": r.per_class_f1,
+                "runtime_seconds": r.runtime_seconds,
+            }
+            for method, r in results.items()
+        }
 
-            logger.info(f"  Accuracy: {metrics['accuracy']:.4f}")
-            logger.info(f"  Macro F1: {metrics['macro_f1']:.4f}")
+    summary_path = output_dir / "benchmark_summary.json"
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
 
-            if task:
-                log_to_clearml(task, ensemble_name, dataset_key, metrics)
-
-        all_results[dataset_key] = results
-
-    # Summary
-    logger.info("\n" + "="*60)
-    logger.info("BENCHMARK SUMMARY")
-    logger.info("="*60)
-
-    summary_rows = []
-    for dataset_key, results in all_results.items():
-        for method, metrics in results.items():
-            if "error" not in metrics:
-                summary_rows.append({
-                    "dataset": dataset_key,
-                    "method": method,
-                    "accuracy": metrics.get("accuracy", 0),
-                    "macro_f1": metrics.get("macro_f1", 0),
-                    "cohen_kappa": metrics.get("cohen_kappa", 0),
-                    "n_cells": metrics.get("n_cells", 0),
-                })
-
-    if summary_rows:
-        summary_df = pl.DataFrame(summary_rows)
-        print(summary_df.sort(["dataset", "macro_f1"], descending=[False, True]))
-    else:
-        logger.warning("No successful method runs to summarize")
-        summary_df = pl.DataFrame()
+    logger.info(f"\nSummary saved to: {summary_path}")
 
     if task:
-        task.upload_artifact("summary", summary_df.to_pandas())
+        task.upload_artifact("benchmark_summary", summary_path)
+
+    # Print summary table
+    print_summary_table(all_results)
+
+    if task:
         task.close()
 
     return all_results
 
 
-def run_all_combinations(datasets: list[str], project_name: str = "DAPIDL/Annotation-Benchmark"):
-    """Run all possible method combinations."""
-    base_methods = ["singler", "celltypist", "sctype"]
+def print_summary_table(results: dict[str, dict[str, MethodResult]]) -> None:
+    """Print formatted summary table."""
+    print("\n" + "=" * 100)
+    print("BENCHMARK SUMMARY")
+    print("=" * 100)
 
-    # Generate all combinations (1, 2, 3 methods)
-    all_combinations = []
-    for r in range(1, len(base_methods) + 1):
-        for combo in combinations(base_methods, r):
-            all_combinations.append(list(combo))
-
-    logger.info(f"Running {len(all_combinations)} method combinations:")
-    for combo in all_combinations:
-        logger.info(f"  - {'+'.join(combo)}")
-
-    all_results = {}
-
-    for combo in all_combinations:
-        combo_name = "+".join(combo)
-        logger.info(f"\n{'#'*60}")
-        logger.info(f"# Running combination: {combo_name}")
-        logger.info(f"{'#'*60}")
-
-        results = run_benchmark(
-            methods=combo,
-            datasets=datasets,
-            project_name=project_name,
-            task_name=f"Benchmark_{combo_name}",
+    for dataset, methods in results.items():
+        print(f"\n{dataset}:")
+        print("-" * 95)
+        print(
+            f"{'Method':<30} {'Acc':>8} {'F1':>8} {'Epi':>8} {'Imm':>8} {'Str':>8} {'Kappa':>8} {'Time':>8}"
         )
-        all_results[combo_name] = results
+        print("-" * 95)
 
-    return all_results
+        # Sort by macro F1
+        for method, result in sorted(
+            methods.items(), key=lambda x: -x[1].macro_f1
+        ):
+            epi = result.per_class_f1.get("Epithelial", 0)
+            imm = result.per_class_f1.get("Immune", 0)
+            strom = result.per_class_f1.get("Stromal", 0)
+
+            print(
+                f"{method:<30} {result.accuracy:>8.3f} {result.macro_f1:>8.3f} "
+                f"{epi:>8.3f} {imm:>8.3f} {strom:>8.3f} {result.kappa:>8.3f} {result.runtime_seconds:>7.1f}s"
+            )
 
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Benchmark cell type annotation methods",
+        description="Comprehensive benchmark of annotation methods",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--methods", "-m",
-        nargs="+",
-        choices=["singler", "celltypist", "sctype"],
-        default=["celltypist"],
-        help="Methods to run"
-    )
-    parser.add_argument(
-        "--datasets", "-d",
+        "--datasets",
+        "-d",
         nargs="+",
         choices=list(DATASETS.keys()),
-        default=["rep1"],
-        help="Datasets to evaluate"
+        default=["rep1", "rep2"],
+        help="Datasets to evaluate",
     )
     parser.add_argument(
-        "--all-combinations",
+        "--methods",
+        "-m",
+        nargs="+",
+        choices=[m.value for m in AnnotationMethod],
+        default=None,
+        help="Methods to test (default: all)",
+    )
+    parser.add_argument(
+        "--sample-size",
+        "-s",
+        type=int,
+        default=None,
+        help="Sample size per dataset (for faster testing)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        type=Path,
+        default=Path("benchmark_results"),
+        help="Output directory",
+    )
+    parser.add_argument(
+        "--no-clearml",
         action="store_true",
-        help="Run all possible method combinations"
+        help="Disable ClearML tracking",
     )
     parser.add_argument(
-        "--project",
-        default="DAPIDL/Annotation-Benchmark",
-        help="ClearML project name"
+        "--no-umap",
+        action="store_true",
+        help="Skip UMAP generation (faster)",
+    )
+    parser.add_argument(
+        "--no-csv",
+        action="store_true",
+        help="Skip Xenium CSV export",
     )
 
     args = parser.parse_args()
 
-    if args.all_combinations:
-        run_all_combinations(args.datasets, args.project)
+    # Default to all methods if not specified
+    if args.methods:
+        methods = [AnnotationMethod(m) for m in args.methods]
     else:
-        run_benchmark(args.methods, args.datasets, args.project)
+        methods = [
+            # SingleR single
+            AnnotationMethod.SINGLER_HPCA,
+            AnnotationMethod.SINGLER_BLUEPRINT,
+            # CellTypist single
+            AnnotationMethod.CELLTYPIST_BREAST,
+            AnnotationMethod.CELLTYPIST_IMMUNE_HIGH,
+            # Ensembles
+            AnnotationMethod.CELLTYPIST_TISSUE,
+            AnnotationMethod.SINGLER_ALL,
+            # Combined
+            AnnotationMethod.POPV_MINIMAL,
+            AnnotationMethod.POPV_STANDARD,
+        ]
+
+    run_benchmark(
+        datasets=args.datasets,
+        methods=methods,
+        output_dir=args.output_dir,
+        sample_size=args.sample_size,
+        use_clearml=not args.no_clearml,
+        generate_umap=not args.no_umap,
+        export_csv=not args.no_csv,
+    )
 
 
 if __name__ == "__main__":
