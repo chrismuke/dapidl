@@ -385,15 +385,29 @@ class UniversalDAPITrainingStep(PipelineStep):
         # Deduplicate by checking existing paths
         existing_paths = {str(ds.path) for ds in mt_config.datasets}
         if "dataset_configs" in inputs:
-            for ds_dict in inputs["dataset_configs"]:
-                resolved_path = resolve_artifact_path(ds_dict["path"], f"dataset_{ds_dict['tissue']}")
+            for ds_spec in inputs["dataset_configs"]:
+                # Handle both TissueDatasetSpec objects and dicts
+                if isinstance(ds_spec, TissueDatasetSpec):
+                    path = ds_spec.path
+                    tissue = ds_spec.tissue
+                    platform = ds_spec.platform
+                    confidence_tier = ds_spec.confidence_tier
+                    weight_multiplier = ds_spec.weight_multiplier
+                else:
+                    path = ds_spec["path"]
+                    tissue = ds_spec["tissue"]
+                    platform = ds_spec.get("platform", "xenium")
+                    confidence_tier = ds_spec.get("confidence_tier", 2)
+                    weight_multiplier = ds_spec.get("weight_multiplier", 1.0)
+
+                resolved_path = resolve_artifact_path(path, f"dataset_{tissue}")
                 if resolved_path and str(resolved_path) not in existing_paths:
                     mt_config.add_dataset(
                         path=str(resolved_path),
-                        tissue=ds_dict["tissue"],
-                        platform=ds_dict.get("platform", "xenium"),
-                        confidence_tier=ds_dict.get("confidence_tier", 2),
-                        weight_multiplier=ds_dict.get("weight_multiplier", 1.0),
+                        tissue=tissue,
+                        platform=platform,
+                        confidence_tier=confidence_tier,
+                        weight_multiplier=weight_multiplier,
                     )
                     existing_paths.add(str(resolved_path))
 
