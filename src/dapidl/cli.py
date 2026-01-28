@@ -2767,12 +2767,7 @@ def run_enhanced_pipeline(
     default="DAPIDL/pipelines",
     help="ClearML project name",
 )
-@click.option(
-    "--include-universal",
-    is_flag=True,
-    help="Include universal training step tasks",
-)
-def create_base_tasks(project: str, include_universal: bool) -> None:
+def create_base_tasks(project: str) -> None:
     """Create ClearML base tasks for pipeline steps.
 
     This registers each pipeline step as a ClearML Task, which is required
