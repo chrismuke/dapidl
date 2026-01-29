@@ -1000,14 +1000,17 @@ class DAPIDLPipelineConfig(BaseModel):
         add_params("execution", self.execution)
         add_params("documentation", self.documentation)
 
-        # Serialize datasets as a simple list of ClearML dataset names or IDs.
-        # One entry per line. In the ClearML web UI, users just list dataset names.
-        # Platform and tissue are auto-detected from the dataset name convention:
-        #   xenium-breast-tumor-rep1-raw  →  platform=xenium, tissue=breast
-        #   merscope-breast-raw           →  platform=merscope, tissue=breast
+        # Serialize datasets as a simple list: "dataset_name [weight]"
+        # One entry per line. Weight is optional (default 1.0).
+        # Examples:
+        #   xenium-breast-tumor-rep1-raw 1.0
+        #   merscope-breast-raw 0.8
+        #   xenium-lung-consensus-coarse-p128
         lines = []
         for tc in self.input.tissues:
-            lines.append(tc.dataset_id or tc.local_path or tc.tissue)
+            name = tc.dataset_id or tc.local_path or tc.tissue
+            w = tc.weight_multiplier
+            lines.append(f"{name} {w}" if w != 1.0 else name)
         params["datasets/spec"] = "\n".join(lines)
 
         return params
@@ -1116,20 +1119,21 @@ class DAPIDLPipelineConfig(BaseModel):
             gpu_queue=get_param("execution", "gpu_queue", "gpu"),
         )
 
-        # Parse datasets/spec — one entry per line.
-        # Each line is a ClearML dataset name or ID (or local path).
-        # Platform and tissue are auto-detected from name convention:
-        #   "xenium-breast-tumor-rep1-raw"  →  platform=xenium, tissue=breast
-        #   "merscope-breast-raw"           →  platform=merscope, tissue=breast
-        #   "bf8f913f"                      →  short ID, platform=auto, tissue=unknown
+        # Parse datasets/spec — one entry per line: "dataset_name [weight]"
+        # Weight is a positive float (default 1.0).
         spec = params.get("datasets/spec", "").strip()
         tissues: list[TissueDatasetConfig] = []
         if spec:
             for line in spec.splitlines():
-                entry = line.strip()
-                if not entry or entry.startswith("#"):
+                line = line.strip()
+                if not line or line.startswith("#"):
                     continue
-                tissues.append(_parse_dataset_entry(entry))
+                parts = line.split()
+                entry = parts[0]
+                weight = float(parts[1]) if len(parts) > 1 else 1.0
+                tc = _parse_dataset_entry(entry)
+                tc.weight_multiplier = weight
+                tissues.append(tc)
         input_config.tissues = tissues
 
         return cls(
