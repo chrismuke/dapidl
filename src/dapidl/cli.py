@@ -2421,7 +2421,7 @@ def run_pipeline(
         segmentation=SegmentationConfig(segmenter=SegmenterType(segmenter)),
         annotation=AnnotationConfig(fine_grained=fine_grained),
         lmdb=LMDBConfig(patch_sizes=[int(patch_size)]),
-        execution=ExecutionConfig(execute_remotely=not local),
+        execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training),
         validation=ValidationConfig(enabled=validate),
     )
 

@@ -252,7 +252,10 @@ class UnifiedPipelineController:
                 cache_executed_step=cfg.execution.cache_data_steps,
             )
 
-        # Step 5: Training
+        # Step 5: Training (skip if prepare-only mode)
+        if cfg.execution.skip_training:
+            return lmdb_step_names
+
         primary_patch_size = cfg.lmdb.primary_patch_size or cfg.lmdb.patch_sizes[0]
         primary_lmdb_step = f"lmdb_p{primary_patch_size}"
 
@@ -427,6 +430,9 @@ class UnifiedPipelineController:
             logger.info(f"Added processing steps for tissue: {tissue_name}")
 
         # Universal Training (depends on all tissue LMDB steps)
+        if cfg.execution.skip_training:
+            return patch_extraction_steps
+
         p.add_step(
             name="universal_training",
             parents=patch_extraction_steps,
@@ -572,7 +578,11 @@ class UnifiedPipelineController:
                 lmdb_artifacts = lmdb_step.execute(lmdb_input_artifacts)
                 lmdb_results[patch_size] = lmdb_artifacts
 
-            # Step 5: Training
+            # Step 5: Training (skip if prepare-only mode)
+            if cfg.execution.skip_training:
+                logger.info("Step 5: Training SKIPPED (prepare-only mode)")
+                return PipelineResult(success=True)
+
             logger.info("Step 5: Training model...")
             primary_patch_size = cfg.lmdb.primary_patch_size or cfg.lmdb.patch_sizes[0]
             primary_lmdb = lmdb_results[primary_patch_size]
@@ -727,7 +737,11 @@ class UnifiedPipelineController:
                         )
                     )
 
-            # Universal Training
+            # Universal Training (skip if prepare-only mode)
+            if cfg.execution.skip_training:
+                logger.info("Universal Training SKIPPED (prepare-only mode)")
+                return PipelineResult(success=True)
+
             logger.info("=" * 60)
             logger.info("Universal Training")
             logger.info("=" * 60)

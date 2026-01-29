@@ -796,6 +796,12 @@ class ExecutionConfig(BaseModel):
         description="ClearML queue for GPU tasks",
     )
 
+    # Pipeline scope
+    skip_training: bool = Field(
+        default=False,
+        description="Stop after LMDB creation (prepare-only mode, no training)",
+    )
+
     # Caching
     cache_data_steps: bool = Field(
         default=True,
@@ -1117,6 +1123,7 @@ class DAPIDLPipelineConfig(BaseModel):
             execute_remotely=parse_bool(get_param("execution", "execute_remotely", "True")),
             default_queue=get_param("execution", "default_queue", "default"),
             gpu_queue=get_param("execution", "gpu_queue", "gpu"),
+            skip_training=parse_bool(get_param("execution", "skip_training", "False")),
         )
 
         # Parse datasets/spec — one entry per line: "dataset_name [weight]"
