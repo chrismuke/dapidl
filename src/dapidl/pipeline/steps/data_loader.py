@@ -156,6 +156,33 @@ def _verify_local_against_clearml(
         return True
 
 
+def _resolve_short_dataset_id(dataset_id: str) -> str:
+    """Resolve a possibly-truncated dataset ID to the full 32-char hex ID.
+
+    ClearML requires the full ID. If a short prefix is given (e.g. 'bf8f913f'),
+    search all datasets for a matching prefix.
+    """
+    if len(dataset_id) >= 32:
+        return dataset_id
+
+    from clearml import Dataset
+
+    logger.info(f"Short dataset ID '{dataset_id}', searching for full ID...")
+    all_datasets = Dataset.list_datasets()
+    matches = [ds for ds in all_datasets if ds["id"].startswith(dataset_id)]
+    if len(matches) == 1:
+        full_id = matches[0]["id"]
+        logger.info(f"✓ Resolved to: {matches[0]['name']} ({full_id})")
+        return full_id
+    elif len(matches) > 1:
+        names = ", ".join(f"{m['name']} ({m['id'][:12]})" for m in matches)
+        raise ValueError(
+            f"Ambiguous dataset ID prefix '{dataset_id}' matches {len(matches)} datasets: {names}"
+        )
+    else:
+        raise ValueError(f"No dataset found with ID prefix '{dataset_id}'")
+
+
 def _find_local_dataset_by_id(dataset_id: str, verify: bool = True) -> Path | None:
     """Look up ClearML dataset by ID and check if data exists locally.
 
@@ -172,7 +199,9 @@ def _find_local_dataset_by_id(dataset_id: str, verify: bool = True) -> Path | No
     try:
         from clearml import Dataset
 
-        ds = Dataset.get(dataset_id=dataset_id, only_completed=False)
+        # Resolve short ID prefixes to full 32-char IDs
+        resolved_id = _resolve_short_dataset_id(dataset_id)
+        ds = Dataset.get(dataset_id=resolved_id, only_completed=False)
         ds_name = ds.name
 
         local_registry = _build_local_registry()
@@ -441,7 +470,8 @@ class DataLoaderStep(PipelineStep):
         cfg = self.config
 
         if cfg.dataset_id:
-            dataset = Dataset.get(dataset_id=cfg.dataset_id)
+            resolved_id = _resolve_short_dataset_id(cfg.dataset_id)
+            dataset = Dataset.get(dataset_id=resolved_id)
         else:
             dataset = Dataset.get(
                 dataset_project=cfg.dataset_project,
