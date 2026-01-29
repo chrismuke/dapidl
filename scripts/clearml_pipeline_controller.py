@@ -77,8 +77,10 @@ def main() -> None:
     logger.info(f"Execute remotely: {config.execution.execute_remotely}")
 
     if n_tissues == 0:
-        logger.error("No tissues configured. Add tissue_0/* parameters.")
-        task.mark_failed(status_reason="No tissues configured")
+        logger.error("No datasets configured. Edit 'datasets/spec' parameter.")
+        logger.error("Format: one line per dataset — 'tissue dataset_id platform tier'")
+        logger.error("Example: lung bf8f913f xenium 2")
+        task.mark_failed(status_reason="No datasets configured — edit datasets/spec")
         sys.exit(1)
 
     # Build and run pipeline

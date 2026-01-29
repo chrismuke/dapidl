@@ -950,14 +950,14 @@ class DAPIDLPipelineConfig(BaseModel):
         add_params("execution", self.execution)
         add_params("documentation", self.documentation)
 
-        # Serialize tissues as flat tissue_N/* parameters (editable in ClearML UI)
-        for i, tc in enumerate(self.input.tissues):
-            params[f"tissue_{i}/tissue"] = tc.tissue
-            params[f"tissue_{i}/dataset_id"] = tc.dataset_id or ""
-            params[f"tissue_{i}/local_path"] = tc.local_path or ""
-            params[f"tissue_{i}/platform"] = tc.platform.value
-            params[f"tissue_{i}/confidence_tier"] = str(tc.confidence_tier)
-            params[f"tissue_{i}/weight_multiplier"] = str(tc.weight_multiplier)
+        # Serialize tissues as a single editable text block.
+        # One line per dataset: "tissue dataset_id platform tier"
+        # This allows adding/removing datasets freely in the ClearML web UI.
+        lines = []
+        for tc in self.input.tissues:
+            source = tc.dataset_id or tc.local_path or ""
+            lines.append(f"{tc.tissue} {source} {tc.platform.value} {tc.confidence_tier}")
+        params["datasets/spec"] = "\n".join(lines)
 
         return params
 
@@ -1065,21 +1065,32 @@ class DAPIDLPipelineConfig(BaseModel):
             gpu_queue=get_param("execution", "gpu_queue", "gpu"),
         )
 
-        # Parse tissue_N/* parameters
+        # Parse datasets/spec — one line per dataset: "tissue source platform tier"
+        spec = params.get("datasets/spec", "").strip()
         tissues: list[TissueDatasetConfig] = []
-        i = 0
-        while f"tissue_{i}/tissue" in params:
-            tissues.append(
-                TissueDatasetConfig(
-                    tissue=params[f"tissue_{i}/tissue"],
-                    dataset_id=params.get(f"tissue_{i}/dataset_id") or None,
-                    local_path=params.get(f"tissue_{i}/local_path") or None,
-                    platform=Platform(params.get(f"tissue_{i}/platform", "xenium")),
-                    confidence_tier=int(params.get(f"tissue_{i}/confidence_tier", "2")),
-                    weight_multiplier=float(params.get(f"tissue_{i}/weight_multiplier", "1.0")),
+        if spec:
+            for line in spec.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                tissue = parts[0]
+                source = parts[1]
+                platform_str = parts[2] if len(parts) > 2 else "xenium"
+                tier = int(parts[3]) if len(parts) > 3 else 2
+                # Detect if source is a path or dataset ID
+                is_path = "/" in source or source.startswith(".")
+                tissues.append(
+                    TissueDatasetConfig(
+                        tissue=tissue,
+                        dataset_id=None if is_path else source,
+                        local_path=source if is_path else None,
+                        platform=Platform(platform_str),
+                        confidence_tier=tier,
+                    )
                 )
-            )
-            i += 1
         input_config.tissues = tissues
 
         return cls(
