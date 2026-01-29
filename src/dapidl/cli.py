@@ -2489,10 +2489,10 @@ def run_pipeline(
     else:
         console.print("[cyan]Creating ClearML pipeline...[/cyan]")
         controller.create_pipeline()
-        console.print("[cyan]Starting remote execution...[/cyan]")
-        pipeline_id = controller.run(wait=False)
-        console.print(f"\n[green]✓ Pipeline started: {pipeline_id}[/green]")
+        console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
         console.print("  Monitor at: https://app.clear.ml")
+        pipeline_id = controller.run()
+        console.print(f"\n[green]✓ Pipeline completed: {pipeline_id}[/green]")
 
 
 @clearml_pipeline_group.command(name="list-components")
@@ -2755,10 +2755,10 @@ def run_enhanced_pipeline(
     else:
         console.print("[cyan]Creating ClearML enhanced pipeline...[/cyan]")
         controller.create_pipeline()
-        console.print("[cyan]Starting remote execution...[/cyan]")
-        pipeline_id = controller.run(wait=False)
-        console.print(f"\n[green]✓ Enhanced pipeline started: {pipeline_id}[/green]")
+        console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
         console.print("  Monitor at: https://app.clear.ml")
+        pipeline_id = controller.run()
+        console.print(f"\n[green]✓ Enhanced pipeline completed: {pipeline_id}[/green]")
 
 
 @clearml_pipeline_group.command(name="create-base-tasks")
@@ -2955,10 +2955,10 @@ def sota_pipeline(
     else:
         console.print("[cyan]Creating ClearML SOTA pipeline...[/cyan]")
         controller.create_pipeline()
-        console.print("[cyan]Starting remote execution...[/cyan]")
-        pipeline_id = controller.run(wait=False)
-        console.print(f"\n[green]✓ SOTA pipeline started: {pipeline_id}[/green]")
+        console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
         console.print("  Monitor at: https://app.clear.ml")
+        pipeline_id = controller.run()
+        console.print(f"\n[green]✓ SOTA pipeline completed: {pipeline_id}[/green]")
 
 
 # =============================================================================

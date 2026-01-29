@@ -455,18 +455,14 @@ class UnifiedPipelineController:
 
         return patch_extraction_steps
 
-    def run(self, wait: bool = True) -> str:
-        """Run pipeline on ClearML agents.
+    def run(self) -> str:
+        """Run pipeline: controller runs locally, steps execute on ClearML agents.
 
-        Uses start(queue=...) to enqueue the pipeline controller itself
-        to a services queue, which then dispatches steps to agent queues.
+        Uses start_locally(run_pipeline_steps_locally=False) which keeps the
+        controller process alive locally while dispatching individual steps
+        to remote ClearML agent queues (default/gpu).
 
-        Note: start_locally(run_pipeline_steps_locally=False) is NOT used
-        because its daemon thread gets killed before steps are enqueued,
-        leaving tasks stuck in "created" status.
-
-        Args:
-            wait: If True, wait for pipeline completion
+        This blocks until the pipeline completes.
 
         Returns:
             Pipeline run ID
@@ -476,15 +472,13 @@ class UnifiedPipelineController:
 
         mode = "universal" if self.is_multi_tissue else "single-dataset"
         logger.info(f"Starting unified pipeline execution ({mode} mode)...")
+        logger.info("Controller runs locally; steps dispatch to ClearML agents.")
 
-        # Enqueue pipeline controller to services queue.
-        # The controller runs on a services agent and dispatches steps
-        # to default/gpu queues as configured per step.
-        self._pipeline.start(queue="services", wait=wait)
+        # Controller runs in this process, steps are enqueued to agent queues.
+        # This blocks until all steps complete.
+        self._pipeline.start_locally(run_pipeline_steps_locally=False)
 
-        if wait:
-            logger.info("Pipeline completed")
-
+        logger.info("Pipeline completed")
         return self._pipeline.id
 
     def run_locally(self) -> PipelineResult:
