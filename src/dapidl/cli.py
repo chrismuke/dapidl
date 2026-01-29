@@ -2789,6 +2789,174 @@ def create_base_tasks(project: str) -> None:
     console.print("  You can now run the pipeline with: dapidl clearml-pipeline run")
 
 
+@clearml_pipeline_group.command(name="create-controller-task")
+@click.option(
+    "--tissue", "-t",
+    multiple=True,
+    nargs=4,
+    type=(str, str, str, int),
+    help="Add dataset: TISSUE SOURCE PLATFORM TIER. SOURCE is ClearML dataset ID or local path.",
+)
+@click.option(
+    "--sampling",
+    type=click.Choice(["equal", "proportional", "sqrt"]),
+    default="sqrt",
+    help="Tissue sampling strategy",
+)
+@click.option(
+    "--epochs",
+    type=int,
+    default=50,
+    help="Training epochs",
+)
+@click.option(
+    "--batch-size",
+    type=int,
+    default=64,
+    help="Training batch size",
+)
+@click.option(
+    "--backbone",
+    default="efficientnetv2_rw_s",
+    help="CNN backbone for training",
+)
+@click.option(
+    "--fine-grained",
+    is_flag=True,
+    help="Use fine-grained cell types (~20 classes) instead of broad categories (3 classes)",
+)
+@click.option(
+    "--project",
+    default="DAPIDL/pipelines",
+    help="ClearML project name",
+)
+@click.option(
+    "--queue",
+    default="services",
+    help="ClearML queue for the controller task",
+)
+@click.option(
+    "--enqueue/--no-enqueue",
+    default=False,
+    help="Immediately enqueue the task (default: create only)",
+)
+def create_controller_task(
+    tissue: tuple,
+    sampling: str,
+    epochs: int,
+    batch_size: int,
+    backbone: str,
+    fine_grained: bool,
+    project: str,
+    queue: str,
+    enqueue: bool,
+) -> None:
+    """Create a ClearML controller task launchable from the web UI.
+
+    This registers a pipeline controller as a ClearML task with editable
+    parameters. You can then clone and enqueue it from app.clear.ml.
+
+    Examples:
+
+        # Create controller task (single dataset)
+        dapidl clearml-pipeline create-controller-task \\
+            -t lung bf8f913f xenium 2 --epochs 10
+
+        # Create and immediately enqueue
+        dapidl clearml-pipeline create-controller-task \\
+            -t lung bf8f913f xenium 2 --epochs 10 --enqueue
+
+        # Multi-tissue controller
+        dapidl clearml-pipeline create-controller-task \\
+            -t lung bf8f913f xenium 2 \\
+            -t heart 482be038 xenium 2 \\
+            --epochs 50 --sampling sqrt
+    """
+    from clearml import Task
+    from dapidl.pipeline.unified_config import (
+        AnnotationConfig,
+        BackboneType,
+        DAPIDLPipelineConfig,
+        ExecutionConfig,
+        LMDBConfig,
+        Platform,
+        SamplingStrategy,
+        TrainingConfig,
+    )
+
+    if not tissue:
+        console.print("[red]Error: At least one -t/--tissue required[/red]")
+        console.print("[dim]Usage: -t TISSUE SOURCE PLATFORM TIER[/dim]")
+        console.print("[dim]Example: -t lung bf8f913f xenium 2[/dim]")
+        raise click.Abort()
+
+    # Build unified config
+    config = DAPIDLPipelineConfig(
+        project=project,
+        training=TrainingConfig(
+            epochs=epochs,
+            batch_size=batch_size,
+            backbone=BackboneType(backbone),
+            sampling_strategy=SamplingStrategy(sampling),
+        ),
+        annotation=AnnotationConfig(fine_grained=fine_grained),
+        lmdb=LMDBConfig(patch_sizes=[128]),
+        execution=ExecutionConfig(execute_remotely=True),
+    )
+
+    # Add tissues
+    for tissue_name, source, platform, tier in tissue:
+        source_path = Path(source)
+        if source_path.exists():
+            config.input.add_tissue(
+                tissue=tissue_name,
+                local_path=str(source_path),
+                platform=Platform(platform),
+                confidence_tier=int(tier),
+            )
+        else:
+            config.input.add_tissue(
+                tissue=tissue_name,
+                dataset_id=source,
+                platform=Platform(platform),
+                confidence_tier=int(tier),
+            )
+
+    # Create a ClearML task pointing to the controller script
+    console.print("[bold blue]Creating ClearML Controller Task[/bold blue]\n")
+
+    task = Task.create(
+        project_name=project,
+        task_name="dapidl-pipeline-controller",
+        task_type=Task.TaskTypes.controller,
+        script="scripts/clearml_pipeline_controller.py",
+        repo=".",
+        add_task_init_call=False,
+    )
+
+    # Set all pipeline parameters (editable in the UI)
+    clearml_params = config.to_clearml_parameters()
+    task.set_parameters(clearml_params)
+
+    console.print(f"  Task ID: {task.id}")
+    console.print(f"  Project: {project}")
+    console.print(f"  Tissues: {len(config.input.tissues)}")
+    for tc in config.input.tissues:
+        source = tc.local_path or tc.dataset_id
+        console.print(f"    - {tc.tissue}/{tc.platform.value}: {source} (tier {tc.confidence_tier})")
+    console.print(f"  Epochs: {epochs}")
+    console.print(f"  Parameters: {len(clearml_params)} editable fields")
+
+    if enqueue:
+        Task.enqueue(task, queue_name=queue)
+        console.print(f"\n[green]Task enqueued to '{queue}' queue[/green]")
+        console.print("  Monitor at: https://app.clear.ml")
+    else:
+        console.print(f"\n[green]Task created (not enqueued)[/green]")
+        console.print(f"  To launch: clone in app.clear.ml -> edit params -> enqueue to '{queue}'")
+        console.print(f"  Or enqueue via CLI: clearml-task enqueue --id {task.id} --queue {queue}")
+
+
 @clearml_pipeline_group.command(name="sota")
 @click.option(
     "--dataset-id",

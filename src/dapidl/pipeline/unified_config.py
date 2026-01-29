@@ -914,8 +914,10 @@ class DAPIDLPipelineConfig(BaseModel):
         params = {}
 
         # Helper to flatten nested config
-        def add_params(prefix: str, config: BaseModel):
+        def add_params(prefix: str, config: BaseModel, exclude: set[str] | None = None):
             for field_name, value in config.model_dump().items():
+                if exclude and field_name in exclude:
+                    continue
                 key = f"{prefix}/{field_name}"
 
                 if isinstance(value, list):
@@ -935,8 +937,8 @@ class DAPIDLPipelineConfig(BaseModel):
         params["pipeline/project"] = self.project
         params["pipeline/version"] = self.version
 
-        # Add sub-configs
-        add_params("input", self.input)
+        # Add sub-configs (tissues serialized separately as tissue_N/* params)
+        add_params("input", self.input, exclude={"tissues"})
         add_params("segmentation", self.segmentation)
         add_params("annotation", self.annotation)
         add_params("ontology", self.ontology)
@@ -947,6 +949,15 @@ class DAPIDLPipelineConfig(BaseModel):
         add_params("transfer", self.transfer)
         add_params("execution", self.execution)
         add_params("documentation", self.documentation)
+
+        # Serialize tissues as flat tissue_N/* parameters (editable in ClearML UI)
+        for i, tc in enumerate(self.input.tissues):
+            params[f"tissue_{i}/tissue"] = tc.tissue
+            params[f"tissue_{i}/dataset_id"] = tc.dataset_id or ""
+            params[f"tissue_{i}/local_path"] = tc.local_path or ""
+            params[f"tissue_{i}/platform"] = tc.platform.value
+            params[f"tissue_{i}/confidence_tier"] = str(tc.confidence_tier)
+            params[f"tissue_{i}/weight_multiplier"] = str(tc.weight_multiplier)
 
         return params
 
@@ -1053,6 +1064,23 @@ class DAPIDLPipelineConfig(BaseModel):
             default_queue=get_param("execution", "default_queue", "default"),
             gpu_queue=get_param("execution", "gpu_queue", "gpu"),
         )
+
+        # Parse tissue_N/* parameters
+        tissues: list[TissueDatasetConfig] = []
+        i = 0
+        while f"tissue_{i}/tissue" in params:
+            tissues.append(
+                TissueDatasetConfig(
+                    tissue=params[f"tissue_{i}/tissue"],
+                    dataset_id=params.get(f"tissue_{i}/dataset_id") or None,
+                    local_path=params.get(f"tissue_{i}/local_path") or None,
+                    platform=Platform(params.get(f"tissue_{i}/platform", "xenium")),
+                    confidence_tier=int(params.get(f"tissue_{i}/confidence_tier", "2")),
+                    weight_multiplier=float(params.get(f"tissue_{i}/weight_multiplier", "1.0")),
+                )
+            )
+            i += 1
+        input_config.tissues = tissues
 
         return cls(
             name=params.get("pipeline/name", "dapidl-pipeline"),
