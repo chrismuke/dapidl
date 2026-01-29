@@ -233,6 +233,41 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
         )
         step = CrossValidationStep(config)
 
+    elif step_name == "universal_training":
+        from dapidl.pipeline.steps.universal_training import (
+            UniversalDAPITrainingStep,
+            UniversalTrainingConfig,
+        )
+
+        ut_config = UniversalTrainingConfig(
+            backbone=step_config.get("backbone", "efficientnetv2_rw_s"),
+            epochs=int(step_config.get("epochs", 100)),
+            batch_size=int(step_config.get("batch_size", 64)),
+            learning_rate=float(step_config.get("learning_rate", 1e-4)),
+            sampling_strategy=step_config.get("sampling_strategy", "sqrt"),
+            tier1_weight=float(step_config.get("tier1_weight", 1.0)),
+            tier2_weight=float(step_config.get("tier2_weight", 0.8)),
+            tier3_weight=float(step_config.get("tier3_weight", 0.5)),
+            coarse_only_epochs=int(step_config.get("coarse_only_epochs", 20)),
+            coarse_medium_epochs=int(step_config.get("coarse_medium_epochs", 50)),
+            patience=int(step_config.get("patience", 15)),
+            standardize_labels=_parse_bool(step_config.get("standardize_labels", True)),
+        )
+
+        # Collect LMDB paths from step_config (passed as lmdb_path_0, lmdb_path_1, ...)
+        lmdb_idx = 0
+        while f"lmdb_path_{lmdb_idx}" in step_config:
+            lmdb_path = step_config[f"lmdb_path_{lmdb_idx}"]
+            ut_config.add_dataset(
+                path=lmdb_path,
+                tissue=f"tissue_{lmdb_idx}",
+                platform="xenium",
+                confidence_tier=2,
+            )
+            lmdb_idx += 1
+
+        step = UniversalDAPITrainingStep(ut_config)
+
     else:
         logger.error(f"Unknown step: {step_name}")
         sys.exit(1)
@@ -375,6 +410,8 @@ def main():
         "data_loader", "segmentation", "annotation", "patch_extraction", "training",
         # SOTA pipeline steps
         "ensemble_annotation", "lmdb_creation", "cross_validation",
+        # Universal multi-tissue training
+        "universal_training",
     ]
 
     # Log all CLEARML environment variables for debugging
