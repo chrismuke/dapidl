@@ -835,6 +835,56 @@ class DocumentationConfig(BaseModel):
 
 
 # ============================================================================
+# Dataset entry parsing
+# ============================================================================
+
+
+def _parse_dataset_entry(entry: str) -> TissueDatasetConfig:
+    """Parse a dataset spec entry into a TissueDatasetConfig.
+
+    Accepts ClearML dataset names, short IDs, or local paths.
+    Auto-detects platform and tissue from naming convention:
+        "xenium-breast-tumor-rep1-raw"  →  platform=xenium, tissue=breast
+        "merscope-breast-raw"           →  platform=merscope, tissue=breast
+        "bf8f913f"                      →  short ID, defaults apply
+        "/mnt/work/datasets/raw/..."    →  local path
+    """
+    entry = entry.strip()
+    is_path = "/" in entry or entry.startswith(".")
+
+    # Auto-detect platform from name
+    lower = entry.lower()
+    if lower.startswith("merscope"):
+        platform = Platform.MERSCOPE
+    elif lower.startswith("xenium"):
+        platform = Platform.XENIUM
+    else:
+        platform = Platform.AUTO
+
+    # Auto-detect tissue from name (second segment in convention)
+    tissue = "unknown"
+    if "-" in entry and not is_path:
+        parts = entry.split("-")
+        if len(parts) >= 2:
+            # Skip platform prefix: xenium-BREAST-..., merscope-BREAST-...
+            candidate = parts[1] if parts[0].lower() in ("xenium", "merscope") else parts[0]
+            tissue = candidate.lower()
+
+    # Determine if this is a name or an ID.
+    # Dataset names contain hyphens; short hex IDs don't.
+    is_name = "-" in entry and not is_path
+    is_hex_id = not is_path and all(c in "0123456789abcdef" for c in entry.lower())
+
+    return TissueDatasetConfig(
+        tissue=tissue,
+        dataset_id=entry if (is_hex_id or is_name) else None,
+        local_path=entry if is_path else None,
+        platform=platform,
+        confidence_tier=2,
+    )
+
+
+# ============================================================================
 # Main Unified Configuration
 # ============================================================================
 
@@ -950,13 +1000,14 @@ class DAPIDLPipelineConfig(BaseModel):
         add_params("execution", self.execution)
         add_params("documentation", self.documentation)
 
-        # Serialize tissues as a single editable text block.
-        # One line per dataset: "tissue dataset_id platform tier"
-        # This allows adding/removing datasets freely in the ClearML web UI.
+        # Serialize datasets as a simple list of ClearML dataset names or IDs.
+        # One entry per line. In the ClearML web UI, users just list dataset names.
+        # Platform and tissue are auto-detected from the dataset name convention:
+        #   xenium-breast-tumor-rep1-raw  →  platform=xenium, tissue=breast
+        #   merscope-breast-raw           →  platform=merscope, tissue=breast
         lines = []
         for tc in self.input.tissues:
-            source = tc.dataset_id or tc.local_path or ""
-            lines.append(f"{tc.tissue} {source} {tc.platform.value} {tc.confidence_tier}")
+            lines.append(tc.dataset_id or tc.local_path or tc.tissue)
         params["datasets/spec"] = "\n".join(lines)
 
         return params
@@ -1065,32 +1116,20 @@ class DAPIDLPipelineConfig(BaseModel):
             gpu_queue=get_param("execution", "gpu_queue", "gpu"),
         )
 
-        # Parse datasets/spec — one line per dataset: "tissue source platform tier"
+        # Parse datasets/spec — one entry per line.
+        # Each line is a ClearML dataset name or ID (or local path).
+        # Platform and tissue are auto-detected from name convention:
+        #   "xenium-breast-tumor-rep1-raw"  →  platform=xenium, tissue=breast
+        #   "merscope-breast-raw"           →  platform=merscope, tissue=breast
+        #   "bf8f913f"                      →  short ID, platform=auto, tissue=unknown
         spec = params.get("datasets/spec", "").strip()
         tissues: list[TissueDatasetConfig] = []
         if spec:
             for line in spec.splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
+                entry = line.strip()
+                if not entry or entry.startswith("#"):
                     continue
-                parts = line.split()
-                if len(parts) < 2:
-                    continue
-                tissue = parts[0]
-                source = parts[1]
-                platform_str = parts[2] if len(parts) > 2 else "xenium"
-                tier = int(parts[3]) if len(parts) > 3 else 2
-                # Detect if source is a path or dataset ID
-                is_path = "/" in source or source.startswith(".")
-                tissues.append(
-                    TissueDatasetConfig(
-                        tissue=tissue,
-                        dataset_id=None if is_path else source,
-                        local_path=source if is_path else None,
-                        platform=Platform(platform_str),
-                        confidence_tier=tier,
-                    )
-                )
+                tissues.append(_parse_dataset_entry(entry))
         input_config.tissues = tissues
 
         return cls(

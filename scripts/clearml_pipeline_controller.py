@@ -67,9 +67,37 @@ def main() -> None:
 
     config = DAPIDLPipelineConfig.from_clearml_parameters(flat_params)
 
+    # Resolve dataset names to IDs where needed
+    from clearml import Dataset
+
+    for tc in config.input.tissues:
+        if tc.dataset_id and "-" in tc.dataset_id:
+            # Looks like a dataset name — resolve to ID
+            name = tc.dataset_id
+            logger.info(f"Resolving dataset name '{name}'...")
+            matches = Dataset.list_datasets(
+                dataset_project="DAPIDL/datasets",
+                partial_name=name,
+                only_completed=False,
+            )
+            exact = [d for d in matches if d.get("name") == name]
+            if exact:
+                tc.dataset_id = exact[0]["id"]
+                logger.info(f"  Resolved '{name}' → {tc.dataset_id[:8]}")
+            elif matches:
+                tc.dataset_id = matches[0]["id"]
+                logger.warning(
+                    f"  No exact match for '{name}', using closest: "
+                    f"{matches[0].get('name')} ({tc.dataset_id[:8]})"
+                )
+            else:
+                logger.error(f"  Dataset '{name}' not found in DAPIDL/datasets")
+                task.mark_failed(status_reason=f"Dataset not found: {name}")
+                sys.exit(1)
+
     # Log resolved config
     n_tissues = len(config.input.tissues)
-    logger.info(f"Tissues: {n_tissues}")
+    logger.info(f"Datasets: {n_tissues}")
     for tc in config.input.tissues:
         source = tc.local_path or tc.dataset_id
         logger.info(f"  {tc.tissue}/{tc.platform.value}: {source} (tier {tc.confidence_tier})")
@@ -78,8 +106,9 @@ def main() -> None:
 
     if n_tissues == 0:
         logger.error("No datasets configured. Edit 'datasets/spec' parameter.")
-        logger.error("Format: one line per dataset — 'tissue dataset_id platform tier'")
-        logger.error("Example: lung bf8f913f xenium 2")
+        logger.error("One ClearML dataset name per line, e.g.:")
+        logger.error("  xenium-breast-tumor-rep1-raw")
+        logger.error("  merscope-breast-raw")
         task.mark_failed(status_reason="No datasets configured — edit datasets/spec")
         sys.exit(1)
 
