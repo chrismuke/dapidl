@@ -1116,7 +1116,7 @@ class UniversalDAPITrainingStep(PipelineStep):
 
         task_name = task_name or f"step-{self.name}"
 
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner_universal_training.py"
 
         self._task = Task.create(
             project_name=project,
