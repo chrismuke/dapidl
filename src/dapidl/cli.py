@@ -2346,6 +2346,11 @@ def clearml_pipeline_group() -> None:
     is_flag=True,
     help="Run cross-modal validation after training",
 )
+@click.option(
+    "--orchestrator/--legacy",
+    default=False,
+    help="Use task-based orchestrator (supports per-dataset recipes) or legacy PipelineController",
+)
 def run_pipeline(
     tissue: tuple,
     sampling: str,
@@ -2360,6 +2365,7 @@ def run_pipeline(
     skip_training: bool,
     fine_grained: bool,
     validate: bool,
+    orchestrator: bool,
 ) -> None:
     """Run the unified DAPIDL pipeline (supports 1-N datasets).
 
@@ -2465,14 +2471,17 @@ def run_pipeline(
     console.print(f"  Execution: {'local' if local else 'ClearML agents'}")
     console.print()
 
-    controller = UnifiedPipelineController(config)
+    if orchestrator:
+        from dapidl.pipeline.orchestrator import PipelineOrchestrator
 
-    if local:
-        console.print("[cyan]Running pipeline locally...[/cyan]\n")
-        result = controller.run_locally()
+        console.print("[dim]Using task-based orchestrator[/dim]")
+        orch = PipelineOrchestrator(config)
+        result = orch.run()
 
         if result.success:
             console.print("\n[green]✓ Pipeline completed![/green]")
+            if result.lmdb_paths:
+                console.print(f"  LMDB datasets: {len(result.lmdb_paths)}")
             if result.training_metrics:
                 test_metrics = result.training_metrics
                 if "f1_fine" in test_metrics:
@@ -2487,12 +2496,34 @@ def run_pipeline(
         else:
             console.print(f"\n[red]✗ Pipeline failed: {result.error}[/red]")
     else:
-        console.print("[cyan]Creating ClearML pipeline...[/cyan]")
-        controller.create_pipeline()
-        console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
-        console.print("  Monitor at: https://app.clear.ml")
-        pipeline_id = controller.run()
-        console.print(f"\n[green]✓ Pipeline completed: {pipeline_id}[/green]")
+        controller = UnifiedPipelineController(config)
+
+        if local:
+            console.print("[cyan]Running pipeline locally...[/cyan]\n")
+            result = controller.run_locally()
+
+            if result.success:
+                console.print("\n[green]✓ Pipeline completed![/green]")
+                if result.training_metrics:
+                    test_metrics = result.training_metrics
+                    if "f1_fine" in test_metrics:
+                        console.print(f"  Test F1 (fine): {test_metrics.get('f1_fine', 'N/A'):.4f}")
+                        console.print(f"  Test F1 (coarse): {test_metrics.get('f1_coarse', 'N/A'):.4f}")
+                    elif "f1" in test_metrics:
+                        console.print(f"  Test F1: {test_metrics.get('f1', 'N/A'):.4f}")
+                if result.model_path:
+                    console.print(f"  Model: {result.model_path}")
+                if skip_training:
+                    console.print("[yellow]  Training was skipped (prepare-only mode)[/yellow]")
+            else:
+                console.print(f"\n[red]✗ Pipeline failed: {result.error}[/red]")
+        else:
+            console.print("[cyan]Creating ClearML pipeline...[/cyan]")
+            controller.create_pipeline()
+            console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
+            console.print("  Monitor at: https://app.clear.ml")
+            pipeline_id = controller.run()
+            console.print(f"\n[green]✓ Pipeline completed: {pipeline_id}[/green]")
 
 
 @clearml_pipeline_group.command(name="list-components")

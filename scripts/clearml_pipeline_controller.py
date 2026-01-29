@@ -112,17 +112,38 @@ def main() -> None:
         task.mark_failed(status_reason="No datasets configured — edit datasets/spec")
         sys.exit(1)
 
-    # Build and run pipeline
-    from dapidl.pipeline.unified_controller import UnifiedPipelineController
+    # Choose orchestration mode
+    use_orchestrator = flat_params.get("execution/use_orchestrator", "").lower() in ("true", "1", "yes")
 
-    controller = UnifiedPipelineController(config)
-    controller.create_pipeline()
+    if use_orchestrator:
+        # Task-based orchestrator: supports per-dataset recipes
+        from dapidl.pipeline.orchestrator import PipelineOrchestrator
 
-    logger.info("Starting pipeline (controller on agent, steps on queues)...")
-    pipeline_id = controller.run()
+        logger.info("Using task-based orchestrator")
+        orchestrator = PipelineOrchestrator(config)
+        result = orchestrator.run()
 
-    logger.info(f"Pipeline completed: {pipeline_id}")
-    task.get_logger().report_text(f"Pipeline completed: {pipeline_id}")
+        if result.success:
+            logger.info(f"Pipeline completed. LMDBs: {len(result.lmdb_paths)}")
+            if result.model_path:
+                logger.info(f"Model: {result.model_path}")
+            task.get_logger().report_text(f"Pipeline completed. LMDBs: {len(result.lmdb_paths)}")
+        else:
+            logger.error(f"Pipeline failed: {result.error}")
+            task.mark_failed(status_reason=result.error or "Pipeline failed")
+            sys.exit(1)
+    else:
+        # Legacy mode: ClearML PipelineController DAG
+        from dapidl.pipeline.unified_controller import UnifiedPipelineController
+
+        controller = UnifiedPipelineController(config)
+        controller.create_pipeline()
+
+        logger.info("Starting pipeline (controller on agent, steps on queues)...")
+        pipeline_id = controller.run()
+
+        logger.info(f"Pipeline completed: {pipeline_id}")
+        task.get_logger().report_text(f"Pipeline completed: {pipeline_id}")
 
 
 if __name__ == "__main__":

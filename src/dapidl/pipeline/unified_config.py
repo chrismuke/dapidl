@@ -229,6 +229,14 @@ class TissueDatasetConfig(BaseModel):
         le=10.0,
         description="Weight multiplier for sampling",
     )
+    recipe: str = Field(
+        default="default",
+        description="Processing recipe: default, gt, no_cl, annotate_only",
+    )
+    is_lmdb: bool = Field(
+        default=False,
+        description="True if dataset_id points to an existing LMDB dataset (skip processing)",
+    )
 
 
 class SegmentationConfig(BaseModel):
@@ -848,14 +856,34 @@ class DocumentationConfig(BaseModel):
 def _parse_dataset_entry(entry: str) -> TissueDatasetConfig:
     """Parse a dataset spec entry into a TissueDatasetConfig.
 
-    Accepts ClearML dataset names, short IDs, or local paths.
-    Auto-detects platform and tissue from naming convention:
-        "xenium-breast-tumor-rep1-raw"  →  platform=xenium, tissue=breast
-        "merscope-breast-raw"           →  platform=merscope, tissue=breast
-        "bf8f913f"                      →  short ID, defaults apply
-        "/mnt/work/datasets/raw/..."    →  local path
+    Accepts ClearML dataset names, short IDs, local paths, and extended syntax:
+        "xenium-breast-tumor-rep1-raw"            → platform=xenium, tissue=breast
+        "merscope-breast-raw"                     → platform=merscope, tissue=breast
+        "bf8f913f"                                → short ID, defaults apply
+        "/mnt/work/datasets/raw/..."              → local path
+        "lmdb:xenium-breast-coarse-p128"          → pre-built LMDB dataset
+        "xenium-breast-raw recipe=gt"             → custom recipe
+        "xenium-breast-raw recipe=gt 0.5"         → recipe + weight
     """
     entry = entry.strip()
+
+    # Handle lmdb: prefix — pre-built LMDB dataset, skip straight to training
+    is_lmdb = False
+    if entry.startswith("lmdb:"):
+        is_lmdb = True
+        entry = entry[5:]  # strip prefix
+
+    # Extract recipe=VALUE tokens
+    recipe = "default"
+    parts = entry.split()
+    clean_parts = []
+    for part in parts:
+        if part.startswith("recipe="):
+            recipe = part.split("=", 1)[1]
+        else:
+            clean_parts.append(part)
+    entry = clean_parts[0] if clean_parts else entry
+
     is_path = "/" in entry or entry.startswith(".")
 
     # Auto-detect platform from name
@@ -870,10 +898,10 @@ def _parse_dataset_entry(entry: str) -> TissueDatasetConfig:
     # Auto-detect tissue from name (second segment in convention)
     tissue = "unknown"
     if "-" in entry and not is_path:
-        parts = entry.split("-")
-        if len(parts) >= 2:
+        name_parts = entry.split("-")
+        if len(name_parts) >= 2:
             # Skip platform prefix: xenium-BREAST-..., merscope-BREAST-...
-            candidate = parts[1] if parts[0].lower() in ("xenium", "merscope") else parts[0]
+            candidate = name_parts[1] if name_parts[0].lower() in ("xenium", "merscope") else name_parts[0]
             tissue = candidate.lower()
 
     # Determine if this is a name or an ID.
@@ -881,12 +909,23 @@ def _parse_dataset_entry(entry: str) -> TissueDatasetConfig:
     is_name = "-" in entry and not is_path
     is_hex_id = not is_path and all(c in "0123456789abcdef" for c in entry.lower())
 
+    # Weight may be the second clean_parts token (after recipe extraction)
+    weight = 1.0
+    if len(clean_parts) > 1:
+        try:
+            weight = float(clean_parts[1])
+        except ValueError:
+            pass
+
     return TissueDatasetConfig(
         tissue=tissue,
         dataset_id=entry if (is_hex_id or is_name) else None,
         local_path=entry if is_path else None,
         platform=platform,
         confidence_tier=2,
+        weight_multiplier=weight,
+        recipe=recipe,
+        is_lmdb=is_lmdb,
     )
 
 
@@ -1006,17 +1045,23 @@ class DAPIDLPipelineConfig(BaseModel):
         add_params("execution", self.execution)
         add_params("documentation", self.documentation)
 
-        # Serialize datasets as a simple list: "dataset_name [weight]"
-        # One entry per line. Weight is optional (default 1.0).
+        # Serialize datasets as a simple list: "[lmdb:]name [recipe=NAME] [weight]"
+        # One entry per line. Weight and recipe are optional.
         # Examples:
-        #   xenium-breast-tumor-rep1-raw 1.0
+        #   xenium-breast-tumor-rep1-raw
         #   merscope-breast-raw 0.8
-        #   xenium-lung-consensus-coarse-p128
+        #   xenium-breast-raw recipe=gt
+        #   lmdb:xenium-breast-coarse-p128
         lines = []
         for tc in self.input.tissues:
             name = tc.dataset_id or tc.local_path or tc.tissue
-            w = tc.weight_multiplier
-            lines.append(f"{name} {w}" if w != 1.0 else name)
+            prefix = "lmdb:" if tc.is_lmdb else ""
+            parts = [f"{prefix}{name}"]
+            if tc.recipe != "default":
+                parts.append(f"recipe={tc.recipe}")
+            if tc.weight_multiplier != 1.0:
+                parts.append(str(tc.weight_multiplier))
+            lines.append(" ".join(parts))
         params["datasets/spec"] = "\n".join(lines)
 
         return params
@@ -1126,8 +1171,9 @@ class DAPIDLPipelineConfig(BaseModel):
             skip_training=parse_bool(get_param("execution", "skip_training", "False")),
         )
 
-        # Parse datasets/spec — one entry per line: "dataset_name [weight]"
-        # Weight is a positive float (default 1.0).
+        # Parse datasets/spec — one entry per line.
+        # Extended syntax: "dataset_name [recipe=NAME] [weight]"
+        # Also: "lmdb:dataset-name" for pre-built LMDB datasets.
         spec = params.get("datasets/spec", "").strip()
         tissues: list[TissueDatasetConfig] = []
         if spec:
@@ -1135,11 +1181,9 @@ class DAPIDLPipelineConfig(BaseModel):
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                parts = line.split()
-                entry = parts[0]
-                weight = float(parts[1]) if len(parts) > 1 else 1.0
-                tc = _parse_dataset_entry(entry)
-                tc.weight_multiplier = weight
+                # _parse_dataset_entry handles the full line including
+                # lmdb: prefix, recipe= tokens, and trailing weight
+                tc = _parse_dataset_entry(line)
                 tissues.append(tc)
         input_config.tissues = tissues
 
