@@ -34,7 +34,7 @@ from dapidl.pipeline.unified_config import (
 # Named step sequences. Each recipe is an ordered list of step names.
 RECIPES: dict[str, list[str]] = {
     "default": ["data_loader", "ensemble_annotation", "cl_standardization", "lmdb_creation"],
-    "gt": ["data_loader", "lmdb_creation"],
+    "gt": ["data_loader", "gt_annotation", "lmdb_creation"],
     "no_cl": ["data_loader", "ensemble_annotation", "lmdb_creation"],
     "annotate_only": ["data_loader", "ensemble_annotation", "cl_standardization"],
 }
@@ -202,6 +202,20 @@ class PipelineOrchestrator:
                 s3_bucket=cfg.output.s3_bucket,
             )
             step = EnsembleAnnotationStep(step_config)
+            return step.execute(input_artifacts)
+
+        elif step_name == "gt_annotation":
+            from dapidl.pipeline.steps.annotation import AnnotationStep, AnnotationStepConfig
+
+            step_config = AnnotationStepConfig(
+                annotator="ground_truth",
+                ground_truth_file=cfg.annotation.ground_truth_file,
+                ground_truth_sheet=cfg.annotation.ground_truth_sheet,
+                cell_id_column=cfg.annotation.ground_truth_cell_id_col,
+                celltype_column=cfg.annotation.ground_truth_label_col,
+                fine_grained=cfg.annotation.fine_grained,
+            )
+            step = AnnotationStep(step_config)
             return step.execute(input_artifacts)
 
         elif step_name == "cl_standardization":
@@ -386,6 +400,16 @@ class PipelineOrchestrator:
             params["step_config/dataset_id"] = tissue_cfg.dataset_id or ""
             params["step_config/platform"] = tissue_cfg.platform.value
             params["step_config/local_path"] = tissue_cfg.local_path or ""
+
+        elif step_name == "gt_annotation":
+            params["step_config/annotator"] = "ground_truth"
+            params["step_config/ground_truth_file"] = cfg.annotation.ground_truth_file or ""
+            params["step_config/ground_truth_sheet"] = cfg.annotation.ground_truth_sheet or ""
+            params["step_config/fine_grained"] = str(cfg.annotation.fine_grained)
+            if "data_path" in prev_artifacts:
+                params["step_config/data_path"] = prev_artifacts["data_path"]
+            if "cells_parquet" in prev_artifacts:
+                params["step_config/cells_parquet"] = prev_artifacts["cells_parquet"]
 
         elif step_name == "ensemble_annotation":
             params["step_config/celltypist_models"] = ",".join(cfg.annotation.celltypist_models)
