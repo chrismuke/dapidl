@@ -10,7 +10,7 @@ this orchestrator composes pipelines from independent ClearML tasks:
 
 Recipes define step sequences per dataset:
     "default"       → data_loader → ensemble_annotation → cl_standardization → lmdb_creation
-    "gt"            → data_loader → lmdb_creation  (ground truth, skip annotation)
+    "gt"            → data_loader → gt_annotation → lmdb_creation  (ground truth)
     "no_cl"         → data_loader → ensemble_annotation → lmdb_creation
     "annotate_only" → data_loader → ensemble_annotation → cl_standardization
 
@@ -529,19 +529,36 @@ class PipelineOrchestrator:
     def _resolve_lmdb(self, tissue_cfg: TissueDatasetConfig) -> str:
         """Resolve an LMDB dataset reference to a usable path.
 
-        For local execution, tries to find the dataset locally.
-        For remote execution, returns the ClearML dataset reference
-        for the agent to resolve.
+        Search order:
+        1. Explicit local_path on the config
+        2. Local derived dataset directories (DAPIDL_DERIVED_DATA or defaults)
+        3. Absolute path (if name looks like one)
+        4. ClearML Dataset resolution
         """
+        import os
+        from pathlib import Path
+
         name = tissue_cfg.dataset_id or tissue_cfg.local_path
         if not name:
             raise ValueError("LMDB dataset has no dataset_id or local_path")
 
-        # If it's a local path, use directly
+        # 1. Explicit local path
         if tissue_cfg.local_path:
             return tissue_cfg.local_path
 
-        # Try ClearML dataset resolution
+        # 2. Search local derived directories
+        derived_dirs = self._get_derived_data_dirs()
+        for d in derived_dirs:
+            candidate = d / name
+            if candidate.is_dir() and (candidate / "patches.lmdb").exists():
+                logger.info(f"Resolved LMDB '{name}' → {candidate} (local derived)")
+                return str(candidate)
+
+        # 3. If it looks like an absolute path, use directly
+        if os.path.isabs(name) and Path(name).is_dir():
+            return name
+
+        # 4. Try ClearML dataset resolution
         try:
             from clearml import Dataset
 
@@ -556,3 +573,23 @@ class PipelineOrchestrator:
         except Exception:
             logger.warning(f"Could not resolve LMDB '{name}' via ClearML, using as path")
             return name
+
+    @staticmethod
+    def _get_derived_data_dirs() -> list[Any]:
+        """Get directories to search for pre-built LMDB datasets.
+
+        Uses DAPIDL_DERIVED_DATA env var (colon-separated) or defaults to
+        /mnt/work/datasets/derived and ~/datasets/derived.
+        """
+        import os
+        from pathlib import Path
+
+        env = os.environ.get("DAPIDL_DERIVED_DATA")
+        if env:
+            return [Path(p) for p in env.split(":") if p]
+
+        defaults = [
+            Path("/mnt/work/datasets/derived"),
+            Path.home() / "datasets" / "derived",
+        ]
+        return [d for d in defaults if d.is_dir()]
