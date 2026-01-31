@@ -382,10 +382,10 @@ class CLStandardizationStep(PipelineStep):
 
         task_name = task_name or f"step-{self.name}"
 
-        # Get runner script path
+        # Get per-step runner script path
         runner_script = (
             Path(__file__).parent.parent.parent.parent.parent
-            / "scripts" / "clearml_step_runner.py"
+            / "scripts" / f"clearml_step_runner_{self.name}.py"
         )
 
         self._task = Task.create(

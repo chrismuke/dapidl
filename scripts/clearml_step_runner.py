@@ -268,6 +268,37 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
 
         step = UniversalDAPITrainingStep(ut_config)
 
+    elif step_name == "cl_standardization":
+        from dapidl.pipeline.steps.cl_standardization import (
+            CLStandardizationConfig,
+            CLStandardizationStep,
+        )
+
+        config = CLStandardizationConfig(
+            target_level=step_config.get("target_level", "coarse"),
+            min_confidence=float(step_config.get("min_confidence", 0.5)),
+            fuzzy_threshold=float(step_config.get("fuzzy_threshold", 0.85)),
+            include_unmapped=_parse_bool(step_config.get("include_unmapped", False)),
+            input_label_col=step_config.get("input_label_col", "predicted_type"),
+        )
+        step = CLStandardizationStep(config)
+
+    elif step_name == "gt_annotation":
+        from dapidl.pipeline.steps.annotation import (
+            AnnotationStep,
+            AnnotationStepConfig,
+        )
+
+        config = AnnotationStepConfig(
+            annotator="ground_truth",
+            ground_truth_file=step_config.get("ground_truth_file"),
+            ground_truth_sheet=step_config.get("ground_truth_sheet"),
+            cell_id_column=step_config.get("cell_id_column", "Barcode"),
+            celltype_column=step_config.get("celltype_column", "Cluster"),
+            fine_grained=_parse_bool(step_config.get("fine_grained", False)),
+        )
+        step = AnnotationStep(config)
+
     else:
         logger.error(f"Unknown step: {step_name}")
         sys.exit(1)

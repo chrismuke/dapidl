@@ -786,7 +786,13 @@ class UnifiedPipelineController:
             return PipelineResult(success=False, error=str(e))
 
     def create_base_tasks(self):
-        """Create base tasks for each step (required before running pipeline remotely)."""
+        """Create base tasks for each step (required before running pipeline remotely).
+
+        Creates base tasks for all pipeline steps including:
+        - Standard steps: data_loader, segmentation, annotation, ensemble_annotation,
+          patch_extraction, lmdb_creation, training, hierarchical_training
+        - Orchestrator steps: cl_standardization, gt_annotation, universal_training
+        """
         from dapidl.pipeline.steps import (
             AnnotationStep,
             DataLoaderStep,
@@ -794,40 +800,53 @@ class UnifiedPipelineController:
             SegmentationStep,
             TrainingStep,
         )
+        from dapidl.pipeline.steps.cl_standardization import CLStandardizationStep
         from dapidl.pipeline.steps.ensemble_annotation import EnsembleAnnotationStep
         from dapidl.pipeline.steps.hierarchical_training import HierarchicalTrainingStep
         from dapidl.pipeline.steps.lmdb_creation import LMDBCreationStep
 
         cfg = self.config
-        steps = [
-            DataLoaderStep(),
-            SegmentationStep(),
-            AnnotationStep(),
-            EnsembleAnnotationStep(),
-            PatchExtractionStep(),
-            LMDBCreationStep(),
-            TrainingStep(),
-            HierarchicalTrainingStep(),
+
+        # Steps with standard name mapping (task_name = step-{step.name})
+        steps: list[tuple[Any, str]] = [
+            (DataLoaderStep(), "step-data_loader"),
+            (SegmentationStep(), "step-segmentation"),
+            (AnnotationStep(), "step-annotation"),
+            (EnsembleAnnotationStep(), "step-ensemble_annotation"),
+            (PatchExtractionStep(), "step-patch_extraction"),
+            (LMDBCreationStep(), "step-lmdb_creation"),
+            (CLStandardizationStep(), "step-cl_standardization"),
+            (TrainingStep(), "step-training"),
+            (HierarchicalTrainingStep(), "step-hierarchical_training"),
         ]
+
+        # gt_annotation reuses AnnotationStep with ground_truth annotator,
+        # but needs a distinct base task name and runner script for the orchestrator.
+        # Override .name so create_clearml_task uses clearml_step_runner_gt_annotation.py
+        from dapidl.pipeline.steps.annotation import AnnotationStepConfig
+
+        gt_step = AnnotationStep(AnnotationStepConfig(annotator="ground_truth"))
+        gt_step.name = "gt_annotation"
+        steps.append((gt_step, "step-gt_annotation"))
 
         # Try to add universal training step if available
         try:
             from dapidl.pipeline.steps.universal_training import UniversalDAPITrainingStep
 
-            steps.append(UniversalDAPITrainingStep())
+            steps.append((UniversalDAPITrainingStep(), "step-universal_training"))
         except ImportError:
             pass
 
-        for step in steps:
+        for step, task_name in steps:
             try:
                 task = step.create_clearml_task(
                     project=cfg.project,
-                    task_name=f"step-{step.name}",
+                    task_name=task_name,
                 )
                 task.close()
-                logger.info(f"Created base task: step-{step.name}")
+                logger.info(f"Created base task: {task_name}")
             except Exception as e:
-                logger.warning(f"Failed to create task for {step.name}: {e}")
+                logger.warning(f"Failed to create task for {task_name}: {e}")
 
         logger.info("All base tasks created")
 
