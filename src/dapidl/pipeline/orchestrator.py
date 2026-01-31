@@ -460,8 +460,9 @@ class PipelineOrchestrator:
             name=f"{step_name}-{self._run_id}",
         )
 
-        # Apply parameter overrides
-        cloned.set_parameters(params, __update=True)
+        # Apply parameter overrides (set each individually to merge with existing)
+        for key, value in params.items():
+            cloned.set_parameter(key, value)
 
         # Enqueue and wait
         Task.enqueue(cloned, queue_name=queue)
