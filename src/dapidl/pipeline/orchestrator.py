@@ -431,6 +431,8 @@ class PipelineOrchestrator:
             params["step_config/fuzzy_threshold"] = str(cfg.ontology.fuzzy_threshold)
             if "annotations_parquet" in prev_artifacts:
                 params["step_config/annotations_parquet"] = prev_artifacts["annotations_parquet"]
+            if "data_path" in prev_artifacts:
+                params["step_config/data_path"] = prev_artifacts["data_path"]
 
         elif step_name == "lmdb_creation":
             primary_patch_size = cfg.lmdb.primary_patch_size or cfg.lmdb.patch_sizes[0]
@@ -442,6 +444,11 @@ class PipelineOrchestrator:
             params["step_config/s3_bucket"] = cfg.output.s3_bucket
             if "data_path" in prev_artifacts:
                 params["step_config/data_path"] = prev_artifacts["data_path"]
+            # Forward annotation artifacts — cl_annotations_parquet preferred over annotations_parquet
+            if "cl_annotations_parquet" in prev_artifacts:
+                params["step_config/cl_annotations_parquet"] = prev_artifacts["cl_annotations_parquet"]
+            if "annotations_parquet" in prev_artifacts:
+                params["step_config/annotations_parquet"] = prev_artifacts["annotations_parquet"]
 
         return params
 

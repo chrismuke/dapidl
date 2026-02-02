@@ -370,7 +370,7 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
         # Segmentation outputs
         "segmentation_result", "centroids_parquet", "boundaries_parquet", "masks_path",
         # Annotation outputs
-        "annotations", "annotations_parquet",
+        "annotations", "annotations_parquet", "cl_annotations_parquet",
         # LMDB outputs
         "dataset_path", "lmdb_path", "lmdb_dataset_id",
         # Training outputs
