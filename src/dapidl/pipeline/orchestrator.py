@@ -8,11 +8,13 @@ this orchestrator composes pipelines from independent ClearML tasks:
 - Steps are dispatched via Task.clone() + Task.enqueue() for remote execution
 - For local execution, steps run in-process (same as unified_controller)
 
-Recipes define step sequences per dataset:
+Built-in recipes define step sequences per dataset:
     "default"       → data_loader → ensemble_annotation → cl_standardization → lmdb_creation
     "gt"            → data_loader → gt_annotation → lmdb_creation  (ground truth)
     "no_cl"         → data_loader → ensemble_annotation → lmdb_creation
     "annotate_only" → data_loader → ensemble_annotation → cl_standardization
+
+Custom recipes can be added via configs/recipes.yaml (or DAPIDL_RECIPES_FILE env var).
 
 The "lmdb:" prefix in datasets/spec skips all processing and feeds an
 existing LMDB dataset directly to training.
@@ -20,8 +22,10 @@ existing LMDB dataset directly to training.
 
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -31,13 +35,95 @@ from dapidl.pipeline.unified_config import (
     TissueDatasetConfig,
 )
 
-# Named step sequences. Each recipe is an ordered list of step names.
-RECIPES: dict[str, list[str]] = {
+# Built-in recipes (always available, cannot be overridden by user YAML).
+BUILTIN_RECIPES: dict[str, list[str]] = {
     "default": ["data_loader", "ensemble_annotation", "cl_standardization", "lmdb_creation"],
     "gt": ["data_loader", "gt_annotation", "lmdb_creation"],
     "no_cl": ["data_loader", "ensemble_annotation", "lmdb_creation"],
     "annotate_only": ["data_loader", "ensemble_annotation", "cl_standardization"],
 }
+
+# Steps the orchestrator knows how to execute.
+KNOWN_STEPS: set[str] = {
+    "data_loader",
+    "ensemble_annotation",
+    "gt_annotation",
+    "cl_standardization",
+    "lmdb_creation",
+    "segmentation",
+}
+
+
+def _load_user_recipes() -> dict[str, list[str]]:
+    """Load user-defined recipes from YAML config file.
+
+    Search order:
+    1. ``DAPIDL_RECIPES_FILE`` env var (explicit path)
+    2. ``configs/recipes.yaml`` relative to the repository root
+       (three levels up from this file: orchestrator → pipeline → dapidl → src → repo)
+
+    Returns empty dict if no file found or the file contains no recipes.
+    """
+    import yaml  # pyyaml is already a project dependency
+
+    # 1. Env-var override
+    recipes_path: Path | None = None
+    env_path = os.environ.get("DAPIDL_RECIPES_FILE")
+    if env_path:
+        recipes_path = Path(env_path)
+        if not recipes_path.is_file():
+            logger.warning(f"DAPIDL_RECIPES_FILE={env_path} does not exist — ignoring")
+            recipes_path = None
+
+    # 2. Default location relative to repo root
+    if recipes_path is None:
+        repo_root = Path(__file__).resolve().parents[3]  # src/dapidl/pipeline → repo
+        candidate = repo_root / "configs" / "recipes.yaml"
+        if candidate.is_file():
+            recipes_path = candidate
+
+    if recipes_path is None:
+        return {}
+
+    try:
+        data = yaml.safe_load(recipes_path.read_text())
+    except Exception as e:
+        logger.warning(f"Failed to parse {recipes_path}: {e}")
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    recipes: dict[str, list[str]] = {}
+    for name, steps in data.items():
+        if not isinstance(steps, list):
+            logger.warning(f"Recipe '{name}' in {recipes_path} is not a list — skipping")
+            continue
+        bad_steps = [s for s in steps if s not in KNOWN_STEPS]
+        if bad_steps:
+            raise ValueError(
+                f"Recipe '{name}' in {recipes_path} contains unknown steps: "
+                f"{bad_steps}. Valid steps: {sorted(KNOWN_STEPS)}"
+            )
+        recipes[name] = steps
+
+    if recipes:
+        logger.info(f"Loaded {len(recipes)} user recipe(s) from {recipes_path}")
+
+    return recipes
+
+
+def get_recipes() -> dict[str, list[str]]:
+    """Return all available recipes: built-in defaults merged with user-defined YAML."""
+    recipes = dict(BUILTIN_RECIPES)
+    user_recipes = _load_user_recipes()
+    for name, steps in user_recipes.items():
+        if name in BUILTIN_RECIPES:
+            logger.warning(f"Ignoring user recipe '{name}' — conflicts with built-in recipe")
+            continue
+        recipes[name] = steps
+    return recipes
+
 
 # Steps that need a GPU queue
 GPU_STEPS = {"training", "universal_training", "hierarchical_training", "segmentation"}
@@ -147,10 +233,11 @@ class PipelineOrchestrator:
             return {"lmdb_path": lmdb_path}
 
         recipe_name = tissue_cfg.recipe
-        if recipe_name not in RECIPES:
-            raise ValueError(f"Unknown recipe '{recipe_name}'. Available: {list(RECIPES.keys())}")
+        recipes = get_recipes()
+        if recipe_name not in recipes:
+            raise ValueError(f"Unknown recipe '{recipe_name}'. Available: {sorted(recipes.keys())}")
 
-        recipe_steps = RECIPES[recipe_name]
+        recipe_steps = recipes[recipe_name]
 
         # Run steps in sequence, passing artifacts forward
         artifacts = StepArtifacts()
@@ -366,10 +453,11 @@ class PipelineOrchestrator:
             return {"lmdb_path": lmdb_path}
 
         recipe_name = tissue_cfg.recipe
-        if recipe_name not in RECIPES:
-            raise ValueError(f"Unknown recipe '{recipe_name}'. Available: {list(RECIPES.keys())}")
+        recipes = get_recipes()
+        if recipe_name not in recipes:
+            raise ValueError(f"Unknown recipe '{recipe_name}'. Available: {sorted(recipes.keys())}")
 
-        recipe_steps = RECIPES[recipe_name]
+        recipe_steps = recipes[recipe_name]
         cfg = self.config
 
         # Build parameters for each step, chaining artifact outputs
@@ -377,7 +465,9 @@ class PipelineOrchestrator:
 
         for step_name in recipe_steps:
             params = self._build_remote_step_params(step_name, tissue_cfg, artifacts)
-            queue = cfg.execution.gpu_queue if step_name in GPU_STEPS else cfg.execution.default_queue
+            queue = (
+                cfg.execution.gpu_queue if step_name in GPU_STEPS else cfg.execution.default_queue
+            )
             task = self._clone_and_run_step(step_name, params, queue)
 
             # Extract artifacts from completed task
@@ -405,6 +495,8 @@ class PipelineOrchestrator:
             params["step_config/annotator"] = "ground_truth"
             params["step_config/ground_truth_file"] = cfg.annotation.ground_truth_file or ""
             params["step_config/ground_truth_sheet"] = cfg.annotation.ground_truth_sheet or ""
+            params["step_config/cell_id_column"] = cfg.annotation.ground_truth_cell_id_col
+            params["step_config/celltype_column"] = cfg.annotation.ground_truth_label_col
             params["step_config/fine_grained"] = str(cfg.annotation.fine_grained)
             if "data_path" in prev_artifacts:
                 params["step_config/data_path"] = prev_artifacts["data_path"]
@@ -418,6 +510,8 @@ class PipelineOrchestrator:
             params["step_config/min_agreement"] = str(cfg.annotation.min_agreement)
             params["step_config/confidence_threshold"] = str(cfg.annotation.confidence_threshold)
             params["step_config/fine_grained"] = str(cfg.annotation.fine_grained)
+            params["step_config/upload_to_s3"] = str(cfg.output.upload_to_s3)
+            params["step_config/s3_bucket"] = cfg.output.s3_bucket
             # Chain from data_loader
             if "data_path" in prev_artifacts:
                 params["step_config/data_path"] = prev_artifacts["data_path"]
@@ -444,9 +538,13 @@ class PipelineOrchestrator:
             params["step_config/s3_bucket"] = cfg.output.s3_bucket
             if "data_path" in prev_artifacts:
                 params["step_config/data_path"] = prev_artifacts["data_path"]
+            if "cells_parquet" in prev_artifacts:
+                params["step_config/cells_parquet"] = prev_artifacts["cells_parquet"]
             # Forward annotation artifacts — cl_annotations_parquet preferred over annotations_parquet
             if "cl_annotations_parquet" in prev_artifacts:
-                params["step_config/cl_annotations_parquet"] = prev_artifacts["cl_annotations_parquet"]
+                params["step_config/cl_annotations_parquet"] = prev_artifacts[
+                    "cl_annotations_parquet"
+                ]
             if "annotations_parquet" in prev_artifacts:
                 params["step_config/annotations_parquet"] = prev_artifacts["annotations_parquet"]
 
@@ -482,8 +580,7 @@ class PipelineOrchestrator:
 
         if cloned.status != "completed":
             raise RuntimeError(
-                f"Step {step_name} failed with status '{cloned.status}' "
-                f"(task {cloned.id[:8]})"
+                f"Step {step_name} failed with status '{cloned.status}' (task {cloned.id[:8]})"
             )
 
         logger.info(f"  Step {step_name} completed")
@@ -522,9 +619,13 @@ class PipelineOrchestrator:
             "step_config/coarse_medium_epochs": str(cfg.training.coarse_medium_epochs),
         }
 
-        # Pass LMDB paths as numbered parameters
-        for i, path in enumerate(lmdb_paths):
+        # Pass LMDB paths and tissue metadata as numbered parameters
+        for i, (path, tc) in enumerate(zip(lmdb_paths, tissues, strict=True)):
             params[f"step_config/lmdb_path_{i}"] = path
+            params[f"step_config/tissue_{i}"] = tc.tissue
+            params[f"step_config/platform_{i}"] = tc.platform.value
+            params[f"step_config/tier_{i}"] = str(tc.confidence_tier)
+            params[f"step_config/weight_{i}"] = str(tc.weight_multiplier)
 
         step_name = "universal_training"
         queue = cfg.execution.gpu_queue

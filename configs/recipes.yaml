@@ -1,0 +1,24 @@
+# Custom pipeline recipes for DAPIDL.
+#
+# Each recipe is an ordered list of step names.
+# Built-in recipes (default, gt, no_cl, annotate_only) are always available
+# and cannot be overridden here.
+#
+# Custom recipes defined here are merged with built-ins.
+#
+# Available steps:
+#   data_loader, ensemble_annotation, gt_annotation,
+#   cl_standardization, lmdb_creation, segmentation
+#
+# Example:
+#   gt_with_cl:
+#     - data_loader
+#     - gt_annotation
+#     - cl_standardization
+#     - lmdb_creation
+#
+#   segmented:
+#     - data_loader
+#     - segmentation
+#     - ensemble_annotation
+#     - lmdb_creation

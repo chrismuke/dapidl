@@ -2347,6 +2347,18 @@ def clearml_pipeline_group() -> None:
     help="Run cross-modal validation after training",
 )
 @click.option(
+    "--ground-truth-file",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to ground truth annotations file (for recipe=gt)",
+)
+@click.option(
+    "--recipe",
+    type=str,
+    default="default",
+    help="Processing recipe (built-in: default, gt, no_cl, annotate_only; or custom from configs/recipes.yaml)",
+)
+@click.option(
     "--orchestrator/--legacy",
     default=False,
     help="Use task-based orchestrator (supports per-dataset recipes) or legacy PipelineController",
@@ -2365,6 +2377,8 @@ def run_pipeline(
     skip_training: bool,
     fine_grained: bool,
     validate: bool,
+    ground_truth_file: str | None,
+    recipe: str,
     orchestrator: bool,
 ) -> None:
     """Run the unified DAPIDL pipeline (supports 1-N datasets).
@@ -2388,6 +2402,10 @@ def run_pipeline(
 
         # Prepare-only (no training)
         dapidl clearml-pipeline run -t lung bf8f913f xenium 2 --skip-training --local
+
+        # Ground truth recipe with GT file
+        dapidl clearml-pipeline run -t breast eedc831b xenium 1 \\
+            --recipe gt --ground-truth-file /path/to/ground_truth.xlsx --orchestrator
 
     Confidence tiers:
         1 = Ground truth labels (highest weight)
@@ -2425,11 +2443,18 @@ def run_pipeline(
             sampling_strategy=SamplingStrategy(sampling),
         ),
         segmentation=SegmentationConfig(segmenter=SegmenterType(segmenter)),
-        annotation=AnnotationConfig(fine_grained=fine_grained),
+        annotation=AnnotationConfig(
+            fine_grained=fine_grained,
+            ground_truth_file=ground_truth_file,
+        ),
         lmdb=LMDBConfig(patch_sizes=[int(patch_size)]),
         execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training),
         validation=ValidationConfig(enabled=validate),
     )
+
+    # Auto-enable orchestrator for non-default recipes
+    if recipe != "default" and not orchestrator:
+        orchestrator = True
 
     # Add each tissue dataset
     for tissue_name, source, platform, tier in tissue:
@@ -2450,6 +2475,11 @@ def run_pipeline(
                 confidence_tier=int(tier),
             )
 
+    # Apply recipe to all datasets added via -t
+    if recipe != "default":
+        for tc in config.input.tissues:
+            tc.recipe = recipe
+
     # Print summary
     n_datasets = len(config.input.tissues)
     console.print("[bold blue]DAPIDL Unified Pipeline[/bold blue]\n")
@@ -2457,7 +2487,10 @@ def run_pipeline(
     for tc in config.input.tissues:
         tier_label = {1: "ground truth", 2: "consensus", 3: "predicted"}
         source = tc.local_path or tc.dataset_id
-        console.print(f"    - {tc.tissue}/{tc.platform.value}: {source} (tier {tc.confidence_tier}, {tier_label.get(tc.confidence_tier, 'unknown')})")
+        recipe_str = f", recipe={tc.recipe}" if tc.recipe != "default" else ""
+        console.print(f"    - {tc.tissue}/{tc.platform.value}: {source} (tier {tc.confidence_tier}, {tier_label.get(tc.confidence_tier, 'unknown')}{recipe_str})")
+    if ground_truth_file:
+        console.print(f"  Ground truth file: {ground_truth_file}")
     console.print(f"  Segmenter: {segmenter}")
     console.print(f"  Sampling: {sampling}")
     console.print(f"  Fine-grained: {fine_grained}")

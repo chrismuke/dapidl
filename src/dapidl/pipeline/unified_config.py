@@ -238,6 +238,17 @@ class TissueDatasetConfig(BaseModel):
         description="True if dataset_id points to an existing LMDB dataset (skip processing)",
     )
 
+    @field_validator("recipe")
+    @classmethod
+    def validate_recipe(cls, v: str) -> str:
+        """Validate recipe name against available recipes (built-in + user YAML)."""
+        from dapidl.pipeline.orchestrator import get_recipes
+
+        valid = set(get_recipes().keys())
+        if v not in valid:
+            raise ValueError(f"Invalid recipe '{v}'. Available: {', '.join(sorted(valid))}")
+        return v
+
 
 class SegmentationConfig(BaseModel):
     """Nucleus segmentation configuration.
@@ -901,7 +912,9 @@ def _parse_dataset_entry(entry: str) -> TissueDatasetConfig:
         name_parts = entry.split("-")
         if len(name_parts) >= 2:
             # Skip platform prefix: xenium-BREAST-..., merscope-BREAST-...
-            candidate = name_parts[1] if name_parts[0].lower() in ("xenium", "merscope") else name_parts[0]
+            candidate = (
+                name_parts[1] if name_parts[0].lower() in ("xenium", "merscope") else name_parts[0]
+            )
             tissue = candidate.lower()
 
     # Determine if this is a name or an ID.
@@ -1104,7 +1117,9 @@ class DAPIDLPipelineConfig(BaseModel):
         annotation_config = AnnotationConfig(
             strategy=AnnotationStrategy(get_param("annotation", "strategy", "ensemble")),
             celltypist_models=parse_list_str(
-                get_param("annotation", "celltypist_models", "Cells_Adult_Breast.pkl,Immune_All_High.pkl")
+                get_param(
+                    "annotation", "celltypist_models", "Cells_Adult_Breast.pkl,Immune_All_High.pkl"
+                )
             ),
             include_singler=parse_bool(get_param("annotation", "include_singler", "True")),
             singler_reference=get_param("annotation", "singler_reference", "blueprint"),
@@ -1126,7 +1141,9 @@ class DAPIDLPipelineConfig(BaseModel):
         lmdb_config = LMDBConfig(
             patch_sizes=parse_list_int(get_param("lmdb", "patch_sizes", "128")),
             normalization=NormalizationMethod(get_param("lmdb", "normalization", "adaptive")),
-            normalize_physical_size=parse_bool(get_param("lmdb", "normalize_physical_size", "True")),
+            normalize_physical_size=parse_bool(
+                get_param("lmdb", "normalize_physical_size", "True")
+            ),
             skip_if_exists=parse_bool(get_param("lmdb", "skip_if_exists", "True")),
         )
 
