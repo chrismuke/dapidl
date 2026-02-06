@@ -82,7 +82,7 @@ class PopVAnnotationConfig:
     # S3 settings
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
-    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
+    s3_endpoint: str = ""
 
     # ClearML/WandB settings
     use_wandb: bool = True
@@ -231,14 +231,10 @@ class PopVAnnotationStep(PipelineStep):
                 is_popv_available,
             )
         except ImportError:
-            raise ImportError(
-                "PopV annotator not available. Install with: pip install popv"
-            )
+            raise ImportError("PopV annotator not available. Install with: pip install popv")
 
         if not is_popv_available():
-            raise ImportError(
-                "popV package not installed. Install with: pip install popv"
-            )
+            raise ImportError("popV package not installed. Install with: pip install popv")
 
         cfg = self.config
         inputs = artifacts.outputs
@@ -249,9 +245,7 @@ class PopVAnnotationStep(PipelineStep):
 
         # Resolve artifact URLs to local paths
         data_path = resolve_artifact_path(inputs["data_path"], "data_path")
-        expression_path = resolve_artifact_path(
-            inputs.get("expression_path"), "expression_path"
-        )
+        expression_path = resolve_artifact_path(inputs.get("expression_path"), "expression_path")
 
         if data_path is None:
             raise ValueError("data_path artifact is required")
@@ -428,7 +422,9 @@ class PopVAnnotationStep(PipelineStep):
 
         if col not in annotations_df.columns:
             # Fallback
-            col = "predicted_type" if "predicted_type" in annotations_df.columns else "broad_category"
+            col = (
+                "predicted_type" if "predicted_type" in annotations_df.columns else "broad_category"
+            )
 
         cell_types = sorted(annotations_df[col].unique().to_list())
         # Filter out Unknown if present, add at end
@@ -628,9 +624,7 @@ class PopVAnnotationStep(PipelineStep):
 
         # Use the runner script for remote execution
         runner_script = (
-            Path(__file__).parent.parent.parent.parent.parent
-            / "scripts"
-            / "clearml_step_runner.py"
+            Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
         )
 
         self._task = Task.create(

@@ -254,15 +254,21 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
             standardize_labels=_parse_bool(step_config.get("standardize_labels", True)),
         )
 
-        # Collect LMDB paths from step_config (passed as lmdb_path_0, lmdb_path_1, ...)
+        # Collect LMDB paths and tissue metadata from step_config
+        # (passed as lmdb_path_0, tissue_0, platform_0, tier_0, weight_0, ...)
         lmdb_idx = 0
         while f"lmdb_path_{lmdb_idx}" in step_config:
             lmdb_path = step_config[f"lmdb_path_{lmdb_idx}"]
+            tissue = step_config.get(f"tissue_{lmdb_idx}", f"tissue_{lmdb_idx}")
+            platform = step_config.get(f"platform_{lmdb_idx}", "xenium")
+            tier = int(step_config.get(f"tier_{lmdb_idx}", 2))
+            weight = float(step_config.get(f"weight_{lmdb_idx}", 1.0))
             ut_config.add_dataset(
                 path=lmdb_path,
-                tissue=f"tissue_{lmdb_idx}",
-                platform="xenium",
-                confidence_tier=2,
+                tissue=tissue,
+                platform=platform,
+                confidence_tier=tier,
+                weight_multiplier=weight,
             )
             lmdb_idx += 1
 

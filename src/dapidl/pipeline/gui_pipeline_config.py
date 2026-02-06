@@ -134,7 +134,7 @@ class GUIPipelineConfig:
     # S3 upload
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
-    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
+    s3_endpoint: str = ""
 
     # ClearML registration
     register_datasets: bool = True
@@ -233,7 +233,9 @@ class GUIPipelineConfig:
             # Annotation Configuration
             annotation_strategy=params.get("annotation/strategy", "ensemble"),
             celltypist_models=parse_list_str(
-                params.get("annotation/celltypist_models", "Cells_Adult_Breast.pkl,Immune_All_High.pkl")
+                params.get(
+                    "annotation/celltypist_models", "Cells_Adult_Breast.pkl,Immune_All_High.pkl"
+                )
             ),
             include_singler=parse_bool(params.get("annotation/include_singler", "True")),
             singler_reference=params.get("annotation/singler_reference", "blueprint"),
@@ -253,9 +255,7 @@ class GUIPipelineConfig:
             # LMDB Configuration
             patch_sizes=parse_list_int(params.get("lmdb/patch_sizes", "128")),
             normalization=params.get("lmdb/normalization", "adaptive"),
-            normalize_physical_size=parse_bool(
-                params.get("lmdb/normalize_physical_size", "True")
-            ),
+            normalize_physical_size=parse_bool(params.get("lmdb/normalize_physical_size", "True")),
             skip_if_lmdb_exists=parse_bool(params.get("lmdb/skip_if_lmdb_exists", "True")),
             # Training Configuration
             backbone=params.get("training/backbone", "efficientnetv2_rw_s"),
@@ -268,18 +268,14 @@ class GUIPipelineConfig:
             coarse_only_epochs=int(params.get("training/coarse_only_epochs", "20")),
             coarse_medium_epochs=int(params.get("training/coarse_medium_epochs", "50")),
             warmup_epochs=int(params.get("training/warmup_epochs", "5")),
-            combine_patch_sizes=parse_bool(
-                params.get("training/combine_patch_sizes", "False")
-            ),
+            combine_patch_sizes=parse_bool(params.get("training/combine_patch_sizes", "False")),
             primary_patch_size=int(params["training/primary_patch_size"])
             if params.get("training/primary_patch_size")
             else None,
             # Output Configuration
             upload_to_s3=parse_bool(params.get("output/upload_to_s3", "True")),
             s3_bucket=params.get("output/s3_bucket", "dapidl"),
-            s3_endpoint=params.get(
-                "output/s3_endpoint", "https://s3.eu-central-2.idrivee2.com"
-            ),
+            s3_endpoint=params.get("output/s3_endpoint", ""),
             register_datasets=parse_bool(params.get("output/register_datasets", "True")),
             register_models=parse_bool(params.get("output/register_models", "True")),
             link_to_parent=parse_bool(params.get("output/link_to_parent", "True")),

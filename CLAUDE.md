@@ -363,14 +363,13 @@ MERSCOPE/Vizgen data with DAPI images requires registration at:
 
 ### S3/ClearML Storage
 
-**iDrive e2 S3 Configuration**:
-- Endpoint: `https://s3.eu-central-2.idrivee2.com`
-- Region: `eu-central-2`
+**AWS S3 Configuration**:
+- Region: `eu-central-1`
 - Bucket: `dapidl`
-- Access Key: `evkizOGyflbhx5uSi4oV`
-- Secret Key: `zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9`
+- AWS Profile: `dapidl` (in `~/.aws/credentials`)
+- Credentials: Standard boto3 chain (env vars, AWS profile, IAM role)
 
-**S3 Dataset Paths** (28.7 GB total, uploaded Dec 2024):
+**S3 Dataset Paths** (~1 TB total):
 
 | Dataset | S3 Path | Size | Cells |
 |---------|---------|------|-------|
@@ -380,21 +379,19 @@ MERSCOPE/Vizgen data with DAPI images requires registration at:
 
 **AWS CLI Usage**:
 ```bash
-export AWS_ACCESS_KEY_ID=evkizOGyflbhx5uSi4oV
-export AWS_SECRET_ACCESS_KEY=zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9
+# Using the dapidl profile
+export AWS_PROFILE=dapidl
 
 # List bucket contents
-aws s3 ls s3://dapidl/ --endpoint-url https://s3.eu-central-2.idrivee2.com --region eu-central-2
+aws s3 ls s3://dapidl/
 
 # Download a dataset
-aws s3 sync s3://dapidl/raw-data/xenium-lung-2fov/ ./xenium-lung-2fov/ \
-    --endpoint-url https://s3.eu-central-2.idrivee2.com --region eu-central-2
+aws s3 sync s3://dapidl/raw-data/xenium-lung-2fov/ ./xenium-lung-2fov/
 ```
 
 **Storage Strategy**:
 - **Large files (datasets, models)**: Store on S3, register with ClearML using S3 URIs
 - **Experiment tracking**: Use ClearML for all pipeline runs
-- **Free tier limits**: ~100GB storage, 1M API calls/month
 - Always use `--output-uri s3://dapidl/...` for ClearML tasks to store artifacts on S3
 
 ## Annotation Benchmark Results (Jan 2025)

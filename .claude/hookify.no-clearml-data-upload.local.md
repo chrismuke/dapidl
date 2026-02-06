@@ -36,9 +36,9 @@ task.register_artifact("model", s3_path)  # S3 reference
 ```
 
 ### S3 Configuration:
-- Endpoint: `https://s3.eu-central-2.idrivee2.com`
+- Region: `eu-central-1` (AWS S3)
 - Bucket: `dapidl`
-- Use boto3 or aws cli for uploads
+- Use boto3 or aws cli for uploads (standard credential chain)
 
 ### Why This Matters:
 1. ClearML hosted storage has quota limits (already exhausted)

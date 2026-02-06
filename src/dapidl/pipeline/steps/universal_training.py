@@ -51,9 +51,9 @@ class UniversalTrainingConfig:
     sampling_strategy: str = "sqrt"  # "equal", "proportional", "sqrt"
 
     # Confidence tier weights
-    tier1_weight: float = 1.0   # Ground truth
-    tier2_weight: float = 0.8   # Consensus
-    tier3_weight: float = 0.5   # Single predictor
+    tier1_weight: float = 1.0  # Ground truth
+    tier2_weight: float = 0.8  # Consensus
+    tier3_weight: float = 0.5  # Single predictor
 
     # Model architecture
     backbone: str = "efficientnetv2_rw_s"
@@ -108,8 +108,8 @@ class UniversalTrainingConfig:
     # S3 upload
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
-    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
-    s3_region: str = "eu-central-2"
+    s3_endpoint: str = ""
+    s3_region: str = "eu-central-1"
     s3_models_prefix: str = "models/universal"
 
     def add_dataset(
@@ -132,13 +132,15 @@ class UniversalTrainingConfig:
         Returns:
             Self for chaining
         """
-        self.datasets.append(TissueDatasetSpec(
-            path=path,
-            tissue=tissue,
-            platform=platform,
-            confidence_tier=confidence_tier,
-            weight_multiplier=weight_multiplier,
-        ))
+        self.datasets.append(
+            TissueDatasetSpec(
+                path=path,
+                tissue=tissue,
+                platform=platform,
+                confidence_tier=confidence_tier,
+                weight_multiplier=weight_multiplier,
+            )
+        )
         return self
 
 
@@ -290,9 +292,7 @@ class UniversalDAPITrainingStep(PipelineStep):
                 return all("path" in c and "tissue" in c for c in configs)
 
         # Check for patches_path_N pattern
-        has_patches = any(
-            k.startswith("patches_path") for k in outputs.keys()
-        )
+        has_patches = any(k.startswith("patches_path") for k in outputs.keys())
         return has_patches
 
     def execute(self, artifacts: StepArtifacts) -> StepArtifacts:
@@ -314,6 +314,7 @@ class UniversalDAPITrainingStep(PipelineStep):
         clearml_logger = None
         try:
             from clearml import Task
+
             # Check if we're already in a task context
             clearml_task = Task.current_task()
             if clearml_task is None:
@@ -325,19 +326,21 @@ class UniversalDAPITrainingStep(PipelineStep):
                     reuse_last_task_id=False,
                 )
                 # Log hyperparameters
-                clearml_task.connect({
-                    "backbone": self.config.backbone,
-                    "epochs": self.config.epochs,
-                    "batch_size": self.config.batch_size,
-                    "learning_rate": self.config.learning_rate,
-                    "weight_decay": self.config.weight_decay,
-                    "patience": self.config.patience,
-                    "sampling_strategy": self.config.sampling_strategy,
-                    "use_hierarchical": True,
-                    "coarse_weight": self.config.coarse_weight,
-                    "medium_weight": self.config.medium_weight,
-                    "fine_weight": self.config.fine_weight,
-                })
+                clearml_task.connect(
+                    {
+                        "backbone": self.config.backbone,
+                        "epochs": self.config.epochs,
+                        "batch_size": self.config.batch_size,
+                        "learning_rate": self.config.learning_rate,
+                        "weight_decay": self.config.weight_decay,
+                        "patience": self.config.patience,
+                        "sampling_strategy": self.config.sampling_strategy,
+                        "use_hierarchical": True,
+                        "coarse_weight": self.config.coarse_weight,
+                        "medium_weight": self.config.medium_weight,
+                        "fine_weight": self.config.fine_weight,
+                    }
+                )
             clearml_logger = clearml_task.get_logger()
             logger.info(f"ClearML tracking enabled: {clearml_task.task_id}")
         except Exception as e:
@@ -462,7 +465,9 @@ class UniversalDAPITrainingStep(PipelineStep):
 
         # Create dataloaders
         train_loader, val_loader, test_loader = create_multi_tissue_dataloaders(
-            train_dataset, val_dataset, test_dataset,
+            train_dataset,
+            val_dataset,
+            test_dataset,
             batch_size=cfg.batch_size,
             num_workers=cfg.num_workers,
             use_weighted_sampler=True,
@@ -477,9 +482,11 @@ class UniversalDAPITrainingStep(PipelineStep):
         # Get hierarchy config
         hierarchy_config = train_dataset.hierarchy_config
         if hierarchy_config:
-            logger.info(f"Hierarchy: coarse={hierarchy_config.num_coarse}, "
-                       f"medium={hierarchy_config.num_medium}, "
-                       f"fine={hierarchy_config.num_fine}")
+            logger.info(
+                f"Hierarchy: coarse={hierarchy_config.num_coarse}, "
+                f"medium={hierarchy_config.num_medium}, "
+                f"fine={hierarchy_config.num_fine}"
+            )
 
         # Run training using custom training loop
         test_metrics, tissue_metrics = self._train_universal_model(
@@ -501,14 +508,18 @@ class UniversalDAPITrainingStep(PipelineStep):
         # Save configuration
         config_path = output_dir / "training_config.json"
         with open(config_path, "w") as f:
-            json.dump({
-                "datasets": [d.to_dict() for d in cfg.datasets],
-                "sampling_strategy": cfg.sampling_strategy,
-                "backbone": cfg.backbone,
-                "epochs": cfg.epochs,
-                "batch_size": cfg.batch_size,
-                "standardize_labels": cfg.standardize_labels,
-            }, f, indent=2)
+            json.dump(
+                {
+                    "datasets": [d.to_dict() for d in cfg.datasets],
+                    "sampling_strategy": cfg.sampling_strategy,
+                    "backbone": cfg.backbone,
+                    "epochs": cfg.epochs,
+                    "batch_size": cfg.batch_size,
+                    "standardize_labels": cfg.standardize_labels,
+                },
+                f,
+                indent=2,
+            )
 
         # Upload to S3 if configured
         s3_urls = {}
@@ -537,7 +548,7 @@ class UniversalDAPITrainingStep(PipelineStep):
         output_dir: Path,
         cfg: UniversalTrainingConfig,
         clearml_logger=None,  # ClearML Logger for tracking
-        clearml_task=None,    # ClearML Task for artifacts
+        clearml_task=None,  # ClearML Task for artifacts
     ) -> tuple[dict, dict]:
         """Train the universal model with multi-tissue data.
 
@@ -633,6 +644,7 @@ class UniversalDAPITrainingStep(PipelineStep):
         if cfg.use_wandb:
             try:
                 import wandb
+
                 wandb.init(
                     project=cfg.wandb_project,
                     config={
@@ -686,7 +698,12 @@ class UniversalDAPITrainingStep(PipelineStep):
             phase_name = scheduler_curriculum.get_phase_name(epoch)
             loss_weights = scheduler_curriculum.get_loss_weights(
                 epoch,
-                base_weights=(cfg.coarse_weight, cfg.medium_weight, cfg.fine_weight, cfg.consistency_weight)
+                base_weights=(
+                    cfg.coarse_weight,
+                    cfg.medium_weight,
+                    cfg.fine_weight,
+                    cfg.consistency_weight,
+                ),
             )
 
             # Get LR multiplier for phase transitions
@@ -695,16 +712,20 @@ class UniversalDAPITrainingStep(PipelineStep):
 
             # Apply LR multiplier to optimizer
             for param_group in optimizer.param_groups:
-                param_group['lr'] = current_lr
+                param_group["lr"] = current_lr
 
             # Handle backbone freezing during phase transitions
             should_freeze = scheduler_curriculum.should_freeze_backbone(epoch)
             if should_freeze:
                 model.freeze_backbone()
-                logger.info(f"Epoch {epoch+1}/{cfg.epochs} - Phase: {phase_name} (backbone frozen, LR={current_lr:.2e})")
+                logger.info(
+                    f"Epoch {epoch + 1}/{cfg.epochs} - Phase: {phase_name} (backbone frozen, LR={current_lr:.2e})"
+                )
             else:
                 model.unfreeze_backbone()
-                logger.info(f"Epoch {epoch+1}/{cfg.epochs} - Phase: {phase_name} (LR={current_lr:.2e})")
+                logger.info(
+                    f"Epoch {epoch + 1}/{cfg.epochs} - Phase: {phase_name} (LR={current_lr:.2e})"
+                )
 
             # Update loss weights
             loss_fn.coarse_weight = loss_weights["coarse_weight"]
@@ -713,8 +734,7 @@ class UniversalDAPITrainingStep(PipelineStep):
 
             # Train one epoch
             train_loss = self._train_epoch(
-                model, train_loader, loss_fn, optimizer, scaler,
-                device, active_heads, cfg.use_amp
+                model, train_loader, loss_fn, optimizer, scaler, device, active_heads, cfg.use_amp
             )
 
             # Validate
@@ -742,7 +762,7 @@ class UniversalDAPITrainingStep(PipelineStep):
                 current_f1 = val_metrics.get("f1_coarse", 0)
 
             logger.info(
-                f"Epoch {epoch+1}: train_loss={train_loss:.4f}, "
+                f"Epoch {epoch + 1}: train_loss={train_loss:.4f}, "
                 f"val_loss={val_loss:.4f}, val_f1={current_f1:.4f}"
             )
 
@@ -760,31 +780,40 @@ class UniversalDAPITrainingStep(PipelineStep):
 
             # Early stopping
             if patience_counter >= cfg.patience:
-                logger.info(f"Early stopping at epoch {epoch+1}")
+                logger.info(f"Early stopping at epoch {epoch + 1}")
                 break
 
             # W&B logging
             if cfg.use_wandb:
                 import wandb
-                wandb.log({
-                    "epoch": epoch + 1,
-                    "train_loss": train_loss,
-                    "val_loss": val_loss,
-                    "val_f1_coarse": val_metrics.get("f1_coarse", 0),
-                    "val_f1_medium": val_metrics.get("f1_medium", 0),
-                    "val_f1_fine": val_metrics.get("f1_fine", 0),
-                    "phase": phase_name,
-                    "lr": lr_scheduler.get_last_lr()[0],
-                })
+
+                wandb.log(
+                    {
+                        "epoch": epoch + 1,
+                        "train_loss": train_loss,
+                        "val_loss": val_loss,
+                        "val_f1_coarse": val_metrics.get("f1_coarse", 0),
+                        "val_f1_medium": val_metrics.get("f1_medium", 0),
+                        "val_f1_fine": val_metrics.get("f1_fine", 0),
+                        "phase": phase_name,
+                        "lr": lr_scheduler.get_last_lr()[0],
+                    }
+                )
 
             # ClearML logging
             if clearml_logger is not None:
                 clearml_logger.report_scalar("loss", "train", train_loss, epoch + 1)
                 clearml_logger.report_scalar("loss", "validation", val_loss, epoch + 1)
-                clearml_logger.report_scalar("f1", "coarse", val_metrics.get("f1_coarse", 0), epoch + 1)
-                clearml_logger.report_scalar("f1", "medium", val_metrics.get("f1_medium", 0), epoch + 1)
+                clearml_logger.report_scalar(
+                    "f1", "coarse", val_metrics.get("f1_coarse", 0), epoch + 1
+                )
+                clearml_logger.report_scalar(
+                    "f1", "medium", val_metrics.get("f1_medium", 0), epoch + 1
+                )
                 clearml_logger.report_scalar("f1", "fine", val_metrics.get("f1_fine", 0), epoch + 1)
-                clearml_logger.report_scalar("lr", "learning_rate", lr_scheduler.get_last_lr()[0], epoch + 1)
+                clearml_logger.report_scalar(
+                    "lr", "learning_rate", lr_scheduler.get_last_lr()[0], epoch + 1
+                )
                 clearml_logger.report_text(f"Phase: {phase_name}", iteration=epoch + 1)
 
         # Save final model
@@ -813,19 +842,24 @@ class UniversalDAPITrainingStep(PipelineStep):
         # Save hierarchy config
         if hierarchy_config:
             with open(output_dir / "hierarchy_config.json", "w") as f:
-                json.dump({
-                    "num_coarse": hierarchy_config.num_coarse,
-                    "num_medium": hierarchy_config.num_medium,
-                    "num_fine": hierarchy_config.num_fine,
-                    "coarse_names": hierarchy_config.coarse_names,
-                    "medium_names": hierarchy_config.medium_names,
-                    "fine_names": hierarchy_config.fine_names,
-                    "fine_to_coarse": hierarchy_config.fine_to_coarse,
-                    "medium_to_coarse": hierarchy_config.medium_to_coarse,
-                }, f, indent=2)
+                json.dump(
+                    {
+                        "num_coarse": hierarchy_config.num_coarse,
+                        "num_medium": hierarchy_config.num_medium,
+                        "num_fine": hierarchy_config.num_fine,
+                        "coarse_names": hierarchy_config.coarse_names,
+                        "medium_names": hierarchy_config.medium_names,
+                        "fine_names": hierarchy_config.fine_names,
+                        "fine_to_coarse": hierarchy_config.fine_to_coarse,
+                        "medium_to_coarse": hierarchy_config.medium_to_coarse,
+                    },
+                    f,
+                    indent=2,
+                )
 
         if cfg.use_wandb:
             import wandb
+
             wandb.finish()
 
         # ClearML: Upload models and log final metrics
@@ -855,10 +889,16 @@ class UniversalDAPITrainingStep(PipelineStep):
                     )
 
                 # Log final test metrics as summary scalars
-                clearml_logger.report_single_value("test/f1_coarse", test_metrics.get("f1_coarse", 0))
-                clearml_logger.report_single_value("test/f1_medium", test_metrics.get("f1_medium", 0))
+                clearml_logger.report_single_value(
+                    "test/f1_coarse", test_metrics.get("f1_coarse", 0)
+                )
+                clearml_logger.report_single_value(
+                    "test/f1_medium", test_metrics.get("f1_medium", 0)
+                )
                 clearml_logger.report_single_value("test/f1_fine", test_metrics.get("f1_fine", 0))
-                clearml_logger.report_single_value("test/accuracy_coarse", test_metrics.get("accuracy_coarse", 0))
+                clearml_logger.report_single_value(
+                    "test/accuracy_coarse", test_metrics.get("accuracy_coarse", 0)
+                )
                 clearml_logger.report_single_value("best_val_f1", best_val_f1)
 
                 # Log per-tissue metrics
@@ -866,7 +906,9 @@ class UniversalDAPITrainingStep(PipelineStep):
                     for tissue_key, metrics in tissue_metrics.items():
                         for metric_name, value in metrics.items():
                             if isinstance(value, (int, float)):
-                                clearml_logger.report_single_value(f"tissue/{tissue_key}/{metric_name}", value)
+                                clearml_logger.report_single_value(
+                                    f"tissue/{tissue_key}/{metric_name}", value
+                                )
 
                 logger.info("ClearML artifacts uploaded successfully")
             except Exception as e:
@@ -874,8 +916,9 @@ class UniversalDAPITrainingStep(PipelineStep):
 
         return test_metrics, tissue_metrics
 
-    def _train_epoch(self, model, loader, loss_fn, optimizer, scaler,
-                     device, active_heads, use_amp):
+    def _train_epoch(
+        self, model, loader, loss_fn, optimizer, scaler, device, active_heads, use_amp
+    ):
         """Train one epoch."""
         import torch
 
@@ -1037,14 +1080,20 @@ class UniversalDAPITrainingStep(PipelineStep):
 
                 # Log the finest available level
                 if "f1_fine" in tissue_metrics[tissue_key]:
-                    logger.info(f"  {tissue_key}: F1_fine={tissue_metrics[tissue_key]['f1_fine']:.4f} "
-                               f"(n={tissue_metrics[tissue_key]['n_samples']})")
+                    logger.info(
+                        f"  {tissue_key}: F1_fine={tissue_metrics[tissue_key]['f1_fine']:.4f} "
+                        f"(n={tissue_metrics[tissue_key]['n_samples']})"
+                    )
                 elif "f1_medium" in tissue_metrics[tissue_key]:
-                    logger.info(f"  {tissue_key}: F1_medium={tissue_metrics[tissue_key]['f1_medium']:.4f} "
-                               f"(n={tissue_metrics[tissue_key]['n_samples']})")
+                    logger.info(
+                        f"  {tissue_key}: F1_medium={tissue_metrics[tissue_key]['f1_medium']:.4f} "
+                        f"(n={tissue_metrics[tissue_key]['n_samples']})"
+                    )
                 else:
-                    logger.info(f"  {tissue_key}: F1_coarse={tissue_metrics[tissue_key].get('f1_coarse', 0):.4f} "
-                               f"(n={tissue_metrics[tissue_key]['n_samples']})")
+                    logger.info(
+                        f"  {tissue_key}: F1_coarse={tissue_metrics[tissue_key].get('f1_coarse', 0):.4f} "
+                        f"(n={tissue_metrics[tissue_key]['n_samples']})"
+                    )
 
         return test_metrics, tissue_metrics
 
@@ -1060,16 +1109,13 @@ class UniversalDAPITrainingStep(PipelineStep):
         from datetime import datetime
 
         # Generate experiment name
-        exp_name = output_dir.parent.name if output_dir.name == "universal_training" else output_dir.name
+        exp_name = (
+            output_dir.parent.name if output_dir.name == "universal_training" else output_dir.name
+        )
         timestamp = datetime.now().strftime("%Y%m%d")
         s3_prefix = f"s3://{cfg.s3_bucket}/{cfg.s3_models_prefix}/{exp_name}-{timestamp}"
 
         logger.info(f"Uploading universal models to S3: {s3_prefix}")
-
-        # ALWAYS set correct credentials - don't rely on environment which may be corrupted
-        env = os.environ.copy()
-        env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
-        env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
 
         s3_urls = {}
         files_to_upload = [
@@ -1086,14 +1132,13 @@ class UniversalDAPITrainingStep(PipelineStep):
                 continue
 
             s3_url = f"{s3_prefix}/{filename}"
-            cmd = [
-                "aws", "s3", "cp", str(local_path), s3_url,
-                "--endpoint-url", cfg.s3_endpoint,
-                "--region", cfg.s3_region,
-            ]
+            cmd = ["aws", "s3", "cp", str(local_path), s3_url]
+            if cfg.s3_endpoint:
+                cmd += ["--endpoint-url", cfg.s3_endpoint]
+            cmd += ["--region", cfg.s3_region]
 
             try:
-                result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
                 if result.returncode == 0:
                     s3_urls[filename] = s3_url
                     logger.info(f"Uploaded {filename} to S3")
@@ -1116,7 +1161,11 @@ class UniversalDAPITrainingStep(PipelineStep):
 
         task_name = task_name or f"step-{self.name}"
 
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner_universal_training.py"
+        runner_script = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "scripts"
+            / "clearml_step_runner_universal_training.py"
+        )
 
         self._task = Task.create(
             project_name=project,

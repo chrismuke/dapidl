@@ -92,9 +92,7 @@ def _fingerprint_local_dir(path: Path) -> dict[str, int]:
     return fingerprint
 
 
-def _verify_local_against_clearml(
-    local_path: Path, dataset_id: str
-) -> bool:
+def _verify_local_against_clearml(local_path: Path, dataset_id: str) -> bool:
     """Verify local dataset matches ClearML metadata using file sizes.
 
     Compares file sizes of key files between local directory and ClearML
@@ -143,8 +141,7 @@ def _verify_local_against_clearml(
         match_rate = matched / checked
         if match_rate < 0.9:
             logger.warning(
-                f"Local dataset may be stale: {matched}/{checked} files match "
-                f"({match_rate:.0%})"
+                f"Local dataset may be stale: {matched}/{checked} files match ({match_rate:.0%})"
             )
             return False
 
@@ -488,7 +485,7 @@ class DataLoaderStep(PipelineStep):
     def _download_from_s3(self) -> Path:
         """Download data from S3 URI.
 
-        Uses boto3 with iDrive e2 configuration.
+        Uses boto3 with AWS S3 configuration.
         Downloads to a local cache directory.
         """
         import boto3
@@ -515,13 +512,12 @@ class DataLoaderStep(PipelineStep):
 
         logger.info(f"Downloading from S3: {s3_uri}")
 
-        # S3 configuration for iDrive e2
+        from dapidl.utils.s3 import S3_ENDPOINT, S3_REGION
+
         s3_client = boto3.client(
             "s3",
-            endpoint_url="https://s3.eu-central-2.idrivee2.com",
-            aws_access_key_id="evkizOGyflbhx5uSi4oV",
-            aws_secret_access_key="zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9",
-            region_name="eu-central-2",
+            endpoint_url=S3_ENDPOINT or None,
+            region_name=S3_REGION,
             config=Config(signature_version="s3v4"),
         )
 
@@ -540,7 +536,7 @@ class DataLoaderStep(PipelineStep):
                     continue
 
                 # Calculate relative path from prefix
-                rel_path = key[len(prefix):].lstrip("/") if prefix else key
+                rel_path = key[len(prefix) :].lstrip("/") if prefix else key
                 local_path = cache_dir / rel_path
                 local_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -716,7 +712,11 @@ class DataLoaderStep(PipelineStep):
         # Use step-specific runner script for remote execution (avoids uv entry point issues)
         # The step-specific script name ensures ClearML creates unique tasks per step
         # Path: src/dapidl/pipeline/steps -> 5 parents to reach repo root
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
+        runner_script = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "scripts"
+            / f"clearml_step_runner_{self.name}.py"
+        )
 
         self._task = Task.create(
             project_name=project,

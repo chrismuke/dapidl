@@ -69,11 +69,11 @@ class HierarchicalTrainingConfig:
     # Output
     output_dir: str | None = None
 
-    # S3 upload (iDrive e2 compatible)
+    # S3 upload
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
-    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
-    s3_region: str = "eu-central-2"
+    s3_endpoint: str = ""
+    s3_region: str = "eu-central-1"
     s3_models_prefix: str = "models/hierarchical"
 
 
@@ -246,8 +246,10 @@ class HierarchicalTrainingStep(PipelineStep):
 
         logger.info(f"Hierarchical training with {len(class_mapping)} fine-grained classes")
         logger.info(f"Backbone: {cfg.backbone}")
-        logger.info(f"Curriculum: coarse_only={cfg.coarse_only_epochs}, "
-                   f"coarse_medium={cfg.coarse_medium_epochs}")
+        logger.info(
+            f"Curriculum: coarse_only={cfg.coarse_only_epochs}, "
+            f"coarse_medium={cfg.coarse_medium_epochs}"
+        )
         logger.info(f"Output: {output_dir}")
 
         # Create and run trainer
@@ -349,16 +351,15 @@ class HierarchicalTrainingStep(PipelineStep):
         from datetime import datetime
 
         # Generate experiment name from output directory
-        exp_name = output_dir.parent.name if output_dir.name == "hierarchical_training" else output_dir.name
+        exp_name = (
+            output_dir.parent.name
+            if output_dir.name == "hierarchical_training"
+            else output_dir.name
+        )
         timestamp = datetime.now().strftime("%Y%m%d")
         s3_prefix = f"s3://{cfg.s3_bucket}/{cfg.s3_models_prefix}/{exp_name}-{timestamp}"
 
         logger.info(f"Uploading hierarchical models to S3: {s3_prefix}")
-
-        # ALWAYS set correct credentials - don't rely on environment which may be corrupted
-        env = os.environ.copy()
-        env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
-        env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
 
         s3_urls = {}
         files_to_upload = [
@@ -375,14 +376,13 @@ class HierarchicalTrainingStep(PipelineStep):
                 continue
 
             s3_url = f"{s3_prefix}/{filename}"
-            cmd = [
-                "aws", "s3", "cp", str(local_path), s3_url,
-                "--endpoint-url", cfg.s3_endpoint,
-                "--region", cfg.s3_region,
-            ]
+            cmd = ["aws", "s3", "cp", str(local_path), s3_url]
+            if cfg.s3_endpoint:
+                cmd += ["--endpoint-url", cfg.s3_endpoint]
+            cmd += ["--region", cfg.s3_region]
 
             try:
-                result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
                 if result.returncode == 0:
                     s3_urls[filename] = s3_url
                     logger.info(f"Uploaded {filename} to S3")
@@ -405,7 +405,9 @@ class HierarchicalTrainingStep(PipelineStep):
 
         task_name = task_name or f"step-{self.name}"
 
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        runner_script = (
+            Path(__file__).parent.parent.parent.parent.parent / "scripts" / "clearml_step_runner.py"
+        )
 
         self._task = Task.create(
             project_name=project,

@@ -66,11 +66,11 @@ class TrainingStepConfig:
     save_best: bool = True
     save_final: bool = True
 
-    # S3 upload (iDrive e2 compatible)
+    # S3 upload
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
-    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
-    s3_region: str = "eu-central-2"
+    s3_endpoint: str = ""
+    s3_region: str = "eu-central-1"
     s3_models_prefix: str = "models"  # s3://bucket/models/<experiment-name>/
 
 
@@ -171,7 +171,9 @@ class TrainingStep(PipelineStep):
         """
         outputs = artifacts.outputs
         has_dataset = any(k in outputs for k in ("dataset_path", "patches_path", "lmdb_path"))
-        has_class_info = any(k in outputs for k in ("class_mapping", "index_to_class", "class_names"))
+        has_class_info = any(
+            k in outputs for k in ("class_mapping", "index_to_class", "class_names")
+        )
         return has_dataset and has_class_info
 
     def execute(self, artifacts: StepArtifacts) -> StepArtifacts:
@@ -197,7 +199,9 @@ class TrainingStep(PipelineStep):
         # - 'dataset_path' (from SOTA controller)
         # - 'lmdb_path' (from LMDB creation step)
         # - 'patches_path' (legacy)
-        patches_path_str = inputs.get("dataset_path") or inputs.get("lmdb_path") or inputs.get("patches_path")
+        patches_path_str = (
+            inputs.get("dataset_path") or inputs.get("lmdb_path") or inputs.get("patches_path")
+        )
         if not patches_path_str:
             raise ValueError("dataset_path, patches_path, or lmdb_path artifact is required")
         patches_path = resolve_artifact_path(patches_path_str, "patches_path")
@@ -264,8 +268,8 @@ class TrainingStep(PipelineStep):
         logger.info(f"Output: {output_dir}")
 
         # Create data loaders (may update num_classes if dataset has unexpected labels)
-        train_loader, val_loader, test_loader, class_weights, num_classes = self._create_dataloaders(
-            patches_path, class_mapping, cfg
+        train_loader, val_loader, test_loader, class_weights, num_classes = (
+            self._create_dataloaders(patches_path, class_mapping, cfg)
         )
 
         # Create model
@@ -319,25 +323,33 @@ class TrainingStep(PipelineStep):
         # Save final model
         if cfg.save_final:
             final_path = output_dir / "final_model.pt"
-            torch.save({
-                "model_state_dict": model.state_dict(),
-                "config": {
-                    "backbone": cfg.backbone,
-                    "num_classes": num_classes,
-                    "class_mapping": class_mapping,
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "config": {
+                        "backbone": cfg.backbone,
+                        "num_classes": num_classes,
+                        "class_mapping": class_mapping,
+                    },
+                    "test_metrics": test_metrics,
                 },
-                "test_metrics": test_metrics,
-            }, final_path)
+                final_path,
+            )
             logger.info(f"Saved final model to {final_path}")
 
         # Save training log
         import json
+
         log_path = output_dir / "training_log.json"
         with open(log_path, "w") as f:
-            json.dump({
-                **training_history,
-                "test_metrics": test_metrics,
-            }, f, indent=2)
+            json.dump(
+                {
+                    **training_history,
+                    "test_metrics": test_metrics,
+                },
+                f,
+                indent=2,
+            )
 
         # Upload to S3 and register in ClearML
         s3_urls = {}
@@ -412,16 +424,16 @@ class TrainingStep(PipelineStep):
                 _, label = train_dataset[i]
                 max_label = max(max_label, label)
             if max_label >= num_classes:
-                logger.warning(f"Dataset has labels up to {max_label}, expanding num_classes from {num_classes} to {max_label + 1}")
+                logger.warning(
+                    f"Dataset has labels up to {max_label}, expanding num_classes from {num_classes} to {max_label + 1}"
+                )
                 num_classes = max_label + 1
 
         # Create sampler for training
         sampler = None
         if cfg.use_weighted_sampler:
             sample_weights = self._get_sample_weights(train_dataset, class_weights)
-            sampler = WeightedRandomSampler(
-                sample_weights, len(sample_weights), replacement=True
-            )
+            sampler = WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
 
         # Create loaders
         # Note: pin_memory disabled to avoid segfault with LMDB memory-mapped files
@@ -474,6 +486,7 @@ class TrainingStep(PipelineStep):
 
             def __init__(self, lmdb_path, transform=None):
                 import struct
+
                 self.struct = struct
 
                 self.env = lmdb.open(
@@ -617,8 +630,8 @@ class TrainingStep(PipelineStep):
             n_class_train = n_class - n_class_val - n_class_test
 
             train_indices.extend(class_indices[:n_class_train])
-            val_indices.extend(class_indices[n_class_train:n_class_train + n_class_val])
-            test_indices.extend(class_indices[n_class_train + n_class_val:])
+            val_indices.extend(class_indices[n_class_train : n_class_train + n_class_val])
+            test_indices.extend(class_indices[n_class_train + n_class_val :])
 
         return (
             Subset(dataset, train_indices),
@@ -644,7 +657,9 @@ class TrainingStep(PipelineStep):
                 new_counts[:num_classes] = counts
                 counts = new_counts
                 num_classes = label + 1
-                logger.warning(f"Label {label} exceeds expected num_classes, expanding to {num_classes}")
+                logger.warning(
+                    f"Label {label} exceeds expected num_classes, expanding to {num_classes}"
+                )
             counts[label] += 1
 
         # Inverse frequency weights
@@ -771,12 +786,15 @@ class TrainingStep(PipelineStep):
 
                 # Save best model
                 if cfg.save_best:
-                    torch.save({
-                        "epoch": epoch + 1,
-                        "model_state_dict": model.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "val_f1": val_f1,
-                    }, output_dir / "best_model.pt")
+                    torch.save(
+                        {
+                            "epoch": epoch + 1,
+                            "model_state_dict": model.state_dict(),
+                            "optimizer_state_dict": optimizer.state_dict(),
+                            "val_f1": val_f1,
+                        },
+                        output_dir / "best_model.pt",
+                    )
             else:
                 patience_counter += 1
 
@@ -840,7 +858,11 @@ class TrainingStep(PipelineStep):
             "precision": precision_score(all_labels, all_preds, average="macro"),
             "recall": recall_score(all_labels, all_preds, average="macro"),
             "classification_report": classification_report(
-                all_labels, all_preds, labels=unique_labels, target_names=target_names, output_dict=True
+                all_labels,
+                all_preds,
+                labels=unique_labels,
+                target_names=target_names,
+                output_dict=True,
             ),
         }
 
@@ -880,12 +902,6 @@ class TrainingStep(PipelineStep):
 
         logger.info(f"Uploading models to S3: {s3_prefix}")
 
-        # Set up AWS credentials for iDrive e2 storage
-        # ALWAYS set correct credentials - don't rely on environment which may be corrupted
-        env = os.environ.copy()
-        env["AWS_ACCESS_KEY_ID"] = "evkizOGyflbhx5uSi4oV"
-        env["AWS_SECRET_ACCESS_KEY"] = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
-
         s3_urls = {}
         files_to_upload = ["best_model.pt", "final_model.pt", "training_log.json"]
 
@@ -895,14 +911,13 @@ class TrainingStep(PipelineStep):
                 continue
 
             s3_url = f"{s3_prefix}/{filename}"
-            cmd = [
-                "aws", "s3", "cp", str(local_path), s3_url,
-                "--endpoint-url", cfg.s3_endpoint,
-                "--region", cfg.s3_region,
-            ]
+            cmd = ["aws", "s3", "cp", str(local_path), s3_url]
+            if cfg.s3_endpoint:
+                cmd += ["--endpoint-url", cfg.s3_endpoint]
+            cmd += ["--region", cfg.s3_region]
 
             try:
-                result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
                 if result.returncode == 0:
                     s3_urls[filename] = s3_url
                     logger.info(f"Uploaded {filename} to S3")
@@ -925,7 +940,9 @@ class TrainingStep(PipelineStep):
                     # Add test metrics
                     if test_metrics:
                         task.get_logger().report_scalar("test", "f1", test_metrics.get("f1", 0), 0)
-                        task.get_logger().report_scalar("test", "accuracy", test_metrics.get("accuracy", 0), 0)
+                        task.get_logger().report_scalar(
+                            "test", "accuracy", test_metrics.get("accuracy", 0), 0
+                        )
 
                     logger.info("Registered models in ClearML task")
             except Exception as e:
@@ -952,7 +969,11 @@ class TrainingStep(PipelineStep):
 
         # Use the runner script for remote execution (avoids uv entry point issues)
         # Path: src/dapidl/pipeline/steps -> 5 parents to reach repo root
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
+        runner_script = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "scripts"
+            / f"clearml_step_runner_{self.name}.py"
+        )
 
         self._task = Task.create(
             project_name=project,

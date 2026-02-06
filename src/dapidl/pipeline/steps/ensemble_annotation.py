@@ -68,7 +68,7 @@ class EnsembleAnnotationConfig:
     # S3 settings
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
-    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
+    s3_endpoint: str = ""
 
 
 class EnsembleAnnotationStep(PipelineStep):
@@ -255,9 +255,7 @@ class EnsembleAnnotationStep(PipelineStep):
 
         # Resolve artifact URLs to local paths
         data_path = resolve_artifact_path(inputs["data_path"], "data_path")
-        expression_path = resolve_artifact_path(
-            inputs.get("expression_path"), "expression_path"
-        )
+        expression_path = resolve_artifact_path(inputs.get("expression_path"), "expression_path")
 
         if data_path is None:
             raise ValueError("data_path artifact is required")
@@ -284,7 +282,8 @@ class EnsembleAnnotationStep(PipelineStep):
                     saved_config = json.load(f)
                 # Check key annotation parameters
                 config_matches = (
-                    sorted(saved_config.get("celltypist_models", [])) == sorted(cfg.celltypist_models)
+                    sorted(saved_config.get("celltypist_models", []))
+                    == sorted(cfg.celltypist_models)
                     and saved_config.get("include_singler") == cfg.include_singler
                     and saved_config.get("singler_reference") == cfg.singler_reference
                     and saved_config.get("fine_grained") == cfg.fine_grained
@@ -326,6 +325,7 @@ class EnsembleAnnotationStep(PipelineStep):
 
                     # Copy or link cached files
                     import shutil
+
                     if not local_annotations.exists():
                         shutil.copy2(annotations_path, local_annotations)
                     if not local_mapping.exists():
@@ -404,15 +404,19 @@ class EnsembleAnnotationStep(PipelineStep):
         # Save config for skip logic validation
         config_path = output_dir / "config.json"
         with open(config_path, "w") as f:
-            json.dump({
-                "celltypist_models": cfg.celltypist_models,
-                "include_singler": cfg.include_singler,
-                "singler_reference": cfg.singler_reference,
-                "include_sctype": cfg.include_sctype,
-                "fine_grained": cfg.fine_grained,
-                "min_agreement": cfg.min_agreement,
-                "confidence_threshold": cfg.confidence_threshold,
-            }, f, indent=2)
+            json.dump(
+                {
+                    "celltypist_models": cfg.celltypist_models,
+                    "include_singler": cfg.include_singler,
+                    "singler_reference": cfg.singler_reference,
+                    "include_sctype": cfg.include_sctype,
+                    "fine_grained": cfg.fine_grained,
+                    "min_agreement": cfg.min_agreement,
+                    "confidence_threshold": cfg.confidence_threshold,
+                },
+                f,
+                indent=2,
+            )
 
         annotations_path = output_dir / "annotations.parquet"
         consensus_df.write_parquet(annotations_path)
@@ -596,7 +600,7 @@ class EnsembleAnnotationStep(PipelineStep):
 
     def _get_singler_script(self) -> str:
         """Return R script for SingleR annotation."""
-        return '''
+        return """
 library(SingleR)
 library(celldex)
 library(anndata)
@@ -634,7 +638,7 @@ output <- data.frame(
     delta.next = results$delta.next
 )
 write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALSE)
-'''
+"""
 
     def _run_sctype(self, adata) -> dict:
         """Run scType annotation (marker-based)."""
@@ -667,15 +671,19 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
 
         for pred in all_predictions:
             pred_dict = dict(zip(pred["cell_ids"], pred["predictions"]))
-            conf_dict = dict(zip(pred["cell_ids"], pred.get("confidence", [1.0] * len(pred["cell_ids"]))))
+            conf_dict = dict(
+                zip(pred["cell_ids"], pred.get("confidence", [1.0] * len(pred["cell_ids"])))
+            )
 
             for cell_id in cell_ids:
                 if cell_id in pred_dict:
-                    cell_votes[cell_id].append({
-                        "source": pred["source"],
-                        "label": pred_dict[cell_id],
-                        "confidence": conf_dict[cell_id],
-                    })
+                    cell_votes[cell_id].append(
+                        {
+                            "source": pred["source"],
+                            "label": pred_dict[cell_id],
+                            "confidence": conf_dict[cell_id],
+                        }
+                    )
 
         # Build consensus
         consensus_records = []
@@ -730,18 +738,19 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
 
             # Get original fine-grained label from winner method
             winner_vote = next(
-                (v for v in votes if self._standardize_label(v["label"]) == winner_label),
-                votes[0]
+                (v for v in votes if self._standardize_label(v["label"]) == winner_label), votes[0]
             )
 
-            consensus_records.append({
-                "cell_id": cell_id,
-                "predicted_type": winner_vote["label"],  # Original fine-grained
-                "broad_category": winner_label,  # Standardized
-                "confidence": consensus_confidence,
-                "n_votes": len(votes),
-                "n_agreement": sum(1 for l in vote_labels if l == winner_label),
-            })
+            consensus_records.append(
+                {
+                    "cell_id": cell_id,
+                    "predicted_type": winner_vote["label"],  # Original fine-grained
+                    "broad_category": winner_label,  # Standardized
+                    "confidence": consensus_confidence,
+                    "n_votes": len(votes),
+                    "n_agreement": sum(1 for l in vote_labels if l == winner_label),
+                }
+            )
 
         # Create DataFrame
         consensus_df = pl.DataFrame(consensus_records)
@@ -766,33 +775,76 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
         label_lower = label.lower()
 
         # Epithelial markers
-        if any(marker in label_lower for marker in [
-            "epithelial", "luminal", "basal", "keratinocyte", "secretory",
-            "ductal", "acinar", "alveolar", "squamous", "glandular",
-            "mammary", "breast", "tumor"
-        ]):
+        if any(
+            marker in label_lower
+            for marker in [
+                "epithelial",
+                "luminal",
+                "basal",
+                "keratinocyte",
+                "secretory",
+                "ductal",
+                "acinar",
+                "alveolar",
+                "squamous",
+                "glandular",
+                "mammary",
+                "breast",
+                "tumor",
+            ]
+        ):
             return "Epithelial"
 
         # Immune markers
-        if any(marker in label_lower for marker in [
-            "t cell", "t_cell", "cd4", "cd8", "nk", "natural killer",
-            "b cell", "b_cell", "plasma", "myeloid", "monocyte", "macrophage",
-            "dendritic", "dc", "neutrophil", "granulocyte", "mast",
-            "lymphocyte", "immune", "leukocyte"
-        ]):
+        if any(
+            marker in label_lower
+            for marker in [
+                "t cell",
+                "t_cell",
+                "cd4",
+                "cd8",
+                "nk",
+                "natural killer",
+                "b cell",
+                "b_cell",
+                "plasma",
+                "myeloid",
+                "monocyte",
+                "macrophage",
+                "dendritic",
+                "dc",
+                "neutrophil",
+                "granulocyte",
+                "mast",
+                "lymphocyte",
+                "immune",
+                "leukocyte",
+            ]
+        ):
             return "Immune"
 
         # Stromal markers
-        if any(marker in label_lower for marker in [
-            "fibroblast", "stromal", "mesenchymal", "adipocyte", "fat",
-            "myofibroblast", "pericyte", "smooth muscle", "caf"
-        ]):
+        if any(
+            marker in label_lower
+            for marker in [
+                "fibroblast",
+                "stromal",
+                "mesenchymal",
+                "adipocyte",
+                "fat",
+                "myofibroblast",
+                "pericyte",
+                "smooth muscle",
+                "caf",
+            ]
+        ):
             return "Stromal"
 
         # Endothelial markers
-        if any(marker in label_lower for marker in [
-            "endothelial", "vascular", "blood vessel", "lymphatic"
-        ]):
+        if any(
+            marker in label_lower
+            for marker in ["endothelial", "vascular", "blood vessel", "lymphatic"]
+        ):
             return "Endothelial"
 
         return "Other"
@@ -888,29 +940,32 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
                 )
 
             # Metadata (this goes to ClearML - small JSON only)
-            dataset.set_metadata({
-                "config_hash": config_hash,
-                "raw_dataset_id": raw_dataset_id,
-                "celltypist_models": sorted(cfg.celltypist_models),
-                "include_singler": cfg.include_singler,
-                "singler_reference": cfg.singler_reference,
-                "include_sctype": cfg.include_sctype,
-                "min_agreement": cfg.min_agreement,
-                "confidence_threshold": cfg.confidence_threshold,
-                "fine_grained": cfg.fine_grained,
-                "annotation_methods": stats["methods_used"],
-                "n_cells": len(consensus_df),
-                "n_classes": len(consensus_df["predicted_type"].unique()),
-                "parent_dataset": cfg.parent_dataset_id,
-                "platform": platform,
-                "unanimous_agreement_pct": stats["unanimous_agreement"] / stats["annotated_cells"]
-                if stats["annotated_cells"] > 0
-                else 0,
-                "s3_uri": s3_uri,  # Store S3 location in metadata
-                "local_path": str(output_dir),  # For reference
-                "registration_type": "external_reference",
-                "uploaded_to_clearml": False,
-            })
+            dataset.set_metadata(
+                {
+                    "config_hash": config_hash,
+                    "raw_dataset_id": raw_dataset_id,
+                    "celltypist_models": sorted(cfg.celltypist_models),
+                    "include_singler": cfg.include_singler,
+                    "singler_reference": cfg.singler_reference,
+                    "include_sctype": cfg.include_sctype,
+                    "min_agreement": cfg.min_agreement,
+                    "confidence_threshold": cfg.confidence_threshold,
+                    "fine_grained": cfg.fine_grained,
+                    "annotation_methods": stats["methods_used"],
+                    "n_cells": len(consensus_df),
+                    "n_classes": len(consensus_df["predicted_type"].unique()),
+                    "parent_dataset": cfg.parent_dataset_id,
+                    "platform": platform,
+                    "unanimous_agreement_pct": stats["unanimous_agreement"]
+                    / stats["annotated_cells"]
+                    if stats["annotated_cells"] > 0
+                    else 0,
+                    "s3_uri": s3_uri,  # Store S3 location in metadata
+                    "local_path": str(output_dir),  # For reference
+                    "registration_type": "external_reference",
+                    "uploaded_to_clearml": False,
+                }
+            )
 
             dataset.finalize()
             # NOTE: Do NOT call dataset.upload() - files are already on S3
@@ -939,7 +994,11 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
         task_name = task_name or f"step-{self.name}"
 
         # Use the runner script for remote execution (avoids uv entry point issues)
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
+        runner_script = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "scripts"
+            / f"clearml_step_runner_{self.name}.py"
+        )
 
         self._task = Task.create(
             project_name=project,

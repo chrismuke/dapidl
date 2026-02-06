@@ -175,8 +175,8 @@ def create_sota_config(
             save_final=True,
             upload_to_s3=True,
             s3_bucket="dapidl",
-            s3_endpoint="https://s3.eu-central-2.idrivee2.com",
-            s3_region="eu-central-2",
+            s3_endpoint="",
+            s3_region="eu-central-1",
             s3_models_prefix="models",
             register_datasets=True,
             register_models=True,
@@ -376,7 +376,9 @@ class SOTAPipelineController:
                 # Consensus settings - CRITICAL: use_confidence_weighting=False
                 "step_config/min_agreement": cfg.annotation.min_agreement,
                 "step_config/confidence_threshold": cfg.annotation.confidence_threshold,
-                "step_config/use_confidence_weighting": str(cfg.annotation.use_confidence_weighting),
+                "step_config/use_confidence_weighting": str(
+                    cfg.annotation.use_confidence_weighting
+                ),
                 "step_config/fine_grained": str(cfg.annotation.fine_grained),
                 # Ground truth (if applicable)
                 "step_config/ground_truth_file": cfg.annotation.ground_truth_file or "",
@@ -422,7 +424,9 @@ class SOTAPipelineController:
                     "step_config/centroids_parquet": "${segmentation.artifacts.centroids_parquet.url}",
                     "step_config/annotations_parquet": "${ensemble_annotation.artifacts.annotations_parquet.url}",
                 },
-                execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
+                execution_queue=cfg.execution.default_queue
+                if cfg.execution.execute_remotely
+                else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
             )
 
@@ -641,7 +645,9 @@ class SOTAPipelineController:
         logger.info("Step 3: Ensemble Annotation (SOTA)")
         logger.info("=" * 50)
         logger.info(f"  Models: {cfg.annotation.celltypist_models}")
-        logger.info(f"  SingleR: {cfg.annotation.include_singler} ({cfg.annotation.singler_reference})")
+        logger.info(
+            f"  SingleR: {cfg.annotation.include_singler} ({cfg.annotation.singler_reference})"
+        )
         logger.info(f"  Confidence weighting: {cfg.annotation.use_confidence_weighting}")
 
         annot_config = EnsembleAnnotationConfig(

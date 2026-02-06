@@ -9,8 +9,8 @@ from pathlib import Path
 from clearml import Dataset
 from loguru import logger
 
-# S3 configuration for iDrive e2
-S3_ENDPOINT = "s3://s3.eu-central-2.idrivee2.com:443/dapidl"
+# S3 configuration (AWS S3)
+S3_ENDPOINT = "s3://dapidl"
 
 # Base paths
 RAW_XENIUM = Path("~/datasets/raw/xenium").expanduser()
@@ -36,92 +36,110 @@ TISSUE_MODELS = {
 # Format: (directory_name, tissue_type, description_extra, tags_extra)
 XENIUM_DATASETS = [
     # Breast (ground truth available for rep1)
-    ("breast_tumor_rep1", "breast",
-     "Ground truth available (Janesick et al. 2023)",
-     ["ground-truth", "rep1"]),
-    ("breast_tumor_rep2", "breast",
-     "Replicate 2 for cross-validation",
-     ["rep2"]),
-
+    (
+        "breast_tumor_rep1",
+        "breast",
+        "Ground truth available (Janesick et al. 2023)",
+        ["ground-truth", "rep1"],
+    ),
+    ("breast_tumor_rep2", "breast", "Replicate 2 for cross-validation", ["rep2"]),
     # Colon
-    ("colon_cancer_colon-panel", "colon",
-     "Colon cancer with colon-specific gene panel",
-     ["cancer", "colon-panel"]),
-    ("colon_normal_colon-panel", "colon",
-     "Normal colon tissue with colon-specific gene panel",
-     ["normal", "colon-panel"]),
-    ("colorectal_cancer_io-panel", "colorectal",
-     "Colorectal cancer with immuno-oncology panel",
-     ["cancer", "io-panel"]),
-
+    (
+        "colon_cancer_colon-panel",
+        "colon",
+        "Colon cancer with colon-specific gene panel",
+        ["cancer", "colon-panel"],
+    ),
+    (
+        "colon_normal_colon-panel",
+        "colon",
+        "Normal colon tissue with colon-specific gene panel",
+        ["normal", "colon-panel"],
+    ),
+    (
+        "colorectal_cancer_io-panel",
+        "colorectal",
+        "Colorectal cancer with immuno-oncology panel",
+        ["cancer", "io-panel"],
+    ),
     # Heart
-    ("heart_normal_multi-tissue-panel", "heart",
-     "Normal heart tissue with multi-tissue panel",
-     ["normal", "multi-tissue-panel"]),
-
+    (
+        "heart_normal_multi-tissue-panel",
+        "heart",
+        "Normal heart tissue with multi-tissue panel",
+        ["normal", "multi-tissue-panel"],
+    ),
     # Kidney
-    ("kidney_cancer_multi-tissue-panel", "kidney",
-     "Kidney cancer with multi-tissue panel",
-     ["cancer", "multi-tissue-panel"]),
-    ("kidney_normal_multi-tissue-panel", "kidney",
-     "Normal kidney tissue with multi-tissue panel",
-     ["normal", "multi-tissue-panel"]),
-
+    (
+        "kidney_cancer_multi-tissue-panel",
+        "kidney",
+        "Kidney cancer with multi-tissue panel",
+        ["cancer", "multi-tissue-panel"],
+    ),
+    (
+        "kidney_normal_multi-tissue-panel",
+        "kidney",
+        "Normal kidney tissue with multi-tissue panel",
+        ["normal", "multi-tissue-panel"],
+    ),
     # Liver
-    ("liver_cancer_multi-tissue-panel", "liver",
-     "Liver cancer with multi-tissue panel",
-     ["cancer", "multi-tissue-panel"]),
-    ("liver_normal_multi-tissue-panel", "liver",
-     "Normal liver tissue with multi-tissue panel",
-     ["normal", "multi-tissue-panel"]),
-
+    (
+        "liver_cancer_multi-tissue-panel",
+        "liver",
+        "Liver cancer with multi-tissue panel",
+        ["cancer", "multi-tissue-panel"],
+    ),
+    (
+        "liver_normal_multi-tissue-panel",
+        "liver",
+        "Normal liver tissue with multi-tissue panel",
+        ["normal", "multi-tissue-panel"],
+    ),
     # Lung
-    ("lung_2fov", "lung",
-     "Small 2-FOV test dataset",
-     ["2fov", "test-dataset"]),
-    ("lung_cancer_lung-panel", "lung",
-     "Lung cancer with lung-specific gene panel",
-     ["cancer", "lung-panel"]),
-
+    ("lung_2fov", "lung", "Small 2-FOV test dataset", ["2fov", "test-dataset"]),
+    (
+        "lung_cancer_lung-panel",
+        "lung",
+        "Lung cancer with lung-specific gene panel",
+        ["cancer", "lung-panel"],
+    ),
     # Lymph node
-    ("lymph_node_normal", "lymph_node",
-     "Normal lymph node tissue",
-     ["normal"]),
-
+    ("lymph_node_normal", "lymph_node", "Normal lymph node tissue", ["normal"]),
     # Ovary
-    ("ovarian_cancer", "ovary",
-     "Xenium Prime ovarian cancer with 5K gene panel",
-     ["cancer", "xenium-prime", "5k-panel"]),
-    ("ovary_cancer_ff", "ovary",
-     "Ovarian cancer fresh-frozen sample",
-     ["cancer", "fresh-frozen"]),
-
+    (
+        "ovarian_cancer",
+        "ovary",
+        "Xenium Prime ovarian cancer with 5K gene panel",
+        ["cancer", "xenium-prime", "5k-panel"],
+    ),
+    ("ovary_cancer_ff", "ovary", "Ovarian cancer fresh-frozen sample", ["cancer", "fresh-frozen"]),
     # Pancreas
-    ("pancreas_cancer_multi-tissue-panel", "pancreas",
-     "Pancreatic cancer with multi-tissue panel",
-     ["cancer", "multi-tissue-panel"]),
-
+    (
+        "pancreas_cancer_multi-tissue-panel",
+        "pancreas",
+        "Pancreatic cancer with multi-tissue panel",
+        ["cancer", "multi-tissue-panel"],
+    ),
     # Skin
-    ("skin_normal_sample1", "skin",
-     "Normal skin sample 1",
-     ["normal", "sample1"]),
-    ("skin_normal_sample2", "skin",
-     "Normal skin sample 2",
-     ["normal", "sample2"]),
-
+    ("skin_normal_sample1", "skin", "Normal skin sample 1", ["normal", "sample1"]),
+    ("skin_normal_sample2", "skin", "Normal skin sample 2", ["normal", "sample2"]),
     # Tonsil
-    ("tonsil_lymphoid-hyperplasia", "tonsil",
-     "Tonsil with lymphoid hyperplasia",
-     ["hyperplasia", "lymphoid"]),
-    ("tonsil_reactive-hyperplasia", "tonsil",
-     "Tonsil with reactive hyperplasia",
-     ["hyperplasia", "reactive"]),
+    (
+        "tonsil_lymphoid-hyperplasia",
+        "tonsil",
+        "Tonsil with lymphoid hyperplasia",
+        ["hyperplasia", "lymphoid"],
+    ),
+    (
+        "tonsil_reactive-hyperplasia",
+        "tonsil",
+        "Tonsil with reactive hyperplasia",
+        ["hyperplasia", "reactive"],
+    ),
 ]
 
 MERSCOPE_DATASETS = [
-    ("breast", "breast",
-     "MERSCOPE breast cancer with 500-gene panel",
-     ["cancer"]),
+    ("breast", "breast", "MERSCOPE breast cancer with 500-gene panel", ["cancer"]),
 ]
 
 
@@ -133,17 +151,18 @@ def get_dataset_size(path: Path) -> str:
             total += f.stat().st_size
 
     if total > 1e9:
-        return f"{total/1e9:.1f} GB"
+        return f"{total / 1e9:.1f} GB"
     elif total > 1e6:
-        return f"{total/1e6:.1f} MB"
+        return f"{total / 1e6:.1f} MB"
     else:
-        return f"{total/1e3:.1f} KB"
+        return f"{total / 1e3:.1f} KB"
 
 
 def count_cells(path: Path) -> int | None:
     """Count cells from cells.parquet if available."""
     try:
         import polars as pl
+
         cells_path = path / "cells.parquet"
         if not cells_path.exists():
             # Check outs subdirectory
@@ -192,13 +211,13 @@ def upload_dataset(
     size = get_dataset_size(path)
     cells = count_cells(path)
 
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"Uploading: {name}")
     logger.info(f"Path: {path}")
     logger.info(f"Size: {size}")
     if cells:
         logger.info(f"Cells: {cells:,}")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     # Build full description
     models = TISSUE_MODELS.get(tissue, ["Immune_All_High.pkl"])
@@ -207,11 +226,11 @@ def upload_dataset(
 Platform: {platform.upper()}
 Tissue: {tissue}
 Size: {size}
-{f'Cells: {cells:,}' if cells else ''}
+{f"Cells: {cells:,}" if cells else ""}
 
 {description}
 
-Recommended CellTypist models: {', '.join(models)}
+Recommended CellTypist models: {", ".join(models)}
 
 Contents:
 - morphology.ome.tif: DAPI nuclear staining images
@@ -256,14 +275,15 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Register raw datasets to ClearML")
-    parser.add_argument("--platform", choices=["xenium", "merscope", "all"], default="all",
-                       help="Platform to upload (default: all)")
-    parser.add_argument("--tissue", type=str, default=None,
-                       help="Only upload specific tissue type")
-    parser.add_argument("--force", action="store_true",
-                       help="Re-upload even if dataset exists")
-    parser.add_argument("--dry-run", action="store_true",
-                       help="List datasets without uploading")
+    parser.add_argument(
+        "--platform",
+        choices=["xenium", "merscope", "all"],
+        default="all",
+        help="Platform to upload (default: all)",
+    )
+    parser.add_argument("--tissue", type=str, default=None, help="Only upload specific tissue type")
+    parser.add_argument("--force", action="store_true", help="Re-upload even if dataset exists")
+    parser.add_argument("--dry-run", action="store_true", help="List datasets without uploading")
     args = parser.parse_args()
 
     logger.info("Raw Dataset Registration to ClearML")
@@ -332,12 +352,12 @@ def main():
             logger.error(f"Failed to upload {name}: {e}")
             failed += 1
 
-    logger.info("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
     logger.info("Registration Complete!")
     logger.info(f"  Uploaded: {uploaded}")
     logger.info(f"  Skipped (existing): {skipped}")
     logger.info(f"  Failed: {failed}")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

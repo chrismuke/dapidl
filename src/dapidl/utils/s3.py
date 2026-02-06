@@ -5,6 +5,11 @@ This module provides the correct pattern for data storage:
 2. Register with ClearML using add_external_files() (metadata only)
 
 NEVER upload large data directly to ClearML file server.
+
+AWS credentials are resolved via standard boto3 chain:
+- Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+- ~/.aws/credentials profiles (AWS_PROFILE)
+- IAM instance profile (on EC2)
 """
 
 import os
@@ -14,18 +19,12 @@ from typing import Optional
 
 from loguru import logger
 
-# S3 Configuration (iDrive e2)
-# IMPORTANT: These are project-specific credentials for iDrive e2 storage.
-# DO NOT use environment variables as they may be corrupted or for different services.
-S3_ENDPOINT = "https://s3.eu-central-2.idrivee2.com"
-S3_REGION = "eu-central-2"
-S3_BUCKET = "dapidl"
-
-# Hardcoded credentials for iDrive e2 - these are the ONLY valid credentials
-# for this bucket. Environment variables are intentionally ignored to prevent
-# conflicts with AWS credentials for other services.
-S3_ACCESS_KEY = "evkizOGyflbhx5uSi4oV"
-S3_SECRET_KEY = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
+# S3 Configuration — AWS S3 defaults (eu-central-1).
+# Override with DAPIDL_S3_* env vars if needed.
+# For S3-compatible storage: set DAPIDL_S3_ENDPOINT to the endpoint URL.
+S3_ENDPOINT = os.environ.get("DAPIDL_S3_ENDPOINT", "")
+S3_REGION = os.environ.get("DAPIDL_S3_REGION", "eu-central-1")
+S3_BUCKET = os.environ.get("DAPIDL_S3_BUCKET", "dapidl")
 
 
 def get_s3_uri(path: str) -> str:
@@ -33,6 +32,15 @@ def get_s3_uri(path: str) -> str:
     if path.startswith("s3://"):
         return path
     return f"s3://{S3_BUCKET}/{path.lstrip('/')}"
+
+
+def _build_s3_cmd(action: str, src: str, dst: str) -> list[str]:
+    """Build an aws s3 command with optional endpoint override."""
+    cmd = ["aws", "s3", action, src, dst]
+    if S3_ENDPOINT:
+        cmd += ["--endpoint-url", S3_ENDPOINT]
+    cmd += ["--region", S3_REGION]
+    return cmd
 
 
 def upload_to_s3(
@@ -55,28 +63,14 @@ def upload_to_s3(
         raise FileNotFoundError(f"Local path not found: {local_path}")
 
     s3_uri = get_s3_uri(s3_path)
-
-    # Build aws s3 sync/cp command
-    cmd = [
-        "aws", "s3",
-        "sync" if local_path.is_dir() else "cp",
-        str(local_path),
-        s3_uri,
-        "--endpoint-url", S3_ENDPOINT,
-        "--region", S3_REGION,
-    ]
-
-    # Set credentials in environment
-    env = os.environ.copy()
-    env["AWS_ACCESS_KEY_ID"] = S3_ACCESS_KEY
-    env["AWS_SECRET_ACCESS_KEY"] = S3_SECRET_KEY
+    action = "sync" if local_path.is_dir() else "cp"
+    cmd = _build_s3_cmd(action, str(local_path), s3_uri)
 
     logger.info(f"Uploading to S3: {local_path} -> {s3_uri}")
 
     try:
         result = subprocess.run(
             cmd,
-            env=env,
             capture_output=True,
             text=True,
             check=True,
@@ -85,6 +79,7 @@ def upload_to_s3(
 
         if delete_local:
             import shutil
+
             if local_path.is_dir():
                 shutil.rmtree(local_path)
             else:
@@ -120,23 +115,12 @@ def download_from_s3(
     local_path = Path(local_path)
     local_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        "aws", "s3",
-        "sync",
-        s3_uri,
-        str(local_path),
-        "--endpoint-url", S3_ENDPOINT,
-        "--region", S3_REGION,
-    ]
-
-    env = os.environ.copy()
-    env["AWS_ACCESS_KEY_ID"] = S3_ACCESS_KEY
-    env["AWS_SECRET_ACCESS_KEY"] = S3_SECRET_KEY
+    cmd = _build_s3_cmd("sync", s3_uri, str(local_path))
 
     logger.info(f"Downloading from S3: {s3_uri} -> {local_path}")
 
     try:
-        subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
         logger.info(f"Download complete: {local_path}")
         return local_path
 

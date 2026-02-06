@@ -49,8 +49,8 @@ DERIVED_DIR = Path.home() / "datasets" / "derived"
 
 # S3 Configuration
 S3_BUCKET = "dapidl"
-S3_ENDPOINT = "https://s3.eu-central-2.idrivee2.com"
-S3_REGION = "eu-central-2"
+S3_ENDPOINT = ""
+S3_REGION = "eu-central-1"
 
 # Datasets with manually supervised ground truth (expert annotations)
 GOLD_STANDARD_DATASETS = {
@@ -117,9 +117,15 @@ def discover_raw_datasets() -> list[dict[str, Any]]:
 
             for pd in [pipeline_dir, outs_pipeline_dir]:
                 if pd.exists():
-                    info["pipeline_annotation"] = (pd / "annotation" / "annotations.parquet").exists()
-                    info["ensemble_annotation"] = (pd / "ensemble_annotation" / "annotations.parquet").exists()
-                    info["cl_standardization"] = (pd / "cl_standardization" / "cl_annotations.parquet").exists()
+                    info["pipeline_annotation"] = (
+                        pd / "annotation" / "annotations.parquet"
+                    ).exists()
+                    info["ensemble_annotation"] = (
+                        pd / "ensemble_annotation" / "annotations.parquet"
+                    ).exists()
+                    info["cl_standardization"] = (
+                        pd / "cl_standardization" / "cl_annotations.parquet"
+                    ).exists()
                     break
             else:
                 info["pipeline_annotation"] = False
@@ -127,7 +133,9 @@ def discover_raw_datasets() -> list[dict[str, Any]]:
                 info["cl_standardization"] = False
 
             # Check for ground truth files
-            gt_files = list(dataset_dir.glob("*supervised*.xlsx")) + list(dataset_dir.glob("*ground_truth*.csv"))
+            gt_files = list(dataset_dir.glob("*supervised*.xlsx")) + list(
+                dataset_dir.glob("*ground_truth*.csv")
+            )
             info["gt_files"] = [str(f.name) for f in gt_files]
 
             datasets.append(info)
@@ -147,7 +155,9 @@ def discover_raw_datasets() -> list[dict[str, Any]]:
 
             pipeline_dir = dataset_dir / "pipeline_outputs"
             if pipeline_dir.exists():
-                info["pipeline_annotation"] = (pipeline_dir / "annotation" / "annotations.parquet").exists()
+                info["pipeline_annotation"] = (
+                    pipeline_dir / "annotation" / "annotations.parquet"
+                ).exists()
             else:
                 info["pipeline_annotation"] = False
 
@@ -187,7 +197,9 @@ def discover_derived_datasets() -> list[dict[str, Any]]:
             info["platform"] = parts[0]
             info["tissue"] = parts[1]
             info["granularity"] = "finegrained" if "finegrained" in dataset_dir.name else "coarse"
-            info["patch_size"] = int(parts[-1].replace("p", "")) if parts[-1].startswith("p") else None
+            info["patch_size"] = (
+                int(parts[-1].replace("p", "")) if parts[-1].startswith("p") else None
+            )
 
         # Check for metadata
         metadata_path = dataset_dir / "metadata.parquet"
@@ -431,8 +443,12 @@ def generate_audit_report() -> str:
     report.append(f"Total Xenium datasets: {len(xenium_datasets)}")
     report.append(f"Total MERSCOPE datasets: {len(merscope_datasets)}")
     report.append(f"Datasets with manual GT: {sum(1 for d in raw_datasets if d['has_manual_gt'])}")
-    report.append(f"Datasets with pipeline annotation: {sum(1 for d in raw_datasets if d.get('pipeline_annotation'))}")
-    report.append(f"Datasets with CL standardization: {sum(1 for d in raw_datasets if d.get('cl_standardization'))}")
+    report.append(
+        f"Datasets with pipeline annotation: {sum(1 for d in raw_datasets if d.get('pipeline_annotation'))}"
+    )
+    report.append(
+        f"Datasets with CL standardization: {sum(1 for d in raw_datasets if d.get('cl_standardization'))}"
+    )
     report.append("")
 
     # Detailed raw dataset table
@@ -513,7 +529,10 @@ def main():
     # Download SPATCH
     spatch_parser = subparsers.add_parser("download-spatch", help="Download SPATCH images")
     spatch_parser.add_argument(
-        "--output", type=Path, default=Path.home() / "datasets" / "raw" / "spatch", help="Output directory"
+        "--output",
+        type=Path,
+        default=Path.home() / "datasets" / "raw" / "spatch",
+        help="Output directory",
     )
     spatch_parser.add_argument("--dry-run", action="store_true", help="Dry run")
 

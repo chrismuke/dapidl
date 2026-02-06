@@ -694,11 +694,11 @@ class OutputConfig(BaseModel):
         description="S3 bucket name",
     )
     s3_endpoint: str = Field(
-        default="https://s3.eu-central-2.idrivee2.com",
-        description="S3 endpoint URL (for iDrive e2 or other S3-compatible storage)",
+        default="",
+        description="S3 endpoint URL (empty for AWS S3, set for S3-compatible storage)",
     )
     s3_region: str = Field(
-        default="eu-central-2",
+        default="eu-central-1",
         description="S3 region",
     )
     s3_models_prefix: str = Field(
@@ -1166,7 +1166,7 @@ class DAPIDLPipelineConfig(BaseModel):
             output_dir=get_param("output", "output_dir", "./pipeline_output"),
             upload_to_s3=parse_bool(get_param("output", "upload_to_s3", "True")),
             s3_bucket=get_param("output", "s3_bucket", "dapidl"),
-            s3_endpoint=get_param("output", "s3_endpoint", "https://s3.eu-central-2.idrivee2.com"),
+            s3_endpoint=get_param("output", "s3_endpoint", ""),
             register_datasets=parse_bool(get_param("output", "register_datasets", "True")),
             register_models=parse_bool(get_param("output", "register_models", "True")),
             link_to_parent=parse_bool(get_param("output", "link_to_parent", "True")),

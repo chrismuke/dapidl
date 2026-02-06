@@ -61,7 +61,7 @@ class LMDBCreationConfig:
     # S3 settings
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
-    s3_endpoint: str = "https://s3.eu-central-2.idrivee2.com"
+    s3_endpoint: str = ""
 
 
 class LMDBCreationStep(PipelineStep):
@@ -177,10 +177,12 @@ class LMDBCreationStep(PipelineStep):
         data_path = resolve_artifact_path(inputs["data_path"], "data_path")
 
         # Prefer CL-standardized annotations if available, otherwise fall back to raw
-        annotations_key = "cl_annotations_parquet" if "cl_annotations_parquet" in inputs else "annotations_parquet"
-        annotations_path = resolve_artifact_path(
-            inputs[annotations_key], annotations_key
+        annotations_key = (
+            "cl_annotations_parquet"
+            if "cl_annotations_parquet" in inputs
+            else "annotations_parquet"
         )
+        annotations_path = resolve_artifact_path(inputs[annotations_key], annotations_key)
         logger.info(f"Using annotations from: {annotations_key}")
 
         if data_path is None:
@@ -234,7 +236,9 @@ class LMDBCreationStep(PipelineStep):
             # Remove None/Unknown if present
             unique_labels = [l for l in unique_labels if l and l not in ("Unknown", "Unmapped")]
             class_mapping = {label: idx for idx, label in enumerate(unique_labels)}
-            logger.info(f"Built class mapping from {label_col_for_mapping}: {len(class_mapping)} classes")
+            logger.info(
+                f"Built class mapping from {label_col_for_mapping}: {len(class_mapping)} classes"
+            )
 
         # Get platform for pixel size detection
         platform = self._resolve_platform(inputs)
@@ -253,9 +257,7 @@ class LMDBCreationStep(PipelineStep):
         dataset_id = None
         if cfg.create_clearml_dataset:
             try:
-                dataset_id = self._register_lmdb_dataset(
-                    lmdb_path, inputs, stats, cfg
-                )
+                dataset_id = self._register_lmdb_dataset(lmdb_path, inputs, stats, cfg)
                 logger.info(f"Registered LMDB dataset: {dataset_id}")
             except Exception as e:
                 logger.warning(f"Failed to register ClearML dataset: {e}")
@@ -284,9 +286,7 @@ class LMDBCreationStep(PipelineStep):
             return platform_path.read_text().strip()
         return str(platform_value)
 
-    def _check_existing_lmdb(
-        self, inputs: dict, cfg: LMDBCreationConfig
-    ) -> str | None:
+    def _check_existing_lmdb(self, inputs: dict, cfg: LMDBCreationConfig) -> str | None:
         """Check if matching LMDB dataset already exists."""
         try:
             from clearml import Dataset
@@ -388,17 +388,11 @@ class LMDBCreationStep(PipelineStep):
                 # Cast annotations cell_id to match cells_df type
                 target_type = cells_df.schema["cell_id"]
                 if target_type == pl.Int32 or target_type == pl.Int64:
-                    annotations_df = annotations_df.with_columns(
-                        pl.col("cell_id").cast(pl.Int64)
-                    )
-                    cells_df = cells_df.with_columns(
-                        pl.col("cell_id").cast(pl.Int64)
-                    )
+                    annotations_df = annotations_df.with_columns(pl.col("cell_id").cast(pl.Int64))
+                    cells_df = cells_df.with_columns(pl.col("cell_id").cast(pl.Int64))
                 else:
                     # Cast cells to string if annotations are strings
-                    cells_df = cells_df.with_columns(
-                        pl.col("cell_id").cast(pl.Utf8)
-                    )
+                    cells_df = cells_df.with_columns(pl.col("cell_id").cast(pl.Utf8))
                 logger.debug(f"Aligned cell_id types for join")
 
             annotations_df = annotations_df.join(
@@ -743,20 +737,22 @@ class LMDBCreationStep(PipelineStep):
                 )
 
             # Metadata (this goes to ClearML - small JSON only)
-            dataset.set_metadata({
-                "patch_size": cfg.patch_size,
-                "n_patches": stats["n_patches"],
-                "n_classes": stats["n_classes"],
-                "class_counts": stats["class_counts"],
-                "normalization": cfg.normalization_method,
-                "parent_annotated_id": inputs.get("annotated_dataset_id"),
-                "platform": platform,
-                "normalize_physical_size": cfg.normalize_physical_size,
-                "s3_uri": s3_uri,  # Store S3 location in metadata
-                "local_path": str(lmdb_path),  # For reference
-                "registration_type": "external_reference",
-                "uploaded_to_clearml": False,
-            })
+            dataset.set_metadata(
+                {
+                    "patch_size": cfg.patch_size,
+                    "n_patches": stats["n_patches"],
+                    "n_classes": stats["n_classes"],
+                    "class_counts": stats["class_counts"],
+                    "normalization": cfg.normalization_method,
+                    "parent_annotated_id": inputs.get("annotated_dataset_id"),
+                    "platform": platform,
+                    "normalize_physical_size": cfg.normalize_physical_size,
+                    "s3_uri": s3_uri,  # Store S3 location in metadata
+                    "local_path": str(lmdb_path),  # For reference
+                    "registration_type": "external_reference",
+                    "uploaded_to_clearml": False,
+                }
+            )
 
             dataset.finalize()
             # NOTE: Do NOT call dataset.upload() - files are already on S3
@@ -785,7 +781,11 @@ class LMDBCreationStep(PipelineStep):
         task_name = task_name or f"step-{self.name}"
 
         # Use the runner script for remote execution (avoids uv entry point issues)
-        runner_script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / f"clearml_step_runner_{self.name}.py"
+        runner_script = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "scripts"
+            / f"clearml_step_runner_{self.name}.py"
+        )
 
         self._task = Task.create(
             project_name=project,

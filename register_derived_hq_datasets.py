@@ -6,8 +6,7 @@ This script:
 2. Registers them in ClearML using external file references
 
 S3 Configuration:
-- Endpoint: s3.eu-central-2.idrivee2.com
-- Bucket: dapidl
+- Bucket: dapidl (AWS S3, eu-central-1)
 - Path: datasets/derived_hq/
 """
 
@@ -19,24 +18,19 @@ from pathlib import Path
 
 from clearml import Dataset
 
-# S3 configuration
-S3_ENDPOINT = "https://s3.eu-central-2.idrivee2.com"
+# S3 configuration (AWS S3)
 S3_BUCKET = "dapidl"
-S3_REGION = "eu-central-2"
+S3_REGION = "eu-central-1"
 S3_BASE_PATH = "datasets/derived_hq"
 
 # ClearML S3 URI format (for external files)
-# ClearML expects: s3://host/bucket/path or s3://bucket/path with configured host
-S3_CLEARML_BASE = f"s3://{S3_ENDPOINT.replace('https://', '')}/{S3_BUCKET}/{S3_BASE_PATH}"
+S3_CLEARML_BASE = f"s3://{S3_BUCKET}/{S3_BASE_PATH}"
 
 # Local paths
 DERIVED_HQ_PATH = Path("/mnt/work/datasets/derived_hq")
 
-# AWS credentials - use the 'idrive' profile from ~/.aws/credentials
-AWS_PROFILE = "idrive"
-# Fallback credentials if profile not available
-AWS_ACCESS_KEY = "evkizOGyflbhx5uSi4oV"
-AWS_SECRET_KEY = "zHoIBfkh2qgKub9c2R5rgmD0ISfSJDDQQ55cZkk9"
+# AWS credentials - use the 'dapidl' profile from ~/.aws/credentials
+AWS_PROFILE = "dapidl"
 
 # Parent dataset mapping for lineage
 PARENT_DATASETS = {
@@ -59,10 +53,7 @@ def get_parent_dataset_id(dataset_name: str) -> str | None:
     for prefix, parent_name in PARENT_DATASETS.items():
         if dataset_name.startswith(prefix):
             if parent_name:
-                datasets = Dataset.list_datasets(
-                    dataset_project="DAPIDL",
-                    partial_name=parent_name
-                )
+                datasets = Dataset.list_datasets(dataset_project="DAPIDL", partial_name=parent_name)
                 # Find first finalized dataset
                 for d in datasets:
                     try:
@@ -138,24 +129,24 @@ def generate_description(info: dict, metadata: dict) -> str:
     class_dist = metadata.get("class_distribution", {})
     class_mapping = metadata.get("class_mapping", metadata.get("index_to_class", {}))
 
-    desc = f"""DAPIDL Derived Dataset: {info['name']}
+    desc = f"""DAPIDL Derived Dataset: {info["name"]}
 
-Platform: {info['platform'].upper()}
-Tissue: {info['tissue'].title()}
+Platform: {info["platform"].upper()}
+Tissue: {info["tissue"].title()}
 Annotation Method: Multi-annotator consensus (CellTypist + scType + SingleR)
-Granularity: {info['granularity'].title()} ({len(class_mapping)} classes)
-Patch Size: {info['patch_size']}x{info['patch_size']} pixels
-Total Samples: {info['n_samples']:,}
+Granularity: {info["granularity"].title()} ({len(class_mapping)} classes)
+Patch Size: {info["patch_size"]}x{info["patch_size"]} pixels
+Total Samples: {info["n_samples"]:,}
 
 Class Distribution:
 """
     for class_name, count in sorted(class_dist.items()):
-        pct = count / info['n_samples'] * 100 if info['n_samples'] > 0 else 0
+        pct = count / info["n_samples"] * 100 if info["n_samples"] > 0 else 0
         desc += f"  - {class_name}: {count:,} ({pct:.1f}%)\n"
 
     desc += f"""
 Format: LMDB (patches) + numpy (labels) + JSON (metadata)
-Storage: S3 (iDrive e2)
+Storage: S3 (AWS)
 Generated: High-quality consensus annotations
 """
     return desc
@@ -188,10 +179,14 @@ def check_s3_exists(dataset_name: str) -> bool:
     s3_path = f"s3://{S3_BUCKET}/{S3_BASE_PATH}/{dataset_name}/"
 
     cmd = [
-        "aws", "s3", "ls", s3_path,
-        "--endpoint-url", S3_ENDPOINT,
-        "--region", S3_REGION,
-        "--profile", AWS_PROFILE,
+        "aws",
+        "s3",
+        "ls",
+        s3_path,
+        "--region",
+        S3_REGION,
+        "--profile",
+        AWS_PROFILE,
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -205,13 +200,16 @@ def upload_to_s3(local_path: Path, dataset_name: str) -> bool:
     print(f"  Uploading to S3: {s3_path}")
 
     cmd = [
-        "aws", "s3", "sync",
+        "aws",
+        "s3",
+        "sync",
         str(local_path),
         s3_path,
-        "--endpoint-url", S3_ENDPOINT,
-        "--region", S3_REGION,
-        "--profile", AWS_PROFILE,
-        "--no-progress"  # Cleaner output
+        "--region",
+        S3_REGION,
+        "--profile",
+        AWS_PROFILE,
+        "--no-progress",
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -224,11 +222,7 @@ def upload_to_s3(local_path: Path, dataset_name: str) -> bool:
 
 
 def register_dataset(
-    name: str,
-    local_path: Path,
-    s3_uri: str,
-    parent_id: str | None = None,
-    dry_run: bool = False
+    name: str, local_path: Path, s3_uri: str, parent_id: str | None = None, dry_run: bool = False
 ) -> str | None:
     """Register dataset in ClearML with S3 external files."""
     metadata = parse_metadata(local_path)
@@ -236,7 +230,7 @@ def register_dataset(
     description = generate_description(info, metadata)
     tags = generate_tags(info)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Registering: {name}")
     print(f"  S3 URI: {s3_uri}")
     print(f"  Samples: {info['n_samples']:,}")
@@ -246,7 +240,7 @@ def register_dataset(
     print(f"  Patch Size: {info['patch_size']}")
     print(f"  Parent ID: {parent_id or 'None'}")
     print(f"  Tags: {tags}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     if dry_run:
         print("  [DRY RUN] Would register dataset")
@@ -273,15 +267,17 @@ def register_dataset(
         )
 
         # Set metadata
-        dataset.set_metadata({
-            "platform": info["platform"],
-            "tissue": info["tissue"],
-            "granularity": info["granularity"],
-            "patch_size": info["patch_size"],
-            "n_samples": info["n_samples"],
-            "annotation_method": info["annotation_method"],
-            **metadata,  # Include original metadata
-        })
+        dataset.set_metadata(
+            {
+                "platform": info["platform"],
+                "tissue": info["tissue"],
+                "granularity": info["granularity"],
+                "patch_size": info["patch_size"],
+                "n_samples": info["n_samples"],
+                "annotation_method": info["annotation_method"],
+                **metadata,  # Include original metadata
+            }
+        )
 
         # Upload (registers S3 files)
         print("  Uploading (registering S3 files)...")
@@ -305,25 +301,30 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Register derived_hq datasets to ClearML")
-    parser.add_argument("--dry-run", action="store_true", help="Don't actually register, just show what would happen")
-    parser.add_argument("--skip-upload", action="store_true", help="Skip S3 upload (assume data already uploaded)")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Don't actually register, just show what would happen",
+    )
+    parser.add_argument(
+        "--skip-upload", action="store_true", help="Skip S3 upload (assume data already uploaded)"
+    )
     parser.add_argument("--dataset", type=str, help="Register specific dataset only")
     args = parser.parse_args()
 
-    print("="*60)
+    print("=" * 60)
     print("DAPIDL Dataset Registration - derived_hq")
-    print("="*60)
+    print("=" * 60)
     print(f"Local path: {DERIVED_HQ_PATH}")
     print(f"S3 base: {S3_CLEARML_BASE}")
     print(f"Dry run: {args.dry_run}")
     print(f"Skip upload: {args.skip_upload}")
-    print("="*60)
+    print("=" * 60)
 
     # Find all datasets
-    datasets = sorted([
-        d for d in DERIVED_HQ_PATH.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    ])
+    datasets = sorted(
+        [d for d in DERIVED_HQ_PATH.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    )
 
     if args.dataset:
         datasets = [d for d in datasets if d.name == args.dataset]
@@ -378,7 +379,7 @@ def main():
             local_path=dataset_path,
             s3_uri=s3_uri,
             parent_id=parent_id,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
         )
 
         if dataset_id:
@@ -387,9 +388,9 @@ def main():
             results["failed"].append(name)
 
     # Summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SUMMARY")
-    print("="*60)
+    print("=" * 60)
     print(f"Skipped (already registered): {len(results['skipped'])}")
     print(f"Uploaded to S3: {len(results['uploaded'])}")
     print(f"Registered in ClearML: {len(results['registered'])}")
