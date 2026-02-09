@@ -11,6 +11,16 @@ from rich.table import Table
 console = Console()
 
 
+def _get_clearml_web_url() -> str:
+    """Get the ClearML web server URL from active config."""
+    try:
+        from clearml.backend_api import Session
+        host = Session.get_api_server_host()
+        return host.replace("api.", "app.").replace("://api", "://app")
+    except Exception:
+        return "https://app.clear.ml"
+
+
 def _capture_cli_command(ctx: click.Context) -> None:
     """Capture the full CLI command for reproducibility logging."""
     from dapidl.tracking.reproducibility import set_cli_command
@@ -2363,6 +2373,16 @@ def clearml_pipeline_group() -> None:
     default=False,
     help="Use task-based orchestrator (supports per-dataset recipes) or legacy PipelineController",
 )
+@click.option(
+    "--gpu-queue",
+    default="gpu",
+    help="ClearML queue for GPU steps (e.g., gpu-local, gpu-cloud)",
+)
+@click.option(
+    "--default-queue",
+    default="default",
+    help="ClearML queue for CPU steps (e.g., cpu-local)",
+)
 def run_pipeline(
     tissue: tuple,
     sampling: str,
@@ -2380,6 +2400,8 @@ def run_pipeline(
     ground_truth_file: str | None,
     recipe: str,
     orchestrator: bool,
+    gpu_queue: str,
+    default_queue: str,
 ) -> None:
     """Run the unified DAPIDL pipeline (supports 1-N datasets).
 
@@ -2448,7 +2470,7 @@ def run_pipeline(
             ground_truth_file=ground_truth_file,
         ),
         lmdb=LMDBConfig(patch_sizes=[int(patch_size)]),
-        execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training),
+        execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training, gpu_queue=gpu_queue, default_queue=default_queue),
         validation=ValidationConfig(enabled=validate),
     )
 
@@ -2502,6 +2524,8 @@ def run_pipeline(
     else:
         console.print("  [yellow]Training: SKIPPED (prepare-only mode)[/yellow]")
     console.print(f"  Execution: {'local' if local else 'ClearML agents'}")
+    if not local:
+        console.print(f"  GPU queue: {gpu_queue}")
     console.print()
 
     if orchestrator:
@@ -2554,7 +2578,7 @@ def run_pipeline(
             console.print("[cyan]Creating ClearML pipeline...[/cyan]")
             controller.create_pipeline()
             console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
-            console.print("  Monitor at: https://app.clear.ml")
+            console.print(f"  Monitor at: {_get_clearml_web_url()}")
             pipeline_id = controller.run()
             console.print(f"\n[green]✓ Pipeline completed: {pipeline_id}[/green]")
 
@@ -2820,7 +2844,7 @@ def run_enhanced_pipeline(
         console.print("[cyan]Creating ClearML enhanced pipeline...[/cyan]")
         controller.create_pipeline()
         console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
-        console.print("  Monitor at: https://app.clear.ml")
+        console.print(f"  Monitor at: {_get_clearml_web_url()}")
         pipeline_id = controller.run()
         console.print(f"\n[green]✓ Enhanced pipeline completed: {pipeline_id}[/green]")
 
@@ -3014,10 +3038,10 @@ def create_controller_task(
     if enqueue:
         Task.enqueue(task, queue_name=queue)
         console.print(f"\n[green]Task enqueued to '{queue}' queue[/green]")
-        console.print("  Monitor at: https://app.clear.ml")
+        console.print(f"  Monitor at: {_get_clearml_web_url()}")
     else:
         console.print(f"\n[green]Task created (not enqueued)[/green]")
-        console.print(f"  To launch: clone in app.clear.ml -> edit params -> enqueue to '{queue}'")
+        console.print(f"  To launch: clone in {_get_clearml_web_url()} -> edit params -> enqueue to '{queue}'")
         console.print(f"  Or enqueue via CLI: clearml-task enqueue --id {task.id} --queue {queue}")
 
 
@@ -3188,7 +3212,7 @@ def sota_pipeline(
         console.print("[cyan]Creating ClearML SOTA pipeline...[/cyan]")
         controller.create_pipeline()
         console.print("[cyan]Starting pipeline (controller local, steps on agents)...[/cyan]")
-        console.print("  Monitor at: https://app.clear.ml")
+        console.print(f"  Monitor at: {_get_clearml_web_url()}")
         pipeline_id = controller.run()
         console.print(f"\n[green]✓ SOTA pipeline completed: {pipeline_id}[/green]")
 

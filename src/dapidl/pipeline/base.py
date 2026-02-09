@@ -72,17 +72,34 @@ def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> 
         logger.info(f"Using existing local path: {potential_path}")
         return potential_path
 
-    # Check if it's an S3 URI
+    # Check if it's an S3 URI — use ClearML StorageManager (boto3-based, no aws CLI needed)
     if value_str.startswith("s3://"):
         logger.info(f"Resolving S3 URI: {artifact_name or value_str[:80]}...")
-        try:
-            from dapidl.utils.s3 import download_from_s3
-            local_path = download_from_s3(value_str)
-            logger.info(f"Downloaded from S3 to: {local_path}")
-            return local_path
-        except ImportError:
-            logger.warning("S3 utils not available")
-            raise ValueError(f"Cannot resolve S3 URI without S3 utils: {value_str}")
+        from clearml import StorageManager
+
+        local_path = StorageManager.get_local_copy(value_str)
+        if local_path is None:
+            raise ValueError(f"Failed to download from S3: {value_str}")
+        local_path = Path(local_path)
+        logger.info(f"Downloaded from S3 to: {local_path}")
+
+        # If it's a text file, check if it contains a path reference JSON
+        if local_path.suffix == ".txt":
+            try:
+                content = local_path.read_text().strip()
+                if content.startswith("{") and "local_path" in content:
+                    ref = json_module.loads(content)
+                    if ref.get("type") == "path_reference" and "local_path" in ref:
+                        ref_path = Path(ref["local_path"])
+                        if ref_path.exists():
+                            logger.info(f"Resolved path reference from S3 artifact: {ref_path}")
+                            return ref_path
+                        else:
+                            logger.warning(f"Path reference does not exist: {ref_path}")
+            except (json_module.JSONDecodeError, OSError) as e:
+                logger.debug(f"Not a path reference JSON: {e}")
+
+        return local_path
 
     # Check if it's a ClearML URL
     if value_str.startswith("http://") or value_str.startswith("https://"):

@@ -1,0 +1,27 @@
+FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04
+
+# Install system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 python3.12-venv python3.12-dev python3-pip \
+    curl git libgl1 libglib2.0-0t64 libsm6 libxext6 libxrender1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/local/bin/python
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Allow system-wide pip installs (safe in Docker)
+RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED
+
+# Pre-install dapidl dependencies into system site-packages
+# ClearML agent uses system_site_packages: true, so its venv inherits these
+# Keep uv cache so agent's uv sync can skip downloads
+WORKDIR /tmp/build
+COPY pyproject.toml uv.lock ./
+ENV RPY2_CFFI_MODE=ABI
+RUN uv pip compile pyproject.toml --all-extras -o /tmp/requirements.txt \
+    && uv pip install --system -r /tmp/requirements.txt \
+    && rm -rf /tmp/build /tmp/requirements.txt
+# Note: /root/.cache/uv is intentionally kept for ClearML agent's uv sync

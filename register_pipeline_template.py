@@ -31,7 +31,8 @@ def run_training_step(
         TissueConfig,
     )
 
-    CLEARML_DATASET_IDS = {
+    # Load dataset IDs from migration mapping file (self-hosted) or fall back to cloud IDs
+    CLEARML_DATASET_IDS_CLOUD = {
         "breast_tumor_rep1": "ac032e65d7554634a910bf7346ee6e5d",
         "breast_tumor_rep2": "8b2109792ef0426f9e82ea08b2e1f2b5",
         "colon_cancer_colon-panel": "22f40795beaf4d2f88e4e57f24e63e4c",
@@ -54,6 +55,22 @@ def run_training_step(
         "tonsil_reactive-hyperplasia": "a97cd3aa84f54b6e95c7d3e8f2a5b9c6",
         "merscope_breast": "80db08e6a5c94d7fb3c5e8f2a6d9b7c4",
     }
+
+    # Try to load self-hosted IDs from migration mapping
+    import json
+    from pathlib import Path
+    mapping_file = Path(__file__).parent / "configs" / "clearml_id_mapping.json"
+    CLEARML_DATASET_IDS = dict(CLEARML_DATASET_IDS_CLOUD)
+    if mapping_file.exists():
+        try:
+            mapping = json.loads(mapping_file.read_text())
+            cloud_to_selfhosted = mapping.get("datasets", {})
+            # Replace cloud IDs with self-hosted IDs where available
+            for key, cloud_id in CLEARML_DATASET_IDS_CLOUD.items():
+                if cloud_id in cloud_to_selfhosted:
+                    CLEARML_DATASET_IDS[key] = cloud_to_selfhosted[cloud_id]
+        except Exception:
+            pass  # Fall back to cloud IDs
 
     DATASET_TISSUES = {
         "breast_tumor_rep1": "breast", "breast_tumor_rep2": "breast",

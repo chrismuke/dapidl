@@ -331,7 +331,7 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
            as actual files, get_local_copy returns the downloaded file path.
         """
         # Check if value is a ClearML file server URL
-        if isinstance(value, str) and ("files.clear.ml" in value or "/artifacts/" in value):
+        if isinstance(value, str) and ("/artifacts/" in value or ("files." in value and "clearml" in value.lower())):
             try:
                 from clearml.storage import StorageManager
                 local_path = StorageManager.get_local_copy(value)
