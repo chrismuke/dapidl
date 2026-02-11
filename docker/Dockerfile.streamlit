@@ -1,0 +1,14 @@
+# DEPRECATED: Use dashboard/Dockerfile instead for the new multi-page dashboard.
+# This file is kept for reference only — the old single-file launcher
+# (scripts/streamlit_pipeline.py) still works locally with:
+#   uv run --with streamlit streamlit run scripts/streamlit_pipeline.py
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir streamlit requests
+COPY scripts/streamlit_pipeline.py .
+COPY configs/clearml_id_mapping.json configs/
+EXPOSE 8501
+HEALTHCHECK CMD curl -sf http://localhost:8501/_stcore/health || exit 1
+CMD ["streamlit", "run", "streamlit_pipeline.py", \
+     "--server.port=8501", "--server.headless=true", \
+     "--server.address=0.0.0.0"]
