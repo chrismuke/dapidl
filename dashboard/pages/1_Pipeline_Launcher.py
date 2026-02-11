@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from components.auth import logout_button, require_auth
+from components.auth import get_current_user, logout_button, require_auth
 from components.clearml_client import ClearMLClient
 from components.constants import (
     ANNOTATORS,
@@ -202,7 +202,10 @@ def main() -> None:
     if not st.session_state.datasets:
         st.warning("Add at least one dataset to build a pipeline command.")
     else:
+        user = get_current_user()
         cmd = build_cli_command(config)
+        if user:
+            cmd += f"  # launched by {user}"
         st.code(cmd, language="bash")
         st.caption("Copy this command and run it on a machine with the dapidl environment.")
 

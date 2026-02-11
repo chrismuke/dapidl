@@ -25,7 +25,7 @@ st.set_page_config(
 
 
 def get_client() -> ClearMLClient:
-    """Get or create a cached ClearML client in session state."""
+    """Get the ClearML client from session state (set during login)."""
     if "clearml_client" not in st.session_state:
         st.session_state.clearml_client = ClearMLClient.from_env_or_config()
     return st.session_state.clearml_client
