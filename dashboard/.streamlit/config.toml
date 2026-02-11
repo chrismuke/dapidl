@@ -2,7 +2,7 @@
 headless = true
 port = 8501
 address = "0.0.0.0"
-enableCORS = false
+enableCORS = true
 enableXsrfProtection = true
 
 [theme]
