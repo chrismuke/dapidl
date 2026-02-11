@@ -6,10 +6,14 @@ import time
 
 import streamlit as st
 
+from components.auth import logout_button, require_auth
 from components.clearml_client import ClearMLClient
 from components.ui_helpers import worker_health_indicator
 
 st.set_page_config(page_title="Workers", page_icon=":gear:", layout="wide")
+if not require_auth():
+    st.stop()
+logout_button()
 st.title("Workers & Queues")
 
 

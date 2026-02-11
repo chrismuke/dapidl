@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from components.auth import logout_button, require_auth
 from components.clearml_client import ClearMLClient
 from components.constants import (
     ANNOTATORS,
@@ -18,6 +19,9 @@ from components.constants import (
 from components.ui_helpers import recipe_flow
 
 st.set_page_config(page_title="Pipeline Launcher", page_icon=":rocket:", layout="wide")
+if not require_auth():
+    st.stop()
+logout_button()
 st.title("Pipeline Launcher")
 
 

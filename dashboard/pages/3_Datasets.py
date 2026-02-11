@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import streamlit as st
 
+from components.auth import logout_button, require_auth
 from components.clearml_client import ClearMLClient
 from components.ui_helpers import format_datetime
 
 st.set_page_config(page_title="Datasets", page_icon=":open_file_folder:", layout="wide")
+if not require_auth():
+    st.stop()
+logout_button()
 st.title("Datasets")
 
 

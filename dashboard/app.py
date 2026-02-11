@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from components.auth import logout_button, require_auth
 from components.clearml_client import ClearMLClient
 from components.ui_helpers import status_badge
 
@@ -31,6 +32,10 @@ def get_client() -> ClearMLClient:
 
 
 def main() -> None:
+    if not require_auth():
+        st.stop()
+
+    logout_button()
     st.title("DAPIDL Dashboard")
     st.caption("Cell-type prediction pipeline management on ClearML")
 
