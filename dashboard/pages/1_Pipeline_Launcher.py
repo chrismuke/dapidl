@@ -66,26 +66,25 @@ def dataset_picker(client: ClearMLClient) -> None:
 
     # Add dataset form
     with st.expander("Add dataset", expanded=not st.session_state.datasets):
-        # Search filter
-        search = st.text_input("Search datasets", placeholder="Filter by name...", key="ds_search")
-        filtered = clearml_datasets
-        if search:
-            search_lower = search.lower()
-            filtered = [d for d in clearml_datasets if search_lower in d["name"].lower()]
-
         c1, c2 = st.columns(2)
         tissue = c1.text_input("Tissue name", placeholder="e.g. breast, lung", key="new_tissue")
         platform = c2.selectbox("Platform", ["xenium", "merscope"], key="new_platform")
 
+        # Single searchable selectbox — click and type to filter
         source_options = ["-- Manual ID/path --"] + [
-            f"{d['name']}  ({d['id'][:8]}...)" for d in filtered
+            f"{d['name']}  ({d['id'][:8]}...)" for d in clearml_datasets
         ]
-        source_choice = st.selectbox("Dataset source", source_options, key="new_source_choice")
+        source_choice = st.selectbox(
+            "Dataset source (type to search)",
+            source_options,
+            key="new_source_choice",
+            help="Click and start typing to filter datasets by name",
+        )
         if source_choice == "-- Manual ID/path --":
             source_id = st.text_input("ClearML dataset ID or local path", key="new_source_id")
         else:
             idx = source_options.index(source_choice) - 1
-            source_id = filtered[idx]["id"]
+            source_id = clearml_datasets[idx]["id"]
             st.caption(f"ID: `{source_id}`")
 
         tier = st.selectbox(
