@@ -188,27 +188,20 @@ class ClearMLClient:
         return data.get("id", "")
 
     def edit_task_hyperparams(self, task_id: str, params: dict[str, str]) -> bool:
-        """Set hyperparameters on a task.
+        """Update individual hyperparameters on a task (partial update).
 
-        Keys use slash-separated format (e.g. ``datasets/spec``).  The part
-        before the first ``/`` becomes the ClearML *section* and the remainder
-        becomes the parameter *name* within that section.  This matches the
-        layout produced by ``DAPIDLPipelineConfig.to_clearml_parameters()``.
+        Keys use slash-separated format matching
+        ``DAPIDLPipelineConfig.to_clearml_parameters()`` output
+        (e.g. ``datasets/spec``, ``training/epochs``).  All keys are stored
+        under the ClearML ``Args`` section.  The task must be in ``created``
+        status (i.e. call this before ``enqueue_task``).
         """
-        hyperparams: dict[str, dict] = {}
-        for key, value in params.items():
-            if "/" in key:
-                section, name = key.split("/", 1)
-            else:
-                section, name = "Args", key
-            hyperparams.setdefault(section, {})[name] = {
-                "section": section,
-                "name": name,
-                "value": str(value),
-            }
-        return bool(self._post("tasks.edit", {
+        return bool(self._post("tasks.edit_hyper_params", {
             "task": task_id,
-            "hyperparams": hyperparams,
+            "hyperparams": [
+                {"section": "Args", "name": key, "value": str(value)}
+                for key, value in params.items()
+            ],
         }))
 
     def enqueue_task(self, task_id: str, queue_name: str) -> bool:

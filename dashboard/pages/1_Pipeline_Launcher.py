@@ -276,7 +276,11 @@ def main() -> None:
                 else:
                     params = build_clearml_params(config)
                     client.edit_task_hyperparams(new_id, params)
-                    queue = config["default_queue"]
+                    # Controllers must run on 'services' queue (long-running
+                    # orchestrator handled by clearml-agent-services).  Using
+                    # cpu-local would deadlock since the controller occupies
+                    # the only worker while its child tasks wait in the queue.
+                    queue = "services"
                     ok = client.enqueue_task(new_id, queue)
                     if ok:
                         web_host = client.web_server or "https://clearml.chrism.io"

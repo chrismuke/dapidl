@@ -51,12 +51,18 @@ def main() -> None:
     params = task.get_parameters_as_dict()
     logger.info(f"Parameter sections: {list(params.keys())}")
 
-    # ClearML nests parameters under section names — flatten to slash-separated keys
+    # ClearML nests parameters under section names — flatten to slash-separated keys.
+    # The "Args" section is the default bucket where ClearML puts slash-separated
+    # keys like "datasets/spec", "training/epochs", etc.  We strip the "Args/"
+    # prefix so from_clearml_parameters() sees the expected key format.
     flat_params: dict[str, str] = {}
     for section, values in params.items():
         if isinstance(values, dict):
             for key, val in values.items():
-                flat_params[f"{section}/{key}"] = str(val) if val is not None else ""
+                if section == "Args":
+                    flat_params[key] = str(val) if val is not None else ""
+                else:
+                    flat_params[f"{section}/{key}"] = str(val) if val is not None else ""
         else:
             flat_params[section] = str(values)
 
