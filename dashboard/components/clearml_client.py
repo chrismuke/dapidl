@@ -180,7 +180,33 @@ class ClearMLClient:
         data = self._post("workers.get_all", {})
         return data if isinstance(data, list) else data.get("workers", [])
 
-    # -- Queue stats (NEW) --
+    # -- Task management (clone / edit / enqueue) --
+
+    def clone_task(self, task_id: str, new_name: str) -> str:
+        """Clone a task. Returns new task ID."""
+        data = self._post("tasks.clone", {"task": task_id, "new_task_name": new_name})
+        return data.get("id", "")
+
+    def edit_task_hyperparams(self, task_id: str, params: dict[str, str]) -> bool:
+        """Set hyperparameters on a task (Args section)."""
+        hyperparams: dict[str, dict] = {}
+        for key, value in params.items():
+            hyperparams[key] = {"section": "Args", "name": key, "value": str(value)}
+        return bool(self._post("tasks.edit", {
+            "task": task_id,
+            "hyperparams": {"Args": hyperparams},
+        }))
+
+    def enqueue_task(self, task_id: str, queue_name: str) -> bool:
+        """Enqueue a task to a named queue."""
+        queues = self.get_queues()
+        queue_id = next((q["id"] for q in queues if q.get("name") == queue_name), None)
+        if not queue_id:
+            logger.error("Queue %r not found", queue_name)
+            return False
+        return bool(self._post("tasks.enqueue", {"task": task_id, "queue": queue_id}))
+
+    # -- Queue stats --
 
     def get_queue_stats(self) -> list[dict]:
         """Return queues with entry counts for overview metrics."""

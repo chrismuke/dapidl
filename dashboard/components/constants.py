@@ -40,6 +40,9 @@ STATUS_COLORS: dict[str, str] = {
 WORKER_HEALTH_OK = 120       # < 2 min = healthy
 WORKER_HEALTH_WARN = 600     # < 10 min = warning, else = error
 
+# Template task ID for cloning pipeline controllers via REST API
+PIPELINE_TEMPLATE_TASK_ID = "26a8c58439514026b9b3d789da71c135"
+
 # Confidence tier descriptions
 TIER_DESCRIPTIONS: dict[int, str] = {
     1: "Ground truth labels",

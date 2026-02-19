@@ -2383,6 +2383,11 @@ def clearml_pipeline_group() -> None:
     default="default",
     help="ClearML queue for CPU steps (e.g., cpu-local)",
 )
+@click.option(
+    "--no-cache",
+    is_flag=True,
+    help="Disable step caching (force all steps to re-run)",
+)
 def run_pipeline(
     tissue: tuple,
     sampling: str,
@@ -2402,6 +2407,7 @@ def run_pipeline(
     orchestrator: bool,
     gpu_queue: str,
     default_queue: str,
+    no_cache: bool,
 ) -> None:
     """Run the unified DAPIDL pipeline (supports 1-N datasets).
 
@@ -2470,7 +2476,7 @@ def run_pipeline(
             ground_truth_file=ground_truth_file,
         ),
         lmdb=LMDBConfig(patch_sizes=[int(patch_size)]),
-        execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training, gpu_queue=gpu_queue, default_queue=default_queue),
+        execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training, gpu_queue=gpu_queue, default_queue=default_queue, cache_data_steps=not no_cache),
         validation=ValidationConfig(enabled=validate),
     )
 
@@ -2928,6 +2934,11 @@ def create_base_tasks(project: str) -> None:
     default=False,
     help="Immediately enqueue the task (default: create only)",
 )
+@click.option(
+    "--no-cache",
+    is_flag=True,
+    help="Disable step caching (force all steps to re-run)",
+)
 def create_controller_task(
     tissue: tuple,
     sampling: str,
@@ -2938,6 +2949,7 @@ def create_controller_task(
     project: str,
     queue: str,
     enqueue: bool,
+    no_cache: bool,
 ) -> None:
     """Create a ClearML controller task launchable from the web UI.
 
@@ -2989,7 +3001,7 @@ def create_controller_task(
         ),
         annotation=AnnotationConfig(fine_grained=fine_grained),
         lmdb=LMDBConfig(patch_sizes=[128]),
-        execution=ExecutionConfig(execute_remotely=True),
+        execution=ExecutionConfig(execute_remotely=True, cache_data_steps=not no_cache),
     )
 
     # Add tissues

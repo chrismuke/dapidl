@@ -11,6 +11,7 @@ from components.constants import (
     BACKBONES,
     BUILTIN_RECIPES,
     PATCH_SIZES,
+    PIPELINE_TEMPLATE_TASK_ID,
     QUEUES,
     RECIPE_DESCRIPTIONS,
     SAMPLING_STRATEGIES,
@@ -133,19 +134,65 @@ def pipeline_config() -> dict:
         skip_training = st.checkbox("Skip training", value=False, help="Prepare-only mode")
         fine_grained = st.checkbox("Fine-grained classes", value=False, help="~20 classes vs 3 broad")
         validate = st.checkbox("Cross-modal validation", value=False)
+        no_cache = st.checkbox("Disable step caching", value=False, help="Force all steps to re-run")
 
     return {
         "recipe": recipe, "annotator": annotator, "segmenter": segmenter,
         "sampling": sampling, "patch_size": patch_size, "backbone": backbone,
         "epochs": epochs, "batch_size": batch_size, "gpu_queue": gpu_queue,
         "default_queue": default_queue, "local": local, "skip_training": skip_training,
-        "fine_grained": fine_grained, "validate": validate,
+        "fine_grained": fine_grained, "validate": validate, "no_cache": no_cache,
     }
 
 
 # ---------------------------------------------------------------------------
 # CLI command builder
 # ---------------------------------------------------------------------------
+
+def build_clearml_params(config: dict) -> dict[str, str]:
+    """Convert UI form state to flat ClearML hyperparameter dict.
+
+    Keys match DAPIDLPipelineConfig.to_clearml_parameters() format so the
+    controller script can reconstruct a full config via from_clearml_parameters().
+    """
+    params: dict[str, str] = {}
+
+    # Datasets spec — one line per dataset: "dataset_id" (simplified)
+    lines = []
+    for tissue, source, platform, tier in st.session_state.datasets:
+        lines.append(source)
+    params["datasets/spec"] = "\n".join(lines)
+
+    # Training
+    params["training/epochs"] = str(config["epochs"])
+    params["training/batch_size"] = str(config["batch_size"])
+    params["training/backbone"] = config["backbone"]
+    params["training/sampling_strategy"] = config["sampling"]
+
+    # Execution
+    params["execution/gpu_queue"] = config["gpu_queue"]
+    params["execution/default_queue"] = config["default_queue"]
+    params["execution/execute_remotely"] = "True"
+    params["execution/skip_training"] = str(config["skip_training"])
+    params["execution/cache_data_steps"] = str(not config["no_cache"])
+
+    # Annotation
+    params["annotation/fine_grained"] = str(config["fine_grained"])
+
+    # Segmentation
+    params["segmentation/segmenter"] = config["segmenter"]
+
+    # LMDB
+    params["lmdb/patch_sizes"] = config["patch_size"]
+
+    # Validation
+    params["validation/enabled"] = str(config["validate"])
+
+    # Pipeline metadata
+    params["pipeline/project"] = "DAPIDL/pipelines"
+
+    return params
+
 
 def build_cli_command(config: dict) -> str:
     """Build the CLI command string from config and selected datasets."""
@@ -173,6 +220,8 @@ def build_cli_command(config: dict) -> str:
         parts.append("  --fine-grained")
     if config["validate"]:
         parts.append("  --validate")
+    if config["no_cache"]:
+        parts.append("  --no-cache")
 
     return " \\\n".join(parts)
 
@@ -195,8 +244,8 @@ def main() -> None:
     config = pipeline_config()
     st.divider()
 
-    # Launch section (command preview only — Docker can't run uv)
-    st.subheader("Command Preview")
+    # Launch section
+    st.subheader("Launch Pipeline")
 
     if not st.session_state.datasets:
         st.warning("Add at least one dataset to build a pipeline command.")
@@ -205,8 +254,38 @@ def main() -> None:
         cmd = build_cli_command(config)
         if user:
             cmd += f"  # launched by {user}"
-        st.code(cmd, language="bash")
-        st.caption("Copy this command and run it on a machine with the dapidl environment.")
+
+        # Command preview
+        with st.expander("CLI command preview", expanded=False):
+            st.code(cmd, language="bash")
+            st.caption("Or copy this command to run manually on a machine with the dapidl environment.")
+
+        # Remote launch via ClearML REST API
+        if st.button("Launch Pipeline", type="primary"):
+            import datetime
+
+            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            task_name = f"pipeline-{timestamp}"
+            if user:
+                task_name = f"pipeline-{user}-{timestamp}"
+
+            with st.spinner("Cloning template and enqueuing..."):
+                new_id = client.clone_task(PIPELINE_TEMPLATE_TASK_ID, task_name)
+                if not new_id:
+                    st.error("Failed to clone template task. Check ClearML connection.")
+                else:
+                    params = build_clearml_params(config)
+                    client.edit_task_hyperparams(new_id, params)
+                    queue = config["default_queue"]
+                    ok = client.enqueue_task(new_id, queue)
+                    if ok:
+                        web_host = client.web_server or "https://clearml.chrism.io"
+                        st.success(
+                            f"Pipeline launched! "
+                            f"[View in ClearML]({web_host}/projects/*/experiments/{new_id})"
+                        )
+                    else:
+                        st.error(f"Failed to enqueue task {new_id} to queue '{queue}'.")
 
 
 main()
