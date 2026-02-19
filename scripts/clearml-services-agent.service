@@ -1,0 +1,14 @@
+[Unit]
+Description=ClearML Services Agent ubuntu3090 (pipeline controllers)
+After=network.target
+
+[Service]
+Type=simple
+User=chrism
+Environment=CLEARML_CONFIG_FILE=/home/chrism/.clearml/clearml-chrism.conf
+ExecStart=/home/chrism/.local/bin/clearml-agent daemon --queue services --foreground
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

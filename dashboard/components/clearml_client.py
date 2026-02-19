@@ -213,6 +213,40 @@ class ClearMLClient:
             return False
         return bool(self._post("tasks.enqueue", {"task": task_id, "queue": queue_id}))
 
+    # -- Worker status --
+
+    def get_worker_status(self) -> list[dict]:
+        """Return simplified worker status for dashboard display.
+
+        Each entry: {id, name, queue, task, gpu_usage}.
+        """
+        workers = self.get_workers()
+        result = []
+        for w in workers:
+            task = w.get("task", {}) or {}
+            queues = w.get("queues", [])
+            queue_name = queues[0] if queues else ""
+            # GPU stats from last report
+            gpu_usage = ""
+            machine = w.get("machine", {}) or {}
+            gpus = machine.get("gpus", [])
+            if gpus:
+                g = gpus[0]
+                used = g.get("mem_used", 0)
+                total = g.get("mem_total", 0)
+                name = g.get("name", "GPU")
+                if total > 0:
+                    gpu_usage = f"{name}: {used // (1024**2)}MB / {total // (1024**2)}MB"
+            result.append({
+                "id": w.get("id", ""),
+                "name": w.get("id", "").split(":")[0] if w.get("id") else "",
+                "queue": queue_name,
+                "task": task.get("name", ""),
+                "task_id": task.get("id", ""),
+                "gpu_usage": gpu_usage,
+            })
+        return result
+
     # -- Queue stats --
 
     def get_queue_stats(self) -> list[dict]:

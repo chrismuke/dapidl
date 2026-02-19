@@ -18,7 +18,7 @@ def _get_clearml_web_url() -> str:
         host = Session.get_api_server_host()
         return host.replace("api.", "app.").replace("://api", "://app")
     except Exception:
-        return "https://app.clear.ml"
+        return "https://clearml.chrism.io"
 
 
 def _capture_cli_command(ctx: click.Context) -> None:
@@ -2954,7 +2954,7 @@ def create_controller_task(
     """Create a ClearML controller task launchable from the web UI.
 
     This registers a pipeline controller as a ClearML task with editable
-    parameters. You can then clone and enqueue it from app.clear.ml.
+    parameters. You can then clone and enqueue it from clearml.chrism.io.
 
     Examples:
 

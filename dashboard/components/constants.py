@@ -17,10 +17,13 @@ RECIPE_DESCRIPTIONS: dict[str, str] = {
     "annotate_only": "Annotation + standardization only (no LMDB)",
 }
 
-QUEUES = ["gpu-local", "gpu-cloud", "gpu-training", "cpu-local", "default"]
+GPU_TARGETS: dict[str, tuple[str, str]] = {
+    "ubuntu3090 (RTX 3090)": ("gpu-local", "cpu-local"),
+    "AWS Cloud (g6.xlarge, max 2)": ("gpu-cloud", "gpu-cloud"),
+}
+
 BACKBONES = ["efficientnetv2_rw_s", "convnext_tiny", "resnet50", "densenet121"]
 PATCH_SIZES = ["32", "64", "128", "256"]
-SAMPLING_STRATEGIES = ["sqrt", "equal", "proportional"]
 ANNOTATORS = ["celltypist", "ground_truth", "popv"]
 SEGMENTERS = ["native", "cellpose"]
 
