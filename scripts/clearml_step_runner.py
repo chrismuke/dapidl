@@ -400,7 +400,11 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
 
     # Execute step
     logger.info(f"Executing step: {step_name}")
-    result = step.execute(artifacts)
+    try:
+        result = step.execute(artifacts)
+    except Exception:
+        logger.exception(f"Step {step_name} failed")
+        raise
 
     # Upload output artifacts (only if we have a ClearML task)
     # IMPORTANT: Never upload large data (datasets, models) directly to ClearML
