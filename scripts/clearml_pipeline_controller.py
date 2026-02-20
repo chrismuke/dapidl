@@ -100,7 +100,51 @@ def main() -> None:
     )
     DAPIDLPipelineConfig = unified_config.DAPIDLPipelineConfig
 
+    # Convert dashboard-style params to unified_config format
+    # Dashboard sends: tissues (JSON), gpu_queue, default_queue, skip_training, epochs, etc.
+    # from_clearml_parameters expects: datasets/spec, execution/*, training/*, etc.
+    import json as _json
+
+    if "tissues" in flat_params and "datasets/spec" not in flat_params:
+        tissues_json = flat_params.pop("tissues", "[]")
+        try:
+            tissues_list = _json.loads(tissues_json)
+        except (ValueError, TypeError):
+            tissues_list = []
+
+        # Convert tissues list to datasets/spec format (one dataset_id per line)
+        spec_lines = []
+        TissueDatasetConfig = unified_config.TissueDatasetConfig
+        Platform = unified_config.Platform
+        parsed_tissues = []
+        for t in tissues_list:
+            tc = TissueDatasetConfig(
+                tissue=t.get("tissue", "unknown"),
+                dataset_id=t.get("dataset_id"),
+                platform=Platform(t.get("platform", "auto")),
+                confidence_tier=int(t.get("segmentation_method", 2)),
+            )
+            parsed_tissues.append(tc)
+
+        # Map other dashboard params
+        if "epochs" in flat_params and "training/epochs" not in flat_params:
+            flat_params["training/epochs"] = flat_params.pop("epochs")
+        if "gpu_queue" in flat_params and "execution/gpu_queue" not in flat_params:
+            flat_params["execution/gpu_queue"] = flat_params.pop("gpu_queue")
+        if "default_queue" in flat_params and "execution/default_queue" not in flat_params:
+            flat_params["execution/default_queue"] = flat_params.pop("default_queue")
+        if "skip_training" in flat_params and "execution/skip_training" not in flat_params:
+            flat_params["execution/skip_training"] = flat_params.pop("skip_training")
+        if "sampling_strategy" in flat_params and "training/sampling_strategy" not in flat_params:
+            flat_params["training/sampling_strategy"] = flat_params.pop("sampling_strategy")
+
+        logger.info(f"Parsed {len(parsed_tissues)} tissues from JSON")
+
     config = DAPIDLPipelineConfig.from_clearml_parameters(flat_params)
+
+    # If we parsed tissues from JSON, inject them directly
+    if "parsed_tissues" in dir():
+        config.input.tissues = parsed_tissues
 
     # Resolve dataset names to IDs where needed
     from clearml import Dataset
