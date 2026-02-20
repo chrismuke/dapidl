@@ -242,7 +242,10 @@ class TissueDatasetConfig(BaseModel):
     @classmethod
     def validate_recipe(cls, v: str) -> str:
         """Validate recipe name against available recipes (built-in + user YAML)."""
-        from dapidl.pipeline.orchestrator import get_recipes
+        try:
+            from dapidl.pipeline.orchestrator import get_recipes
+        except (ImportError, ModuleNotFoundError):
+            return v  # Skip validation in lightweight contexts (e.g. controller)
 
         valid = set(get_recipes().keys())
         if v not in valid:
