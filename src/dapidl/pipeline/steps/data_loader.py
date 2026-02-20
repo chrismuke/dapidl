@@ -258,6 +258,9 @@ class DataLoaderConfig:
     # Platform detection
     platform: str = "auto"  # "auto", "xenium", "merscope"
 
+    # Tissue name (for dataset name matching fallback)
+    tissue: str | None = None
+
     # Local path override (for debugging)
     local_path: str | None = None
 
@@ -465,6 +468,8 @@ class DataLoaderStep(PipelineStep):
 
         If the ClearML dataset has no files (external reference only),
         falls back to S3 download using the migration_info.s3_uri.
+        If the dataset ID doesn't exist (e.g. from a different ClearML instance),
+        tries migration mapping and dataset name search before failing.
         """
         from clearml import Dataset
 
@@ -472,7 +477,20 @@ class DataLoaderStep(PipelineStep):
 
         if cfg.dataset_id:
             resolved_id = _resolve_short_dataset_id(cfg.dataset_id)
-            dataset = Dataset.get(dataset_id=resolved_id)
+            try:
+                dataset = Dataset.get(dataset_id=resolved_id)
+            except ValueError:
+                logger.warning(
+                    f"Dataset ID {resolved_id} not found on this ClearML instance. "
+                    f"Trying migration mapping and name search..."
+                )
+                dataset = self._resolve_migrated_dataset(resolved_id)
+                if dataset is None:
+                    raise ValueError(
+                        f"Dataset ID {resolved_id} not found on this ClearML instance "
+                        f"and no migration mapping or name match found. "
+                        f"Check configs/clearml_id_mapping.json or use a valid dataset ID."
+                    )
         else:
             dataset = Dataset.get(
                 dataset_project=cfg.dataset_project,
@@ -513,6 +531,52 @@ class DataLoaderStep(PipelineStep):
             )
 
         return data_path
+
+    def _resolve_migrated_dataset(self, cloud_id: str):
+        """Try to find a dataset that was migrated from another ClearML instance.
+
+        Checks configs/clearml_id_mapping.json for cloud→selfhosted ID mapping,
+        then tries searching by dataset name pattern.
+        """
+        from clearml import Dataset
+
+        # 1. Check migration mapping file
+        mapping_file = Path(__file__).parents[4] / "configs" / "clearml_id_mapping.json"
+        if mapping_file.exists():
+            import json
+            mapping = json.loads(mapping_file.read_text())
+            datasets_map = mapping.get("datasets", {})
+            selfhosted_id = datasets_map.get(cloud_id)
+            if selfhosted_id:
+                logger.info(f"Found migration mapping: {cloud_id[:8]} → {selfhosted_id[:8]}")
+                try:
+                    return Dataset.get(dataset_id=selfhosted_id)
+                except ValueError:
+                    logger.warning(f"Mapped ID {selfhosted_id} also not found")
+
+        # 2. Try prefix match (ClearML IDs sometimes share prefixes across instances)
+        prefix = cloud_id[:12]
+        try:
+            all_datasets = Dataset.list_datasets(
+                dataset_project="DAPIDL",
+                only_completed=False,
+            )
+            for d in all_datasets:
+                if d["id"].startswith(prefix):
+                    logger.info(f"Found prefix match: {d['name']} ({d['id'][:12]})")
+                    return Dataset.get(dataset_id=d["id"])
+
+            # 3. Try name-based match using tissue config
+            tissue = getattr(self.config, "tissue", None)
+            if tissue and all_datasets:
+                raw = [d for d in all_datasets if tissue in d.get("name", "") and "raw" in d.get("name", "")]
+                if len(raw) == 1:
+                    logger.info(f"Found name match for tissue '{tissue}': {raw[0]['name']}")
+                    return Dataset.get(dataset_id=raw[0]["id"])
+        except Exception as e:
+            logger.debug(f"Dataset search failed: {e}")
+
+        return None
 
     def _download_from_s3(self) -> Path:
         """Download data from S3 URI.

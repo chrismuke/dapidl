@@ -490,6 +490,7 @@ class PipelineOrchestrator:
             params["step_config/dataset_id"] = tissue_cfg.dataset_id or ""
             params["step_config/platform"] = tissue_cfg.platform.value
             params["step_config/local_path"] = tissue_cfg.local_path or ""
+            params["step_config/tissue"] = tissue_cfg.tissue or ""
 
         elif step_name == "gt_annotation":
             params["step_config/annotator"] = "ground_truth"
