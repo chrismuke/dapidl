@@ -484,8 +484,13 @@ class DataLoaderStep(PipelineStep):
         data_path = Path(dataset.get_local_copy())
         logger.info(f"Downloaded dataset to: {data_path}")
 
-        # Check if ClearML actually downloaded files (external-reference datasets may be empty)
-        if not any(data_path.iterdir()):
+        # Check if ClearML actually downloaded data files (external-reference datasets may be empty
+        # or contain only metadata files like .clearml/)
+        data_files = [
+            f for f in data_path.rglob("*")
+            if f.is_file() and not f.name.startswith(".")
+        ]
+        if not data_files:
             logger.warning(f"ClearML dataset cache is empty, checking for S3 URI fallback...")
             # Try to get S3 URI from dataset's migration_info or configuration
             task = dataset._task
