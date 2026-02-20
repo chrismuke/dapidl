@@ -395,6 +395,47 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
             inputs[key] = resolved
             logger.info(f"Got parent output: {key} = {str(resolved)[:100] if isinstance(resolved, str) and len(str(resolved)) > 100 else resolved}")
 
+    # Cloud pipeline fix: if data_path is a local path that doesn't exist
+    # (e.g. from a data_loader that ran in a different container/instance),
+    # re-download the dataset from S3 using the dataset_id from step_config.
+    if "data_path" in inputs and isinstance(inputs["data_path"], str):
+        dp = Path(inputs["data_path"])
+        if not dp.exists():
+            logger.warning(f"data_path does not exist: {dp}")
+            dataset_id = step_config.get("dataset_id", "")
+            if not dataset_id:
+                # Try to extract from the data_path (e.g. /root/.cache/dapidl/s3_downloads/xenium-lung-2fov/)
+                dataset_name = dp.name
+                logger.info(f"Attempting S3 re-download for: {dataset_name}")
+                try:
+                    from clearml.storage import StorageManager
+                    s3_uri = f"s3://dapidl/raw-data/{dataset_name}/"
+                    cache_dir = Path.home() / ".cache" / "dapidl" / "s3_downloads" / dataset_name
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"Downloading from {s3_uri} to {cache_dir}")
+                    # Use boto3 for directory download
+                    import boto3
+                    s3 = boto3.client("s3", region_name="eu-central-1")
+                    paginator = s3.get_paginator("list_objects_v2")
+                    prefix = f"raw-data/{dataset_name}/"
+                    count = 0
+                    for page in paginator.paginate(Bucket="dapidl", Prefix=prefix):
+                        for obj in page.get("Contents", []):
+                            rel_key = obj["Key"][len(prefix):]
+                            if not rel_key:
+                                continue
+                            local_file = cache_dir / rel_key
+                            local_file.parent.mkdir(parents=True, exist_ok=True)
+                            s3.download_file("dapidl", obj["Key"], str(local_file))
+                            count += 1
+                    logger.info(f"Downloaded {count} files from S3 to {cache_dir}")
+                    if count > 0:
+                        inputs["data_path"] = str(cache_dir)
+                    else:
+                        logger.error(f"No files found at {s3_uri}")
+                except Exception as e:
+                    logger.error(f"Failed to re-download from S3: {e}")
+
     # Parent outputs go in 'outputs' - steps access via artifacts.outputs
     artifacts = StepArtifacts(inputs={}, outputs=inputs)
 

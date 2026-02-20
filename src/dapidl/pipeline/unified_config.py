@@ -1186,6 +1186,8 @@ class DAPIDLPipelineConfig(BaseModel):
             default_queue=get_param("execution", "default_queue", "default"),
             gpu_queue=get_param("execution", "gpu_queue", "gpu"),
             skip_training=parse_bool(get_param("execution", "skip_training", "False")),
+            cache_data_steps=parse_bool(get_param("execution", "cache_data_steps", "True")),
+            cache_training=parse_bool(get_param("execution", "cache_training", "False")),
         )
 
         # Parse datasets/spec — one entry per line.
