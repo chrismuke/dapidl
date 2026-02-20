@@ -16,6 +16,8 @@ The controller blocks until all pipeline steps complete (steps dispatch to
 default/gpu queues via ClearML agents).
 """
 
+import importlib
+import importlib.util
 import sys
 import traceback
 from pathlib import Path
@@ -32,6 +34,20 @@ src_path = Path(__file__).parent.parent / "src"
 if src_path.exists():
     sys.path.insert(0, str(src_path))
     early_log(f"Added to path: {src_path}")
+
+
+def _import_module_directly(module_name: str, file_path: Path):
+    """Import a module directly from file, bypassing __init__.py chains.
+
+    The dapidl.pipeline.__init__.py imports heavy dependencies (torch, cellpose,
+    scanpy) that aren't needed for the controller. This function loads specific
+    modules without triggering the full import chain.
+    """
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def main() -> None:
@@ -69,7 +85,20 @@ def main() -> None:
     logger.info(f"Flat params ({len(flat_params)} keys): {list(flat_params.keys())}")
 
     # Build pipeline config from parameters
-    from dapidl.pipeline.unified_config import DAPIDLPipelineConfig
+    # Import directly to avoid dapidl.pipeline.__init__.py which pulls torch, cellpose, etc.
+    # We need stub module entries so sub-imports like "from dapidl.pipeline.unified_config"
+    # don't trigger the heavy __init__.py chain.
+    import types
+    _pipeline_src = src_path / "dapidl" / "pipeline"
+    if "dapidl" not in sys.modules:
+        sys.modules["dapidl"] = types.ModuleType("dapidl")
+    if "dapidl.pipeline" not in sys.modules:
+        sys.modules["dapidl.pipeline"] = types.ModuleType("dapidl.pipeline")
+
+    unified_config = _import_module_directly(
+        "dapidl.pipeline.unified_config", _pipeline_src / "unified_config.py"
+    )
+    DAPIDLPipelineConfig = unified_config.DAPIDLPipelineConfig
 
     config = DAPIDLPipelineConfig.from_clearml_parameters(flat_params)
 
@@ -123,7 +152,10 @@ def main() -> None:
 
     if use_orchestrator:
         # Task-based orchestrator: supports per-dataset recipes
-        from dapidl.pipeline.orchestrator import PipelineOrchestrator
+        orchestrator_mod = _import_module_directly(
+            "dapidl.pipeline.orchestrator", _pipeline_src / "orchestrator.py"
+        )
+        PipelineOrchestrator = orchestrator_mod.PipelineOrchestrator
 
         logger.info("Using task-based orchestrator")
         orchestrator = PipelineOrchestrator(config)
@@ -140,7 +172,10 @@ def main() -> None:
             sys.exit(1)
     else:
         # Legacy mode: ClearML PipelineController DAG
-        from dapidl.pipeline.unified_controller import UnifiedPipelineController
+        unified_ctrl = _import_module_directly(
+            "dapidl.pipeline.unified_controller", _pipeline_src / "unified_controller.py"
+        )
+        UnifiedPipelineController = unified_ctrl.UnifiedPipelineController
 
         controller = UnifiedPipelineController(config)
         controller.create_pipeline()
