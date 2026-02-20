@@ -1,12 +1,17 @@
 FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04
 
-# Install system deps
+# Install system deps + R (for scType, Azimuth, SingleR annotators)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12 python3.12-venv python3.12-dev python3-pip \
     curl git libgl1 libglib2.0-0t64 libsm6 libxext6 libxrender1 \
+    r-base r-base-dev libcurl4-openssl-dev libssl-dev libxml2-dev libtirpc-dev \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
     && ln -sf /usr/bin/python3.12 /usr/local/bin/python
+
+# Install R packages for SingleR/scType/Azimuth annotators
+RUN R -e "install.packages('BiocManager', repos='https://cloud.r-project.org'); \
+    BiocManager::install(c('SingleR', 'celldex', 'scuttle', 'scRNAseq'), ask=FALSE, update=FALSE)"
 
 # Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
