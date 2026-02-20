@@ -461,7 +461,11 @@ class DataLoaderStep(PipelineStep):
         )
 
     def _download_dataset(self) -> Path:
-        """Download ClearML Dataset."""
+        """Download ClearML Dataset.
+
+        If the ClearML dataset has no files (external reference only),
+        falls back to S3 download using the migration_info.s3_uri.
+        """
         from clearml import Dataset
 
         cfg = self.config
@@ -479,6 +483,29 @@ class DataLoaderStep(PipelineStep):
         # Download to local cache
         data_path = Path(dataset.get_local_copy())
         logger.info(f"Downloaded dataset to: {data_path}")
+
+        # Check if ClearML actually downloaded files (external-reference datasets may be empty)
+        if not any(data_path.iterdir()):
+            logger.warning(f"ClearML dataset cache is empty, checking for S3 URI fallback...")
+            # Try to get S3 URI from dataset's migration_info or configuration
+            task = dataset._task
+            config_obj = task.get_configuration_object("migration_info") if task else None
+            if config_obj:
+                import json
+                try:
+                    info = json.loads(config_obj)
+                    s3_uri = info.get("s3_uri")
+                    if s3_uri:
+                        logger.info(f"Found S3 URI in migration_info: {s3_uri}")
+                        cfg.s3_uri = s3_uri
+                        return self._download_from_s3()
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            raise FileNotFoundError(
+                f"ClearML dataset {cfg.dataset_id or cfg.dataset_name} has no files "
+                f"and no S3 URI fallback. The dataset may be an external reference "
+                f"without accessible storage."
+            )
 
         return data_path
 

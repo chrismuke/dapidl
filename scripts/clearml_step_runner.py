@@ -404,6 +404,8 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
         result = step.execute(artifacts)
     except Exception:
         logger.exception(f"Step {step_name} failed")
+        sys.stdout.flush()
+        sys.stderr.flush()
         raise
 
     # Upload output artifacts (only if we have a ClearML task)

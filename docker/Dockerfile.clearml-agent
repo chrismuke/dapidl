@@ -29,4 +29,11 @@ ENV RPY2_CFFI_MODE=ABI
 RUN uv pip compile pyproject.toml --all-extras -o /tmp/requirements.txt \
     && uv pip install --system -r /tmp/requirements.txt \
     && rm -rf /tmp/build /tmp/requirements.txt
-# Note: /root/.cache/uv is intentionally kept for ClearML agent's uv sync
+
+# Install dapidl package + scripts into the image
+# This eliminates the need for git clone on every task
+WORKDIR /opt/dapidl
+COPY src/ src/
+COPY scripts/ scripts/
+COPY pyproject.toml uv.lock ./
+RUN uv pip install --system --no-deps -e .
