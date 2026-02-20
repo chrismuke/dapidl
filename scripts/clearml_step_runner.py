@@ -403,9 +403,14 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
     try:
         result = step.execute(artifacts)
     except Exception:
-        logger.exception(f"Step {step_name} failed")
-        sys.stdout.flush()
+        import traceback
+        # Print to both stdout and stderr to ensure ClearML captures it
+        tb = traceback.format_exc()
+        print(f"STEP FAILED: {step_name}", flush=True)
+        print(tb, flush=True)
+        sys.stderr.write(tb)
         sys.stderr.flush()
+        logger.exception(f"Step {step_name} failed")
         raise
 
     # Upload output artifacts (only if we have a ClearML task)
