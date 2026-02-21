@@ -196,6 +196,8 @@ def main() -> None:
         logger.info(f"  {tc.tissue}/{tc.platform.value}: {source} (tier {tc.confidence_tier})")
     logger.info(f"Epochs: {config.training.epochs}")
     logger.info(f"Execute remotely: {config.execution.execute_remotely}")
+    logger.info(f"GPU queue: {config.execution.gpu_queue}")
+    logger.info(f"Default queue: {config.execution.default_queue}")
 
     if n_tissues == 0:
         logger.error("No datasets configured. Edit 'datasets/spec' parameter.")
