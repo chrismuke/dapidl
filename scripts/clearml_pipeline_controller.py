@@ -188,16 +188,26 @@ def main() -> None:
                 task.mark_failed(status_reason=f"Dataset not found: {name}")
                 sys.exit(1)
 
-    # Log resolved config
+    # Log resolved config — use report_text for guaranteed flush (loguru gets batched)
     n_tissues = len(config.input.tissues)
-    logger.info(f"Datasets: {n_tissues}")
+    tl = task.get_logger()
+    tl.report_text(f"Datasets: {n_tissues}")
     for tc in config.input.tissues:
         source = tc.local_path or tc.dataset_id
-        logger.info(f"  {tc.tissue}/{tc.platform.value}: {source} (tier {tc.confidence_tier})")
-    logger.info(f"Epochs: {config.training.epochs}")
-    logger.info(f"Execute remotely: {config.execution.execute_remotely}")
-    logger.info(f"GPU queue: {config.execution.gpu_queue}")
-    logger.info(f"Default queue: {config.execution.default_queue}")
+        tl.report_text(f"  {tc.tissue}/{tc.platform.value}: {source} (tier {tc.confidence_tier})")
+    tl.report_text(f"Epochs: {config.training.epochs}")
+    tl.report_text(f"Execute remotely: {config.execution.execute_remotely}")
+    tl.report_text(f"GPU queue: {config.execution.gpu_queue}")
+    tl.report_text(f"Default queue: {config.execution.default_queue}")
+    tl.report_text(f"Cache data steps: {config.execution.cache_data_steps}")
+
+    # Disable caching when targeting cloud queues — cached tasks from local runs
+    # would be reused instead of dispatching to the cloud queue.
+    cloud_queues = {"gpu-cloud"}
+    if config.execution.gpu_queue in cloud_queues or config.execution.default_queue in cloud_queues:
+        if config.execution.cache_data_steps:
+            config.execution.cache_data_steps = False
+            tl.report_text("Auto-disabled cache_data_steps for cloud queue target")
 
     if n_tissues == 0:
         logger.error("No datasets configured. Edit 'datasets/spec' parameter.")
