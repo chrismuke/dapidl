@@ -71,14 +71,26 @@ def main() -> None:
     # The "Args" section is the default bucket where ClearML puts slash-separated
     # keys like "datasets/spec", "training/epochs", etc.  We strip the "Args/"
     # prefix so from_clearml_parameters() sees the expected key format.
+    # Note: get_parameters_as_dict() returns nested dicts for slash-separated keys,
+    # e.g. "datasets/spec" becomes {"datasets": {"spec": value}}.
+    def _flatten(d: dict, prefix: str = "") -> dict[str, str]:
+        result: dict[str, str] = {}
+        for key, val in d.items():
+            full_key = f"{prefix}/{key}" if prefix else key
+            if isinstance(val, dict):
+                result.update(_flatten(val, full_key))
+            else:
+                result[full_key] = str(val) if val is not None else ""
+        return result
+
     flat_params: dict[str, str] = {}
     for section, values in params.items():
         if isinstance(values, dict):
-            for key, val in values.items():
+            for key, val in _flatten(values).items():
                 if section == "Args":
-                    flat_params[key] = str(val) if val is not None else ""
+                    flat_params[key] = val
                 else:
-                    flat_params[f"{section}/{key}"] = str(val) if val is not None else ""
+                    flat_params[f"{section}/{key}"] = val
         else:
             flat_params[section] = str(values)
 
