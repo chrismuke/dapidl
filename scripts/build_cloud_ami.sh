@@ -24,7 +24,7 @@ set -euo pipefail
 
 # Configuration
 REGION="eu-central-1"
-PROFILE="admin"
+PROFILE="${AWS_PROFILE:-dapidl}"
 BASE_AMI="ami-0d9cfda3e4350f2c3"  # Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04)
 INSTANCE_TYPE="g6.xlarge"
 KEY_NAME="clearml-agent-key"
