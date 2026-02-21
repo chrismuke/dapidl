@@ -166,11 +166,13 @@ def main() -> None:
             # Looks like a dataset name — resolve to ID
             name = tc.dataset_id
             logger.info(f"Resolving dataset name '{name}'...")
+            # Search across all DAPIDL sub-projects (raw-data, datasets, etc.)
             matches = Dataset.list_datasets(
-                dataset_project="DAPIDL/datasets",
                 partial_name=name,
                 only_completed=False,
             )
+            # Filter to DAPIDL project tree
+            matches = [d for d in matches if d.get("project", "").startswith("DAPIDL")]
             exact = [d for d in matches if d.get("name") == name]
             if exact:
                 tc.dataset_id = exact[0]["id"]
