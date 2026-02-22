@@ -31,6 +31,7 @@ from dapidl.pipeline.base import (
     AnnotationConfig,
     PipelineStep,
     StepArtifacts,
+    get_pipeline_output_dir,
     resolve_artifact_path,
 )
 
@@ -269,7 +270,7 @@ class EnsembleAnnotationStep(PipelineStep):
         raw_dataset_id = inputs.get("raw_dataset_id", cfg.parent_dataset_id or "local")
 
         # Check for existing LOCAL annotations first (skip logic)
-        output_dir = data_path / "pipeline_outputs" / "ensemble_annotation"
+        output_dir = get_pipeline_output_dir("ensemble_annotation", data_path)
         local_annotations = output_dir / "annotations.parquet"
         local_mapping = output_dir / "class_mapping.json"
         config_path = output_dir / "config.json"
@@ -398,7 +399,7 @@ class EnsembleAnnotationStep(PipelineStep):
         index_to_class = {v: k for k, v in class_mapping.items()}
 
         # Save outputs
-        output_dir = data_path / "pipeline_outputs" / "ensemble_annotation"
+        output_dir = get_pipeline_output_dir("ensemble_annotation", data_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save config for skip logic validation

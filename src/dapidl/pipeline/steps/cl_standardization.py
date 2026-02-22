@@ -43,6 +43,7 @@ from dapidl.ontology import (
 from dapidl.pipeline.base import (
     PipelineStep,
     StepArtifacts,
+    get_pipeline_output_dir,
     resolve_artifact_path,
 )
 
@@ -291,7 +292,7 @@ class CLStandardizationStep(PipelineStep):
 
         # Save outputs
         data_path = resolve_artifact_path(inputs.get("data_path"), "data_path")
-        output_dir = data_path / "pipeline_outputs" / "cl_standardization"
+        output_dir = get_pipeline_output_dir("cl_standardization", data_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         output_path = output_dir / "cl_annotations.parquet"

@@ -22,6 +22,7 @@ from dapidl.pipeline.base import (
     AnnotationConfig,
     PipelineStep,
     StepArtifacts,
+    get_pipeline_output_dir,
     resolve_artifact_path,
 )
 from dapidl.pipeline.registry import get_annotator
@@ -208,7 +209,7 @@ class AnnotationStep(PipelineStep):
             platform = str(platform_value)
 
         # Check for existing outputs (skip if exists)
-        output_dir = data_path / "pipeline_outputs" / "annotation"
+        output_dir = get_pipeline_output_dir("annotation", data_path)
         annotations_path = output_dir / "annotations.parquet"
         mapping_path = output_dir / "class_mapping.json"
         config_path = output_dir / "config.json"
@@ -326,7 +327,7 @@ class AnnotationStep(PipelineStep):
         logger.info(f"Class mapping regenerated from filtered data: {len(class_mapping)} classes")
 
         # Save outputs
-        output_dir = data_path / "pipeline_outputs" / "annotation"
+        output_dir = get_pipeline_output_dir("annotation", data_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         annotations_path = output_dir / "annotations.parquet"

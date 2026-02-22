@@ -22,6 +22,7 @@ from dapidl.pipeline.base import (
     PipelineStep,
     SegmentationConfig,
     StepArtifacts,
+    get_pipeline_output_dir,
     resolve_artifact_path,
 )
 from dapidl.pipeline.registry import get_segmenter
@@ -163,7 +164,7 @@ class SegmentationStep(PipelineStep):
             cfg.pixel_size_um = self._get_pixel_size(platform)
 
         # Check for existing outputs (skip if exists)
-        output_dir = data_path / "pipeline_outputs" / "segmentation"
+        output_dir = get_pipeline_output_dir("segmentation", data_path)
         centroids_path = output_dir / "centroids.parquet"
         boundaries_path = output_dir / "boundaries.parquet"
         config_path = output_dir / "config.json"
@@ -236,7 +237,7 @@ class SegmentationStep(PipelineStep):
         logger.info(f"Segmentation complete: {result.matching_stats}")
 
         # Save outputs
-        output_dir = data_path / "pipeline_outputs" / "segmentation"
+        output_dir = get_pipeline_output_dir("segmentation", data_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save config for skip logic validation

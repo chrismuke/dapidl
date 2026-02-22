@@ -18,6 +18,7 @@ Key features:
 from __future__ import annotations
 
 import json
+import os
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -243,13 +244,24 @@ class LMDBCreationStep(PipelineStep):
         # Get platform for pixel size detection
         platform = self._resolve_platform(inputs)
 
-        # 3. Create LMDB
+        # 3. Determine output directory — NEVER write inside raw data
+        # Raw datasets are immutable and backed up on S3
+        derived_root = Path(os.environ.get("DAPIDL_DERIVED_DATA", "/mnt/work/datasets/derived"))
+        tissue = inputs.get("tissue", "unknown")
+        dataset_id_str = inputs.get("dataset_id", "")
+        id_suffix = dataset_id_str[:8] if dataset_id_str else "local"
+        dataset_dir_name = f"xenium-{tissue}-{id_suffix}-finegrained-p{cfg.patch_size}"
+        output_dir = derived_root / dataset_dir_name
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 4. Create LMDB
         lmdb_path, stats = self._create_lmdb(
             data_path,
             annotations_df,
             class_mapping,
             platform,
             cfg,
+            output_dir,
         )
         logger.info(f"Created LMDB at {lmdb_path}: {stats['n_patches']} patches")
 
@@ -340,6 +352,7 @@ class LMDBCreationStep(PipelineStep):
         class_mapping: dict,
         platform: str,
         cfg: LMDBCreationConfig,
+        output_dir: Path | None = None,
     ) -> tuple[Path, dict]:
         """Create LMDB dataset from patches.
 
@@ -477,9 +490,8 @@ class LMDBCreationStep(PipelineStep):
             else:
                 label_col = "broad_category"
 
-        # Output path - create directory structure compatible with MultiTissueDataset
-        # Structure: {output}/lmdb_p{size}/patches.lmdb/, labels.npy, class_mapping.json
-        dataset_dir = data_path / "pipeline_outputs" / f"lmdb_p{cfg.patch_size}"
+        # Use provided output_dir or fall back to derived datasets directory
+        dataset_dir = output_dir if output_dir is not None else (data_path / "pipeline_outputs" / f"lmdb_p{cfg.patch_size}")
         dataset_dir.mkdir(parents=True, exist_ok=True)
         lmdb_path = dataset_dir / "patches.lmdb"
 

@@ -164,6 +164,59 @@ def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> 
 
 
 # =============================================================================
+# Pipeline Output Directory
+# =============================================================================
+
+
+def get_pipeline_output_dir(step_name: str, data_path: Path | None = None) -> Path:
+    """Get output directory for a pipeline step.
+
+    Writes to a dedicated pipeline_outputs directory, NOT inside raw datasets.
+    Raw datasets are immutable and backed up on S3.
+
+    Priority:
+    1. DAPIDL_PIPELINE_OUTPUTS env var (explicit override)
+    2. {data_path}/../../pipeline_outputs/{step_name} (sibling to raw data)
+    3. /tmp/dapidl/pipeline_outputs/{step_name} (fallback)
+
+    Args:
+        step_name: Pipeline step name (e.g., "annotation", "segmentation")
+        data_path: Path to the raw dataset (used to derive sibling output dir)
+
+    Returns:
+        Path to the output directory (created if needed)
+    """
+    import os
+
+    env_root = os.environ.get("DAPIDL_PIPELINE_OUTPUTS")
+    if env_root:
+        output_dir = Path(env_root) / step_name
+    elif data_path is not None:
+        # Place outputs as sibling to the dataset within a shared pipeline_outputs dir
+        # e.g., /mnt/work/datasets/raw/xenium/xenium-lung-2fov → /mnt/work/datasets/pipeline_outputs/xenium-lung-2fov/annotation
+        # Strip trailing "outs" or "outs/" (Xenium convention)
+        effective_path = data_path
+        if effective_path.name == "outs":
+            effective_path = effective_path.parent
+        dataset_name = effective_path.name
+        # Walk up to find the datasets root (parent of raw/)
+        datasets_root = effective_path
+        for _ in range(5):
+            if (datasets_root / "raw").is_dir():
+                break
+            datasets_root = datasets_root.parent
+        else:
+            # Fallback: use parent of data_path
+            datasets_root = effective_path.parent.parent
+        output_dir = datasets_root / "pipeline_outputs" / dataset_name / step_name
+    else:
+        output_dir = Path("/tmp/dapidl/pipeline_outputs") / step_name
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+# =============================================================================
 # Step Artifacts
 # =============================================================================
 

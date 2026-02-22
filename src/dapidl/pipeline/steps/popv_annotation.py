@@ -33,6 +33,7 @@ from loguru import logger
 from dapidl.pipeline.base import (
     PipelineStep,
     StepArtifacts,
+    get_pipeline_output_dir,
     resolve_artifact_path,
 )
 
@@ -304,7 +305,7 @@ class PopVAnnotationStep(PipelineStep):
         index_to_class = {v: k for k, v in class_mapping.items()}
 
         # Save outputs
-        output_dir = data_path / "pipeline_outputs" / "popv_annotation"
+        output_dir = get_pipeline_output_dir("popv_annotation", data_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         annotations_path = output_dir / "annotations.parquet"

@@ -21,7 +21,7 @@ import numpy as np
 import polars as pl
 from loguru import logger
 
-from dapidl.pipeline.base import PipelineStep, StepArtifacts, resolve_artifact_path
+from dapidl.pipeline.base import PipelineStep, StepArtifacts, get_pipeline_output_dir, resolve_artifact_path
 
 
 @dataclass
@@ -175,7 +175,7 @@ class PatchExtractionStep(PipelineStep):
             platform = str(platform_value)
 
         # Check for existing outputs (skip if exists)
-        output_dir = data_path / "pipeline_outputs" / "patches"
+        output_dir = get_pipeline_output_dir("patches", data_path)
         if cfg.output_format == "lmdb":
             patches_path = output_dir / "patches.lmdb"
         else:
@@ -309,7 +309,7 @@ class PatchExtractionStep(PipelineStep):
         merged_df = self._add_class_labels(merged_df, class_mapping)
 
         # Extract patches
-        output_dir = data_path / "pipeline_outputs" / "patches"
+        output_dir = get_pipeline_output_dir("patches", data_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Determine pixel sizes for physical-space normalization
