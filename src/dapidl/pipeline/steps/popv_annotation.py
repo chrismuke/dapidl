@@ -633,6 +633,7 @@ class PopVAnnotationStep(PipelineStep):
             task_name=task_name,
             task_type=Task.TaskTypes.data_processing,
             script=str(runner_script),
+            branch="main",
             argparse_args=[f"--step={self.name}"],
             add_task_init_call=False,
             packages=["-e ."],
