@@ -93,6 +93,47 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
         step_config = {}
     logger.info(f"Step config: {step_config}")
 
+    # Helper to resolve ClearML artifact URLs (must be defined before step config blocks)
+    def _resolve_artifact_value(value: str) -> str | dict:
+        """Resolve a ClearML artifact URL or raw value to its actual content.
+
+        Pipeline parameter interpolation (${step.artifacts.name.url}) resolves
+        to ClearML file server URLs. This function downloads the URL to get
+        the actual artifact content.
+        """
+        if isinstance(value, str) and ("/artifacts/" in value or ("files." in value and "clearml" in value.lower())):
+            try:
+                from clearml.storage import StorageManager
+                local_path = StorageManager.get_local_copy(value)
+                if local_path:
+                    local_file = Path(local_path)
+                    binary_suffixes = {".parquet", ".h5", ".hdf5",
+                                       ".tif", ".tiff", ".png", ".jpg", ".npy", ".npz",
+                                       ".lmdb", ".mdb", ".zip", ".tar", ".gz", ".pt", ".pth"}
+                    if local_file.suffix.lower() in binary_suffixes:
+                        logger.info(f"  Resolved URL to binary file: {local_path}")
+                        return str(local_path)
+                    try:
+                        content = local_file.read_text().strip()
+                        logger.info(f"  Resolved URL to: {content[:200]}")
+                        if content.startswith("{") or content.startswith("["):
+                            try:
+                                return json.loads(content)
+                            except json.JSONDecodeError:
+                                return content
+                        return content
+                    except UnicodeDecodeError:
+                        logger.info(f"  Resolved URL to binary file (fallback): {local_path}")
+                        return str(local_path)
+            except Exception as e:
+                logger.warning(f"  Failed to resolve artifact URL: {e}")
+        if isinstance(value, str) and value.startswith("{"):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                pass
+        return value
+
     # Import and run the appropriate step
     if step_name == "data_loader":
         from dapidl.pipeline.steps.data_loader import DataLoaderConfig, DataLoaderStep
@@ -258,11 +299,51 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
         # (passed as lmdb_path_0, tissue_0, platform_0, tier_0, weight_0, ...)
         lmdb_idx = 0
         while f"lmdb_path_{lmdb_idx}" in step_config:
-            lmdb_path = step_config[f"lmdb_path_{lmdb_idx}"]
+            lmdb_path_raw = step_config[f"lmdb_path_{lmdb_idx}"]
             tissue = step_config.get(f"tissue_{lmdb_idx}", f"tissue_{lmdb_idx}")
             platform = step_config.get(f"platform_{lmdb_idx}", "xenium")
             tier = int(step_config.get(f"tier_{lmdb_idx}", 2))
             weight = float(step_config.get(f"weight_{lmdb_idx}", 1.0))
+
+            # Resolve the LMDB path (may be a ClearML URL to a path_reference .txt)
+            resolved = _resolve_artifact_value(lmdb_path_raw)
+            if isinstance(resolved, dict) and resolved.get("type") == "path_reference":
+                resolved = resolved["local_path"]
+                logger.info(f"  Extracted LMDB local_path from path_reference: {resolved}")
+
+            lmdb_path = str(resolved)
+
+            # If the resolved LMDB path doesn't exist locally, download from S3
+            lmdb_dir = Path(lmdb_path)
+            if not lmdb_dir.exists() or not (lmdb_dir / "patches.lmdb").exists():
+                logger.warning(f"LMDB not found locally: {lmdb_dir}")
+                # Try to download from S3 using the directory name as the key
+                lmdb_name = lmdb_dir.name  # e.g. "xenium-heart-a1b5aef7-finegrained-p128"
+                s3_prefix = f"datasets/lmdb/{lmdb_name}"
+                cache_dir = Path.home() / ".cache" / "dapidl" / "lmdb" / lmdb_name
+                try:
+                    import boto3
+                    s3 = boto3.client("s3", region_name="eu-central-1")
+                    paginator = s3.get_paginator("list_objects_v2")
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    count = 0
+                    for page in paginator.paginate(Bucket="dapidl", Prefix=s3_prefix + "/"):
+                        for obj in page.get("Contents", []):
+                            rel_key = obj["Key"][len(s3_prefix):].lstrip("/")
+                            if not rel_key:
+                                continue
+                            local_file = cache_dir / rel_key
+                            local_file.parent.mkdir(parents=True, exist_ok=True)
+                            s3.download_file("dapidl", obj["Key"], str(local_file))
+                            count += 1
+                    if count > 0:
+                        logger.info(f"Downloaded {count} LMDB files from S3 to {cache_dir}")
+                        lmdb_path = str(cache_dir)
+                    else:
+                        logger.warning(f"No LMDB files found at s3://dapidl/{s3_prefix}/")
+                except Exception as e:
+                    logger.error(f"LMDB S3 download failed: {e}")
+
             ut_config.add_dataset(
                 path=lmdb_path,
                 tissue=tissue,
@@ -316,58 +397,6 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
     from dapidl.pipeline.base import StepArtifacts
 
     inputs = {}
-
-    def _resolve_artifact_value(value: str) -> str | dict:
-        """Resolve a ClearML artifact URL or raw value to its actual content.
-
-        Pipeline parameter interpolation (${step.artifacts.name.url}) resolves
-        to ClearML file server URLs. This function downloads the URL to get
-        the actual artifact content.
-
-        Two artifact types are handled:
-        1. Text artifacts (platform, data_path, metadata) - stored as text
-           files on the server, content is read and returned as string/dict.
-        2. File artifacts (centroids_parquet, annotations_parquet) - stored
-           as actual files, get_local_copy returns the downloaded file path.
-        """
-        # Check if value is a ClearML file server URL
-        if isinstance(value, str) and ("/artifacts/" in value or ("files." in value and "clearml" in value.lower())):
-            try:
-                from clearml.storage import StorageManager
-                local_path = StorageManager.get_local_copy(value)
-                if local_path:
-                    local_file = Path(local_path)
-                    # Binary files (parquet, h5, etc.) - return the local path directly
-                    binary_suffixes = {".parquet", ".h5", ".hdf5",
-                                       ".tif", ".tiff", ".png", ".jpg", ".npy", ".npz",
-                                       ".lmdb", ".mdb", ".zip", ".tar", ".gz", ".pt", ".pth"}
-                    if local_file.suffix.lower() in binary_suffixes:
-                        logger.info(f"  Resolved URL to binary file: {local_path}")
-                        return str(local_path)
-                    # Text files - read content
-                    try:
-                        content = local_file.read_text().strip()
-                        logger.info(f"  Resolved URL to: {content[:200]}")
-                        # Try to parse as JSON (path_reference objects, dicts, lists)
-                        if content.startswith("{") or content.startswith("["):
-                            try:
-                                return json.loads(content)
-                            except json.JSONDecodeError:
-                                return content
-                        return content
-                    except UnicodeDecodeError:
-                        # Not a text file - return local path
-                        logger.info(f"  Resolved URL to binary file (fallback): {local_path}")
-                        return str(local_path)
-            except Exception as e:
-                logger.warning(f"  Failed to resolve artifact URL: {e}")
-        # Handle JSON-encoded values (non-URL)
-        if isinstance(value, str) and value.startswith("{"):
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError:
-                pass
-        return value
 
     # Extract parent outputs from step_config (set by pipeline parameter_override)
     parent_output_keys = [

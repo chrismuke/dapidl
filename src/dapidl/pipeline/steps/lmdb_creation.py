@@ -703,11 +703,8 @@ class LMDBCreationStep(PipelineStep):
         elif inputs.get("annotated_dataset_id"):
             parent_ids.append(inputs["annotated_dataset_id"])
 
-        # Create dataset name
-        platform = inputs.get("platform", "unknown")
-        annotated_id = inputs.get("annotated_dataset_id", "")
-        id_suffix = annotated_id[:8] if annotated_id else "local"
-        dataset_name = f"lmdb-{platform}-p{cfg.patch_size}-{id_suffix}"
+        # Create dataset name from the LMDB directory name (includes tissue + dataset_id)
+        dataset_name = lmdb_path.name  # e.g. "xenium-heart-a1b5aef7-finegrained-p128"
 
         # S3 path for this dataset
         s3_path = f"datasets/lmdb/{dataset_name}"
@@ -757,7 +754,7 @@ class LMDBCreationStep(PipelineStep):
                     "class_counts": stats["class_counts"],
                     "normalization": cfg.normalization_method,
                     "parent_annotated_id": inputs.get("annotated_dataset_id"),
-                    "platform": platform,
+                    "platform": inputs.get("platform", "unknown"),
                     "normalize_physical_size": cfg.normalize_physical_size,
                     "s3_uri": s3_uri,  # Store S3 location in metadata
                     "local_path": str(lmdb_path),  # For reference

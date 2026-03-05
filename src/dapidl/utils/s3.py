@@ -13,10 +13,10 @@ AWS credentials are resolved via standard boto3 chain:
 """
 
 import os
-import subprocess
 from pathlib import Path
 from typing import Optional
 
+import boto3
 from loguru import logger
 
 # S3 Configuration — AWS S3 defaults (eu-central-1).
@@ -27,6 +27,14 @@ S3_REGION = os.environ.get("DAPIDL_S3_REGION", "eu-central-1")
 S3_BUCKET = os.environ.get("DAPIDL_S3_BUCKET", "dapidl")
 
 
+def _get_s3_client():
+    """Get a boto3 S3 client with optional endpoint override."""
+    kwargs = {"region_name": S3_REGION}
+    if S3_ENDPOINT:
+        kwargs["endpoint_url"] = S3_ENDPOINT
+    return boto3.client("s3", **kwargs)
+
+
 def get_s3_uri(path: str) -> str:
     """Convert a relative path to full S3 URI."""
     if path.startswith("s3://"):
@@ -34,21 +42,12 @@ def get_s3_uri(path: str) -> str:
     return f"s3://{S3_BUCKET}/{path.lstrip('/')}"
 
 
-def _build_s3_cmd(action: str, src: str, dst: str) -> list[str]:
-    """Build an aws s3 command with optional endpoint override."""
-    cmd = ["aws", "s3", action, src, dst]
-    if S3_ENDPOINT:
-        cmd += ["--endpoint-url", S3_ENDPOINT]
-    cmd += ["--region", S3_REGION]
-    return cmd
-
-
 def upload_to_s3(
     local_path: Path,
     s3_path: str,
     delete_local: bool = False,
 ) -> str:
-    """Upload a file or directory to S3.
+    """Upload a file or directory to S3 using boto3.
 
     Args:
         local_path: Local file or directory to upload
@@ -63,41 +62,46 @@ def upload_to_s3(
         raise FileNotFoundError(f"Local path not found: {local_path}")
 
     s3_uri = get_s3_uri(s3_path)
-    action = "sync" if local_path.is_dir() else "cp"
-    cmd = _build_s3_cmd(action, str(local_path), s3_uri)
+    # Parse bucket and key prefix from s3_uri
+    s3_parts = s3_uri.replace("s3://", "").split("/", 1)
+    bucket = s3_parts[0]
+    key_prefix = s3_parts[1] if len(s3_parts) > 1 else ""
 
+    s3 = _get_s3_client()
     logger.info(f"Uploading to S3: {local_path} -> {s3_uri}")
 
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        logger.info(f"Upload complete: {s3_uri}")
+    count = 0
+    if local_path.is_dir():
+        for file in local_path.rglob("*"):
+            if file.is_file():
+                rel = file.relative_to(local_path)
+                key = f"{key_prefix}/{rel}" if key_prefix else str(rel)
+                s3.upload_file(str(file), bucket, key)
+                count += 1
+    else:
+        key = f"{key_prefix}/{local_path.name}" if key_prefix else local_path.name
+        s3.upload_file(str(local_path), bucket, key)
+        count = 1
 
-        if delete_local:
-            import shutil
+    logger.info(f"Upload complete: {count} files -> {s3_uri}")
 
-            if local_path.is_dir():
-                shutil.rmtree(local_path)
-            else:
-                local_path.unlink()
-            logger.info(f"Deleted local copy: {local_path}")
+    if delete_local:
+        import shutil
 
-        return s3_uri
+        if local_path.is_dir():
+            shutil.rmtree(local_path)
+        else:
+            local_path.unlink()
+        logger.info(f"Deleted local copy: {local_path}")
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"S3 upload failed: {e.stderr}")
-        raise RuntimeError(f"Failed to upload to S3: {e.stderr}")
+    return s3_uri
 
 
 def download_from_s3(
     s3_uri: str,
     local_path: Optional[Path] = None,
 ) -> Path:
-    """Download a file or directory from S3.
+    """Download a file or directory from S3 using boto3.
 
     Args:
         s3_uri: S3 URI to download
@@ -113,20 +117,30 @@ def download_from_s3(
         local_path = Path.home() / ".cache" / "dapidl" / "s3_downloads" / dataset_name
 
     local_path = Path(local_path)
-    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.mkdir(parents=True, exist_ok=True)
 
-    cmd = _build_s3_cmd("sync", s3_uri, str(local_path))
+    # Parse bucket and prefix from s3_uri
+    s3_parts = s3_uri.replace("s3://", "").split("/", 1)
+    bucket = s3_parts[0]
+    prefix = s3_parts[1] if len(s3_parts) > 1 else ""
 
+    s3 = _get_s3_client()
     logger.info(f"Downloading from S3: {s3_uri} -> {local_path}")
 
-    try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
-        logger.info(f"Download complete: {local_path}")
-        return local_path
+    paginator = s3.get_paginator("list_objects_v2")
+    count = 0
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            rel_key = obj["Key"][len(prefix):].lstrip("/")
+            if not rel_key:
+                continue
+            dest = local_path / rel_key
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            s3.download_file(bucket, obj["Key"], str(dest))
+            count += 1
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"S3 download failed: {e.stderr}")
-        raise RuntimeError(f"Failed to download from S3: {e.stderr}")
+    logger.info(f"Download complete: {count} files -> {local_path}")
+    return local_path
 
 
 def register_dataset_from_s3(
