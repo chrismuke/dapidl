@@ -125,7 +125,14 @@ class XeniumDataReader:
         logger.info(f"Loading DAPI image from {image_path}")
 
         with tifffile.TiffFile(image_path) as tif:
-            image = tif.asarray()
+            n_pages = len(tif.pages)
+            if n_pages > 1:
+                logger.info(
+                    f"Multi-page TIFF ({n_pages} pages), loading page 0 only"
+                )
+                image = tif.pages[0].asarray()
+            else:
+                image = tif.asarray()
 
         logger.info(f"Loaded image with shape {image.shape}, dtype {image.dtype}")
         return image

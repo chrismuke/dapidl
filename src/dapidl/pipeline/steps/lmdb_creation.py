@@ -603,14 +603,20 @@ class LMDBCreationStep(PipelineStep):
         return dataset_dir, stats  # Return dataset_dir for compatibility
 
     def _load_dapi_image(self, data_path: Path, platform: str) -> np.ndarray:
-        """Load DAPI image from Xenium or MERSCOPE output."""
+        """Load DAPI image from Xenium or MERSCOPE output.
+
+        For multi-page OME-TIFFs (e.g. morphology.ome.tif with Z-stacks),
+        loads only page 0 (DAPI channel) to avoid OOM on memory-constrained
+        instances like g6.xlarge (16 GB).
+        """
         import tifffile
 
-        # Try various paths
+        # Try various paths — single-plane files preferred over multi-page
         dapi_paths = [
             data_path / "morphology_focus" / "morphology_focus_0000.ome.tif",
-            data_path / "morphology.ome.tif",
             data_path / "morphology_focus.ome.tif",
+            data_path / "morphology.ome.tif",
+            data_path / "morphology_mip.ome.tif",
             data_path / "images" / "mosaic_DAPI_z0.tif",  # MERSCOPE
             data_path / "images" / "DAPI.tif",
         ]
@@ -618,7 +624,14 @@ class LMDBCreationStep(PipelineStep):
         for dapi_path in dapi_paths:
             if dapi_path.exists():
                 logger.info(f"Loading DAPI from {dapi_path}")
-                return tifffile.imread(str(dapi_path))
+                with tifffile.TiffFile(str(dapi_path)) as tif:
+                    n_pages = len(tif.pages)
+                    if n_pages > 1:
+                        logger.info(
+                            f"Multi-page TIFF ({n_pages} pages), loading page 0 only"
+                        )
+                        return tif.pages[0].asarray()
+                    return tif.asarray()
 
         raise FileNotFoundError(f"No DAPI image found in {data_path}")
 
