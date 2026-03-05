@@ -346,8 +346,7 @@ class HierarchicalTrainingStep(PipelineStep):
         Returns:
             Dictionary mapping model names to S3 URLs
         """
-        import os
-        import subprocess
+        import boto3
         from datetime import datetime
 
         # Generate experiment name from output directory
@@ -357,9 +356,14 @@ class HierarchicalTrainingStep(PipelineStep):
             else output_dir.name
         )
         timestamp = datetime.now().strftime("%Y%m%d")
-        s3_prefix = f"s3://{cfg.s3_bucket}/{cfg.s3_models_prefix}/{exp_name}-{timestamp}"
+        s3_key_prefix = f"{cfg.s3_models_prefix}/{exp_name}-{timestamp}"
 
-        logger.info(f"Uploading hierarchical models to S3: {s3_prefix}")
+        logger.info(f"Uploading hierarchical models to S3: s3://{cfg.s3_bucket}/{s3_key_prefix}")
+
+        kwargs = {"region_name": cfg.s3_region}
+        if cfg.s3_endpoint:
+            kwargs["endpoint_url"] = cfg.s3_endpoint
+        s3 = boto3.client("s3", **kwargs)
 
         s3_urls = {}
         files_to_upload = [
@@ -375,21 +379,12 @@ class HierarchicalTrainingStep(PipelineStep):
             if not local_path.exists():
                 continue
 
-            s3_url = f"{s3_prefix}/{filename}"
-            cmd = ["aws", "s3", "cp", str(local_path), s3_url]
-            if cfg.s3_endpoint:
-                cmd += ["--endpoint-url", cfg.s3_endpoint]
-            cmd += ["--region", cfg.s3_region]
-
+            s3_key = f"{s3_key_prefix}/{filename}"
+            s3_url = f"s3://{cfg.s3_bucket}/{s3_key}"
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-                if result.returncode == 0:
-                    s3_urls[filename] = s3_url
-                    logger.info(f"Uploaded {filename} to S3")
-                else:
-                    logger.warning(f"Failed to upload {filename}: {result.stderr}")
-            except subprocess.TimeoutExpired:
-                logger.warning(f"Timeout uploading {filename}")
+                s3.upload_file(str(local_path), cfg.s3_bucket, s3_key)
+                s3_urls[filename] = s3_url
+                logger.info(f"Uploaded {filename} to S3")
             except Exception as e:
                 logger.warning(f"Error uploading {filename}: {e}")
 
