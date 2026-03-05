@@ -139,6 +139,10 @@ class ClearMLClient:
         })
         return self._resolve_project_names(data.get("tasks", []))
 
+    def get_raw_datasets(self) -> list[dict]:
+        """Return only raw datasets (names ending in '-raw')."""
+        return [d for d in self.get_datasets() if d.get("name", "").endswith("-raw")]
+
     # -- Pipelines --
 
     def get_pipelines(self, limit: int = 20) -> list[dict]:
