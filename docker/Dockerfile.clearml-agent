@@ -22,13 +22,16 @@ RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED
 
 # Pre-install dapidl dependencies into system site-packages
 # ClearML agent uses system_site_packages: true, so its venv inherits these
-# Keep uv cache so agent's uv sync can skip downloads
 WORKDIR /tmp/build
 COPY pyproject.toml uv.lock ./
 ENV RPY2_CFFI_MODE=ABI
 RUN uv pip compile pyproject.toml --all-extras -o /tmp/requirements.txt \
     && uv pip install --system -r /tmp/requirements.txt \
     && rm -rf /tmp/build /tmp/requirements.txt
+
+# Pre-install clearml-agent into system packages so the agent skips reinstalling
+# it inside Docker. This avoids pip version conflicts and saves ~60s per task.
+RUN pip install --no-cache-dir clearml-agent
 
 # Install dapidl package + scripts into the image
 # This eliminates the need for git clone on every task
@@ -37,3 +40,6 @@ COPY src/ src/
 COPY scripts/ scripts/
 COPY pyproject.toml uv.lock README.md ./
 RUN uv pip install --system --no-deps -e .
+
+# Set default working directory for ClearML tasks
+WORKDIR /opt/dapidl

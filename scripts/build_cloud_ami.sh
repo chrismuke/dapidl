@@ -93,6 +93,94 @@ ssh -o StrictHostKeyChecking=no -i ~/.ssh/clearml-agent-key.pem ubuntu@"$PUBLIC_
     "sudo docker load < /tmp/dapidl-agent.tar.gz && sudo rm /tmp/dapidl-agent.tar.gz && sudo docker images"
 
 echo ""
+echo "=== Step 3b: Bake ClearML agent config with public URLs ==="
+# The ClearML autoscaler generates a boot script that exports CLEARML_API_HOST
+# using its own internal address (http://10.0.0.106:8008). EC2 instances can't
+# reach this. The extra_vm_bash_script is supposed to override, but it's fragile.
+# Baking the correct config into the AMI ensures the agent always connects via
+# the public URL, regardless of env var ordering issues.
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/clearml-agent-key.pem ubuntu@"$PUBLIC_IP" \
+    "sudo tee /root/clearml.conf > /dev/null" <<'CLEARML_CONF'
+api {
+    web_server: https://clearml.chrism.io
+    api_server: https://api.clearml.chrism.io
+    files_server: https://files.clearml.chrism.io
+    credentials {
+        # Overridden by env vars at boot time
+        access_key: ""
+        secret_key: ""
+    }
+}
+agent {
+    docker_force_pull: false
+    docker_args: "--network host --ipc=host -e WANDB_MODE=disabled"
+    package_manager {
+        type: pip
+        system_site_packages: true
+    }
+}
+CLEARML_CONF
+
+# Install clearml-agent into the AMI so boot is faster (no pip install needed)
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/clearml-agent-key.pem ubuntu@"$PUBLIC_IP" \
+    "sudo python3 -m virtualenv /clearml_agent_venv && sudo /clearml_agent_venv/bin/pip install clearml-agent"
+
+echo ""
+echo "=== Step 3c: Pre-install CloudWatch Agent and GPU monitoring ==="
+# Pre-installing CloudWatch Agent saves ~30s at boot time. The cron fallback
+# script is also baked in so GPU metrics push immediately after boot without
+# needing to curl the setup script from GitHub.
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/clearml-agent-key.pem ubuntu@"$PUBLIC_IP" << 'GPU_MONITOR'
+set -e
+echo "[AMI] Installing CloudWatch Agent..."
+wget -q https://amazoncloudwatch-agent-eu-central-1.s3.eu-central-1.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+sudo dpkg -i amazon-cloudwatch-agent.deb
+rm -f amazon-cloudwatch-agent.deb
+
+echo "[AMI] Writing CloudWatch Agent GPU config..."
+sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json > /dev/null << 'CWCONFIG'
+{
+  "metrics": {
+    "namespace": "GPU",
+    "metrics_collected": {
+      "nvidia_gpu": {
+        "measurement": [
+          "utilization_gpu",
+          "utilization_memory",
+          "memory_total",
+          "memory_used",
+          "memory_free",
+          "temperature_gpu",
+          "power_draw"
+        ],
+        "metrics_collection_interval": 30
+      }
+    },
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}",
+      "InstanceType": "${aws:InstanceType}"
+    }
+  }
+}
+CWCONFIG
+
+echo "[AMI] Writing cron fallback GPU metrics script..."
+sudo tee /usr/local/bin/gpu-metrics-push.sh > /dev/null << 'CRONSCRIPT'
+#!/bin/bash
+REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
+read GPU_UTIL MEM_UTIL MEM_USED MEM_TOTAL TEMP POWER <<< $(nvidia-smi \
+  --query-gpu=utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu,power.draw \
+  --format=csv,noheader,nounits | tr ',' ' ')
+aws cloudwatch put-metric-data --region "$REGION" --namespace "GPU" --metric-data \
+  "[{\"MetricName\":\"utilization_gpu\",\"Value\":$GPU_UTIL,\"Unit\":\"Percent\",\"Dimensions\":[{\"Name\":\"InstanceId\",\"Value\":\"$INSTANCE_ID\"},{\"Name\":\"InstanceType\",\"Value\":\"$INSTANCE_TYPE\"}]},{\"MetricName\":\"utilization_memory\",\"Value\":$MEM_UTIL,\"Unit\":\"Percent\",\"Dimensions\":[{\"Name\":\"InstanceId\",\"Value\":\"$INSTANCE_ID\"},{\"Name\":\"InstanceType\",\"Value\":\"$INSTANCE_TYPE\"}]},{\"MetricName\":\"memory_used\",\"Value\":$MEM_USED,\"Unit\":\"Megabytes\",\"Dimensions\":[{\"Name\":\"InstanceId\",\"Value\":\"$INSTANCE_ID\"},{\"Name\":\"InstanceType\",\"Value\":\"$INSTANCE_TYPE\"}]},{\"MetricName\":\"memory_total\",\"Value\":$MEM_TOTAL,\"Unit\":\"Megabytes\",\"Dimensions\":[{\"Name\":\"InstanceId\",\"Value\":\"$INSTANCE_ID\"},{\"Name\":\"InstanceType\",\"Value\":\"$INSTANCE_TYPE\"}]},{\"MetricName\":\"temperature_gpu\",\"Value\":$TEMP,\"Unit\":\"None\",\"Dimensions\":[{\"Name\":\"InstanceId\",\"Value\":\"$INSTANCE_ID\"},{\"Name\":\"InstanceType\",\"Value\":\"$INSTANCE_TYPE\"}]},{\"MetricName\":\"power_draw\",\"Value\":$POWER,\"Unit\":\"None\",\"Dimensions\":[{\"Name\":\"InstanceId\",\"Value\":\"$INSTANCE_ID\"},{\"Name\":\"InstanceType\",\"Value\":\"$INSTANCE_TYPE\"}]}]"
+CRONSCRIPT
+sudo chmod +x /usr/local/bin/gpu-metrics-push.sh
+echo "[AMI] CloudWatch Agent and GPU monitoring pre-installed."
+GPU_MONITOR
+
+echo ""
 echo "=== Step 4: Create AMI ==="
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 AMI_NAME="${AMI_PREFIX}-${TIMESTAMP}"
