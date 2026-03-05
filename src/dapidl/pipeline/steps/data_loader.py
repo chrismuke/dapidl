@@ -67,14 +67,20 @@ def _build_local_registry() -> dict[str, Path]:
     Resolves outs/ subdirectory if present.
     """
     registry: dict[str, Path] = {}
-    for root in _get_local_roots():
+    roots = _get_local_roots()
+    for root in roots:
         if not root.exists():
+            logger.debug(f"Local data root does not exist: {root}")
             continue
         for entry in root.iterdir():
             if not entry.is_dir():
                 continue
             effective_path = entry / "outs" if (entry / "outs").is_dir() else entry
             registry[entry.name] = effective_path
+    if registry:
+        logger.info(f"Local registry: {len(registry)} datasets from {roots}")
+    else:
+        logger.warning(f"No local datasets found in {roots}")
     return registry
 
 
@@ -240,7 +246,7 @@ def _find_local_dataset_by_id(dataset_id: str, verify: bool = True) -> Path | No
         return matched_path
 
     except Exception as e:
-        logger.debug(f"Could not resolve dataset_id locally: {e}")
+        logger.warning(f"Could not resolve dataset_id locally: {e}")
 
     return None
 
@@ -583,6 +589,12 @@ class DataLoaderStep(PipelineStep):
 
         Uses boto3 with AWS S3 configuration.
         Downloads to a local cache directory.
+
+        If the initial S3 prefix yields no files (e.g. migration_info has
+        wrong path), tries progressively shorter prefixes to find the
+        actual S3 key. For example:
+          raw-data/xenium-heart-normal-multi-tissue-panel-raw -> 0 files
+          raw-data/xenium-heart-normal -> found!
         """
         import boto3
         from botocore.config import Config
@@ -617,6 +629,11 @@ class DataLoaderStep(PipelineStep):
             config=Config(signature_version="s3v4"),
         )
 
+        # Try the given prefix first, then progressively shorter prefixes
+        # This handles cases where migration_info.s3_uri has a dataset name
+        # that doesn't match the actual S3 key (e.g. includes panel suffix)
+        prefix = self._resolve_s3_prefix(s3_client, bucket_name, prefix)
+
         # List and download all objects with prefix
         paginator = s3_client.get_paginator("list_objects_v2")
         total_files = 0
@@ -642,11 +659,66 @@ class DataLoaderStep(PipelineStep):
                 total_files += 1
                 total_bytes += size
 
+        if total_files == 0:
+            raise FileNotFoundError(
+                f"No files found in S3 at s3://{bucket_name}/{prefix}. "
+                f"The dataset may not have been uploaded to S3."
+            )
+
         logger.info(
             f"Downloaded {total_files} files ({total_bytes / 1024 / 1024 / 1024:.2f} GB) to: {cache_dir}"
         )
 
         return cache_dir
+
+    @staticmethod
+    def _resolve_s3_prefix(s3_client, bucket_name: str, prefix: str) -> str:
+        """Resolve an S3 prefix that may not match the actual key structure.
+
+        If the given prefix has no objects, tries progressively shorter
+        versions by stripping suffixes like -raw, panel names, etc.
+
+        For example, ClearML dataset name "xenium-heart-normal-multi-tissue-panel-raw"
+        maps to S3 key "raw-data/xenium-heart-normal" — this method finds that.
+        """
+        # Quick check: does the prefix have objects?
+        resp = s3_client.list_objects_v2(
+            Bucket=bucket_name, Prefix=prefix, MaxKeys=1
+        )
+        if resp.get("Contents"):
+            return prefix
+
+        logger.warning(f"No objects at S3 prefix '{prefix}', trying shorter prefixes...")
+
+        # Extract parent prefix and dataset name component
+        # e.g. "raw-data/xenium-heart-normal-multi-tissue-panel-raw"
+        #   -> parent="raw-data", name="xenium-heart-normal-multi-tissue-panel-raw"
+        if "/" in prefix:
+            parent, name = prefix.rsplit("/", 1)
+        else:
+            parent, name = "", prefix
+
+        # Strip common suffixes
+        stripped = name
+        for suffix in ["-raw", "-raw-data"]:
+            stripped = stripped.removesuffix(suffix)
+
+        # Try progressively shorter names
+        name_parts = stripped.split("-")
+        for end in range(len(name_parts), 2, -1):
+            candidate = "-".join(name_parts[:end])
+            candidate_prefix = f"{parent}/{candidate}" if parent else candidate
+            resp = s3_client.list_objects_v2(
+                Bucket=bucket_name, Prefix=candidate_prefix + "/", MaxKeys=1
+            )
+            if resp.get("Contents"):
+                logger.info(
+                    f"Resolved S3 prefix: '{prefix}' -> '{candidate_prefix}'"
+                )
+                return candidate_prefix
+
+        # Nothing found, return original prefix (will result in 0 files error)
+        return prefix
 
     def _resolve_data_path(self, data_path: Path) -> Path:
         """Resolve the effective data path, handling outs/ subdirectory.
