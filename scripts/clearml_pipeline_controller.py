@@ -201,13 +201,9 @@ def main() -> None:
     tl.report_text(f"Default queue: {config.execution.default_queue}")
     tl.report_text(f"Cache data steps: {config.execution.cache_data_steps}")
 
-    # Disable caching when targeting cloud queues — cached tasks from local runs
-    # would be reused instead of dispatching to the cloud queue.
-    cloud_queues = {"gpu-cloud"}
-    if config.execution.gpu_queue in cloud_queues or config.execution.default_queue in cloud_queues:
-        if config.execution.cache_data_steps:
-            config.execution.cache_data_steps = False
-            tl.report_text("Auto-disabled cache_data_steps for cloud queue target")
+    # Cache disable for cloud queues now happens in cli.py BEFORE pipeline creation.
+    # Previously this was here but it ran too late — after add_step() already set
+    # cache_executed_step=True on all steps.
 
     if n_tissues == 0:
         logger.error("No datasets configured. Edit 'datasets/spec' parameter.")

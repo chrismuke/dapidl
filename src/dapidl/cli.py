@@ -2476,7 +2476,7 @@ def run_pipeline(
             ground_truth_file=ground_truth_file,
         ),
         lmdb=LMDBConfig(patch_sizes=[int(patch_size)]),
-        execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training, gpu_queue=gpu_queue, default_queue=default_queue, cache_data_steps=not no_cache),
+        execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training, gpu_queue=gpu_queue, default_queue=default_queue, cache_data_steps=not no_cache and gpu_queue not in ("gpu-cloud",)),
         validation=ValidationConfig(enabled=validate),
     )
 
