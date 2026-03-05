@@ -6,8 +6,6 @@ Creates a ClearML task that:
 3. Reports GPU memory usage
 4. Sleeps briefly to simulate work
 """
-from __future__ import annotations
-
 import time
 
 from clearml import Task
