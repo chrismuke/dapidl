@@ -382,6 +382,7 @@ class UnifiedPipelineController:
                     "step_config/diameter": str(cfg.segmentation.diameter),
                     "step_config/flow_threshold": str(cfg.segmentation.flow_threshold),
                     "step_config/data_path": f"${{data_loader_{step_prefix}.artifacts.data_path.url}}",
+                    "step_config/platform": f"${{data_loader_{step_prefix}.artifacts.platform.url}}",
                 },
                 execution_queue=cfg.execution.gpu_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
