@@ -383,6 +383,8 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
         "num_classes", "class_names", "model_path", "model_id",
         # General metadata
         "metadata", "index_to_class", "class_to_index",
+        # Tissue/dataset info (for LMDB naming)
+        "tissue", "dataset_id",
     ]
     for key in parent_output_keys:
         if key in step_config and step_config[key]:

@@ -421,6 +421,8 @@ class UnifiedPipelineController:
                     "step_config/normalization_method": cfg.lmdb.normalization.value,
                     "step_config/data_path": f"${{data_loader_{step_prefix}.artifacts.data_path.url}}",
                     "step_config/annotations_parquet": f"${{annotation_{step_prefix}.artifacts.annotations_parquet.url}}",
+                    "step_config/tissue": tissue_name,
+                    "step_config/dataset_id": tissue_cfg.dataset_id or "",
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
@@ -709,8 +711,13 @@ class UnifiedPipelineController:
                 annot_artifacts = annotation.execute(artifacts)
                 results[f"annotation_{tissue_name}"] = annot_artifacts.outputs
 
-                # Merge outputs
-                merged_outputs = {**seg_artifacts.outputs, **annot_artifacts.outputs}
+                # Merge outputs — include tissue name and dataset_id for LMDB naming
+                merged_outputs = {
+                    **seg_artifacts.outputs,
+                    **annot_artifacts.outputs,
+                    "tissue": tissue_name,
+                    "dataset_id": tissue_cfg.dataset_id or "",
+                }
                 artifacts = StepArtifacts(inputs={}, outputs=merged_outputs)
 
                 # Step 4: LMDB Creation
