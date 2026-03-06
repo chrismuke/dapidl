@@ -617,7 +617,6 @@ class LMDBCreationStep(PipelineStep):
             data_path / "morphology_focus.ome.tif",
             data_path / "morphology.ome.tif",
             data_path / "morphology_mip.ome.tif",
-            data_path / "images" / "mosaic_DAPI_z0.tif",  # MERSCOPE
             data_path / "images" / "DAPI.tif",
         ]
 
@@ -632,6 +631,16 @@ class LMDBCreationStep(PipelineStep):
                         )
                         return tif.pages[0].asarray()
                     return tif.asarray()
+
+        # MERSCOPE: glob for mosaic_DAPI_z*.tif and use middle z-slice
+        images_dir = data_path / "images"
+        if images_dir.exists():
+            dapi_files = sorted(images_dir.glob("mosaic_DAPI_z*.tif"))
+            if dapi_files:
+                mid_idx = len(dapi_files) // 2
+                dapi_path = dapi_files[mid_idx]
+                logger.info(f"Loading MERSCOPE DAPI from {dapi_path} ({len(dapi_files)} z-slices, using index {mid_idx})")
+                return tifffile.imread(dapi_path)
 
         raise FileNotFoundError(f"No DAPI image found in {data_path}")
 
