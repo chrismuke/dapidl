@@ -279,6 +279,7 @@ class UnifiedPipelineController:
                 "step_config/lmdb_path": f"${{{primary_lmdb_step}.artifacts.lmdb_path.url}}",
                 "step_config/upload_to_s3": "${pipeline.output/upload_to_s3}",
                 "step_config/register_model": "${pipeline.output/register_models}",
+                "step_config/resume_from_task": "${pipeline.training/resume_from_task}",
             },
             execution_queue=cfg.execution.gpu_queue if cfg.execution.execute_remotely else None,
             cache_executed_step=cfg.execution.cache_training,
@@ -454,6 +455,7 @@ class UnifiedPipelineController:
                 "step_config/tier3_weight": str(cfg.training.tier3_weight),
                 "step_config/coarse_only_epochs": str(cfg.training.coarse_only_epochs),
                 "step_config/coarse_medium_epochs": str(cfg.training.coarse_medium_epochs),
+                "step_config/resume_from_task": "${pipeline.training/resume_from_task}",
                 # Pass all LMDB paths
                 **{
                     f"step_config/lmdb_path_{i}": f"${{{step}.artifacts.lmdb_path.url}}"

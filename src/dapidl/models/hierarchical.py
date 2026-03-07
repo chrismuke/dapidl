@@ -26,7 +26,7 @@ Features:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -535,6 +535,8 @@ class HierarchicalClassifier(nn.Module):
         optimizer: torch.optim.Optimizer | None = None,
         epoch: int = 0,
         metrics: dict | None = None,
+        scheduler: Any | None = None,
+        extra_state: dict | None = None,
     ) -> None:
         """Save model checkpoint.
 
@@ -543,6 +545,8 @@ class HierarchicalClassifier(nn.Module):
             optimizer: Optional optimizer to save
             epoch: Current epoch
             metrics: Optional metrics dict
+            scheduler: Optional LR scheduler to save
+            extra_state: Optional extra state (phase, best_val_f1, patience, history)
         """
         checkpoint = {
             "model_state_dict": self.state_dict(),
@@ -567,6 +571,12 @@ class HierarchicalClassifier(nn.Module):
 
         if optimizer is not None:
             checkpoint["optimizer_state_dict"] = optimizer.state_dict()
+
+        if scheduler is not None and hasattr(scheduler, "state_dict"):
+            checkpoint["scheduler_state_dict"] = scheduler.state_dict()
+
+        if extra_state:
+            checkpoint.update(extra_state)
 
         torch.save(checkpoint, path)
         logger.info(f"Saved hierarchical checkpoint to {path}")

@@ -280,6 +280,24 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
             UniversalTrainingConfig,
         )
 
+        # Resolve resume checkpoint from previous ClearML task if specified
+        resume_checkpoint_path = ""
+        resume_task_id = step_config.get("resume_from_task", "")
+        if resume_task_id:
+            logger.info(f"Resolving resume checkpoint from task {resume_task_id}")
+            try:
+                from clearml import Task as ClearmlTask
+                from clearml.storage import StorageManager
+                prev_task = ClearmlTask.get_task(task_id=resume_task_id)
+                if "final_model" in prev_task.artifacts:
+                    artifact_url = prev_task.artifacts["final_model"].url
+                    resume_checkpoint_path = StorageManager.get_local_copy(artifact_url)
+                    logger.info(f"Downloaded resume checkpoint: {resume_checkpoint_path}")
+                else:
+                    logger.warning(f"Task {resume_task_id} has no 'final_model' artifact")
+            except Exception as e:
+                logger.error(f"Failed to resolve resume checkpoint: {e}")
+
         ut_config = UniversalTrainingConfig(
             backbone=step_config.get("backbone", "efficientnetv2_rw_s"),
             epochs=int(step_config.get("epochs", 100)),
@@ -293,6 +311,7 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
             coarse_medium_epochs=int(step_config.get("coarse_medium_epochs", 50)),
             patience=int(step_config.get("patience", 15)),
             standardize_labels=_parse_bool(step_config.get("standardize_labels", True)),
+            resume_from_checkpoint=resume_checkpoint_path,
         )
 
         # Collect LMDB paths and tissue metadata from step_config

@@ -654,6 +654,12 @@ class TrainingConfig(BaseModel):
         description="Train on all patch sizes together",
     )
 
+    # Resume from previous training run
+    resume_from_task: str = Field(
+        default="",
+        description="ClearML task ID of previous training run to resume from",
+    )
+
     # Logging
     wandb_project: str | None = Field(
         default=None,

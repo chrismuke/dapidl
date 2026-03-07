@@ -102,6 +102,9 @@ class UniversalTrainingConfig:
     wandb_project: str = "dapidl-universal"
     use_wandb: bool = True
 
+    # Resume from checkpoint
+    resume_from_checkpoint: str = ""
+
     # Output
     output_dir: str | None = None
 
@@ -677,8 +680,28 @@ class UniversalDAPITrainingStep(PipelineStep):
         current_phase = 0  # Track phase for reset on transition
         phase_best_f1 = {}  # Track best F1 per phase
 
+        # Resume from checkpoint if provided
+        start_epoch = 0
+        if cfg.resume_from_checkpoint and Path(cfg.resume_from_checkpoint).exists():
+            ckpt = torch.load(cfg.resume_from_checkpoint, weights_only=False)
+            model.load_state_dict(ckpt["model_state_dict"])
+            if ckpt.get("optimizer_state_dict"):
+                optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            if ckpt.get("scheduler_state_dict"):
+                lr_scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            start_epoch = ckpt.get("epoch", 0)
+            best_val_f1 = ckpt.get("best_val_f1", 0.0)
+            current_phase = ckpt.get("phase", 0)
+            patience_counter = ckpt.get("patience_counter", 0)
+            phase_best_f1 = ckpt.get("phase_best_f1", {})
+            history = ckpt.get("history", history)
+            logger.info(
+                f"Resumed from checkpoint: epoch {start_epoch}, "
+                f"phase {current_phase}, best_f1={best_val_f1:.4f}"
+            )
+
         # Training loop
-        for epoch in range(cfg.epochs):
+        for epoch in range(start_epoch, cfg.epochs):
             # Get curriculum phase
             active_heads = scheduler_curriculum.get_active_heads(epoch)
             phase_num = scheduler_curriculum.get_phase_number(epoch)
@@ -771,9 +794,26 @@ class UniversalDAPITrainingStep(PipelineStep):
                 best_val_f1 = current_f1
                 patience_counter = 0
                 # Save phase-specific best model
-                model.save_checkpoint(str(output_dir / f"best_model_phase{current_phase}.pt"))
+                _extra = {
+                    "phase": current_phase,
+                    "best_val_f1": best_val_f1,
+                    "patience_counter": patience_counter,
+                    "phase_best_f1": phase_best_f1,
+                    "history": history,
+                }
+                model.save_checkpoint(
+                    str(output_dir / f"best_model_phase{current_phase}.pt"),
+                    optimizer=optimizer, epoch=epoch + 1,
+                    metrics=val_metrics, scheduler=lr_scheduler,
+                    extra_state=_extra,
+                )
                 # Also save as overall best (will be latest phase's best)
-                model.save_checkpoint(str(output_dir / "best_model.pt"))
+                model.save_checkpoint(
+                    str(output_dir / "best_model.pt"),
+                    optimizer=optimizer, epoch=epoch + 1,
+                    metrics=val_metrics, scheduler=lr_scheduler,
+                    extra_state=_extra,
+                )
                 logger.info(f"New best model (Phase {current_phase}): F1={best_val_f1:.4f}")
             else:
                 patience_counter += 1
@@ -816,8 +856,20 @@ class UniversalDAPITrainingStep(PipelineStep):
                 )
                 clearml_logger.report_text(f"Phase: {phase_name}", iteration=epoch + 1)
 
-        # Save final model
-        model.save_checkpoint(str(output_dir / "final_model.pt"))
+        # Save final model with full state for resume
+        _extra_final = {
+            "phase": current_phase,
+            "best_val_f1": best_val_f1,
+            "patience_counter": patience_counter,
+            "phase_best_f1": phase_best_f1,
+            "history": history,
+        }
+        model.save_checkpoint(
+            str(output_dir / "final_model.pt"),
+            optimizer=optimizer, epoch=epoch + 1,
+            metrics=val_metrics, scheduler=lr_scheduler,
+            extra_state=_extra_final,
+        )
 
         # Record final phase best
         phase_best_f1[current_phase] = best_val_f1
