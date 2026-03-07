@@ -1,4 +1,4 @@
-"""Data Loader Pipeline Step.
+"""Data Loader Pipeline Step (cache test).
 
 Step 1: Load raw spatial transcriptomics data with smart source detection.
 
