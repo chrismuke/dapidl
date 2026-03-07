@@ -172,6 +172,10 @@ class UnifiedPipelineController:
         cfg = self.config
         p = self._pipeline
 
+        # Strip git version from cache hash for data steps so they cache across commits.
+        # Only parameters matter for data processing — the git commit doesn't affect output.
+        _data_step_overrides = {"script.version_num": "", "script.branch": ""}
+
         # Step 1: Data Loader
         p.add_step(
             name="data_loader",
@@ -183,6 +187,7 @@ class UnifiedPipelineController:
                 "step_config/local_path": "${pipeline.input/local_path}",
                 "step_config/s3_uri": "${pipeline.input/s3_uri}",
             },
+            task_overrides=_data_step_overrides,
             execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
             cache_executed_step=cfg.execution.cache_data_steps,
         )
@@ -203,6 +208,7 @@ class UnifiedPipelineController:
                 "step_config/data_path": "${data_loader.artifacts.data_path.url}",
                 "step_config/expression_path": "${data_loader.artifacts.expression_path.url}",
             },
+            task_overrides=_data_step_overrides,
             execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
             cache_executed_step=cfg.execution.cache_data_steps,
         )
@@ -221,6 +227,7 @@ class UnifiedPipelineController:
                     "step_config/fuzzy_threshold": "${pipeline.ontology/fuzzy_threshold}",
                     "step_config/annotations_parquet": "${ensemble_annotation.artifacts.annotations_parquet.url}",
                 },
+                task_overrides=_data_step_overrides,
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
             )
@@ -249,6 +256,7 @@ class UnifiedPipelineController:
                     "step_config/upload_to_s3": "${pipeline.output/upload_to_s3}",
                     "step_config/s3_bucket": "${pipeline.output/s3_bucket}",
                 },
+                task_overrides=_data_step_overrides,
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
             )
@@ -352,6 +360,9 @@ class UnifiedPipelineController:
         cfg = self.config
         p = self._pipeline
 
+        # Strip git version from cache hash for data steps so they cache across commits
+        _data_step_overrides = {"script.version_num": "", "script.branch": ""}
+
         patch_extraction_steps = []
 
         # Create per-tissue processing steps
@@ -371,6 +382,7 @@ class UnifiedPipelineController:
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
+                task_overrides=_data_step_overrides,
             )
 
             # Segmentation for this tissue
@@ -388,6 +400,7 @@ class UnifiedPipelineController:
                 },
                 execution_queue=cfg.execution.gpu_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
+                task_overrides=_data_step_overrides,
             )
 
             # Annotation for this tissue
@@ -408,6 +421,7 @@ class UnifiedPipelineController:
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
+                task_overrides=_data_step_overrides,
             )
 
             # LMDB Creation for this tissue
@@ -430,6 +444,7 @@ class UnifiedPipelineController:
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
+                task_overrides=_data_step_overrides,
             )
             patch_extraction_steps.append(patch_step_name)
 
