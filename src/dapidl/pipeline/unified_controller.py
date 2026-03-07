@@ -62,49 +62,56 @@ def _step_code_hash(*filenames: str) -> str:
 
 
 def _install_cache_hash_callback():
-    """Install a ClearML hashing callback that replaces version_num with code_hash.
+    """Patch ClearML's _create_task_hash to use per-step code hashes.
 
     ClearML's _create_task_hash includes script.version_num (git commit SHA)
-    in the cache hash. This means changing ANY code invalidates ALL step caches.
+    in the cache hash, and returns None if version_num is empty (even with
+    a repository set). Our step templates have empty version_num, so caching
+    is completely broken without this patch.
 
-    Our callback intercepts the hash computation: if the task has a
-    _meta/code_hash parameter, we replace script.version_num with that
-    code hash. This gives per-step cache invalidation without breaking
-    git checkout (version_num stays as real commit on the actual task).
+    This replaces _create_task_hash to inject _meta/code_hash as version_num
+    BEFORE the safety check, giving per-step cache invalidation.
     """
     from clearml.automation import ClearmlJob
 
-    if ClearmlJob._hashing_callback is not None:
-        return  # already installed
+    if getattr(ClearmlJob, "_dapidl_patched", False):
+        return  # already patched
 
-    def _custom_hash(repr_dict: dict) -> dict:
-        code_hash = repr_dict.get("hyper_params", {}).get("_meta/code_hash")
-        logger.info(f"Cache hash callback called, code_hash={code_hash}")
-        if code_hash:
-            # Replace git commit with step-specific code hash for cache key
-            if "script" in repr_dict and isinstance(repr_dict["script"], dict):
-                repr_dict["script"]["version_num"] = code_hash
-                repr_dict["script"]["branch"] = ""
-                logger.info(f"Replaced version_num with code_hash={code_hash}")
-        return repr_dict
-
-    ClearmlJob._hashing_callback = staticmethod(_custom_hash)
-    logger.info("Installed per-step cache hash callback")
-
-    # Debug: trace _create_task_hash calls
     _original_create_hash = ClearmlJob._create_task_hash
 
     @classmethod
-    def _traced_create_hash(cls, task, **kwargs):
-        params = kwargs.get("params_override")
-        code_hash = (params or {}).get("_meta/code_hash") if params else None
-        allow = "with params_override" if params else "without params_override"
-        logger.info(f"_create_task_hash called ({allow}), code_hash={code_hash}, callback={cls._hashing_callback is not None}")
-        result = _original_create_hash.__func__(cls, task, **kwargs)
-        logger.info(f"_create_task_hash result: {result}")
-        return result
+    def _patched_create_hash(cls, task, section_overrides=None, params_override=None, **kwargs):
+        # If params_override contains _meta/code_hash, inject it as version_num
+        # on the task's script BEFORE the original method's safety check
+        code_hash = (params_override or {}).get("_meta/code_hash")
+        if code_hash and task and task.data.script:
+            # Temporarily set version_num so the safety check passes
+            original_version = task.data.script.version_num
+            original_branch = task.data.script.branch
+            task.data.script.version_num = code_hash
+            task.data.script.branch = ""
+            try:
+                result = _original_create_hash.__func__(
+                    cls, task,
+                    section_overrides=section_overrides,
+                    params_override=params_override,
+                    **kwargs,
+                )
+                return result
+            finally:
+                # Restore original values
+                task.data.script.version_num = original_version
+                task.data.script.branch = original_branch
+        return _original_create_hash.__func__(
+            cls, task,
+            section_overrides=section_overrides,
+            params_override=params_override,
+            **kwargs,
+        )
 
-    ClearmlJob._create_task_hash = _traced_create_hash
+    ClearmlJob._create_task_hash = _patched_create_hash
+    ClearmlJob._dapidl_patched = True
+    logger.info("Installed per-step cache hash patch")
 
 from dapidl.pipeline.unified_config import (
     AnnotationStrategy,
