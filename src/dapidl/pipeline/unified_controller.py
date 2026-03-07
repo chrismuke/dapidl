@@ -91,6 +91,21 @@ def _install_cache_hash_callback():
     ClearmlJob._hashing_callback = staticmethod(_custom_hash)
     logger.info("Installed per-step cache hash callback")
 
+    # Debug: trace _create_task_hash calls
+    _original_create_hash = ClearmlJob._create_task_hash
+
+    @classmethod
+    def _traced_create_hash(cls, task, **kwargs):
+        params = kwargs.get("params_override")
+        code_hash = (params or {}).get("_meta/code_hash") if params else None
+        allow = "with params_override" if params else "without params_override"
+        logger.info(f"_create_task_hash called ({allow}), code_hash={code_hash}, callback={cls._hashing_callback is not None}")
+        result = _original_create_hash.__func__(cls, task, **kwargs)
+        logger.info(f"_create_task_hash result: {result}")
+        return result
+
+    ClearmlJob._create_task_hash = _traced_create_hash
+
 from dapidl.pipeline.unified_config import (
     AnnotationStrategy,
     DAPIDLPipelineConfig,
