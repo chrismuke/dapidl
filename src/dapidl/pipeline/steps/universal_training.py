@@ -1,4 +1,4 @@
-"""Universal DAPI Training Pipeline Step (v2).
+"""Universal DAPI Training Pipeline Step.
 
 Step for training cross-tissue universal classifiers with:
 - Multi-tissue dataset support (breast, lung, liver, etc.)
