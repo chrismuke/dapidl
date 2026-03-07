@@ -79,14 +79,17 @@ def _install_cache_hash_callback():
 
     def _custom_hash(repr_dict: dict) -> dict:
         code_hash = repr_dict.get("hyper_params", {}).get("_meta/code_hash")
+        logger.info(f"Cache hash callback called, code_hash={code_hash}")
         if code_hash:
             # Replace git commit with step-specific code hash for cache key
             if "script" in repr_dict and isinstance(repr_dict["script"], dict):
                 repr_dict["script"]["version_num"] = code_hash
                 repr_dict["script"]["branch"] = ""
+                logger.info(f"Replaced version_num with code_hash={code_hash}")
         return repr_dict
 
     ClearmlJob._hashing_callback = staticmethod(_custom_hash)
+    logger.info("Installed per-step cache hash callback")
 
 from dapidl.pipeline.unified_config import (
     AnnotationStrategy,
