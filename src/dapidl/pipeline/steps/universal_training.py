@@ -1,6 +1,6 @@
 """Universal DAPI Training Pipeline Step.
 
-Trains cross-tissue universal classifiers with:
+Step for training cross-tissue universal classifiers with:
 - Multi-tissue dataset support (breast, lung, liver, etc.)
 - Multiple platform support (Xenium, MERSCOPE)
 - Tissue-balanced sampling strategies
