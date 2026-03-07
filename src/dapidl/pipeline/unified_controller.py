@@ -37,11 +37,32 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
+
+# Directory containing pipeline step source files
+_STEPS_DIR = Path(__file__).parent / "steps"
+
+# Strip global git version from cache hash — we use per-step code hashes instead
+_GIT_VERSION_OVERRIDES = {"script.version_num": "", "script.branch": ""}
+
+
+def _step_code_hash(*filenames: str) -> str:
+    """Compute hash of step source file(s) for per-step cache invalidation.
+
+    When the source code for a specific step changes, its hash changes,
+    invalidating only that step's cache. Other steps remain cached.
+    """
+    h = hashlib.md5()
+    for fn in sorted(filenames):
+        path = _STEPS_DIR / fn
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:12]
 
 from dapidl.pipeline.unified_config import (
     AnnotationStrategy,
@@ -172,10 +193,6 @@ class UnifiedPipelineController:
         cfg = self.config
         p = self._pipeline
 
-        # Strip git version from cache hash for data steps so they cache across commits.
-        # Only parameters matter for data processing — the git commit doesn't affect output.
-        _data_step_overrides = {"script.version_num": "", "script.branch": ""}
-
         # Step 1: Data Loader
         p.add_step(
             name="data_loader",
@@ -186,8 +203,9 @@ class UnifiedPipelineController:
                 "step_config/platform": "${pipeline.input/platform}",
                 "step_config/local_path": "${pipeline.input/local_path}",
                 "step_config/s3_uri": "${pipeline.input/s3_uri}",
+                "_meta/code_hash": _step_code_hash("data_loader.py"),
             },
-            task_overrides=_data_step_overrides,
+            task_overrides=_GIT_VERSION_OVERRIDES,
             execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
             cache_executed_step=cfg.execution.cache_data_steps,
         )
@@ -207,8 +225,9 @@ class UnifiedPipelineController:
                 "step_config/fine_grained": "${pipeline.annotation/fine_grained}",
                 "step_config/data_path": "${data_loader.artifacts.data_path.url}",
                 "step_config/expression_path": "${data_loader.artifacts.expression_path.url}",
+                "_meta/code_hash": _step_code_hash("ensemble_annotation.py"),
             },
-            task_overrides=_data_step_overrides,
+            task_overrides=_GIT_VERSION_OVERRIDES,
             execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
             cache_executed_step=cfg.execution.cache_data_steps,
         )
@@ -226,8 +245,9 @@ class UnifiedPipelineController:
                     "step_config/include_unmapped": "${pipeline.ontology/include_unmapped}",
                     "step_config/fuzzy_threshold": "${pipeline.ontology/fuzzy_threshold}",
                     "step_config/annotations_parquet": "${ensemble_annotation.artifacts.annotations_parquet.url}",
+                    "_meta/code_hash": _step_code_hash("cl_standardization.py"),
                 },
-                task_overrides=_data_step_overrides,
+                task_overrides=_GIT_VERSION_OVERRIDES,
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
             )
@@ -255,8 +275,9 @@ class UnifiedPipelineController:
                     "step_config/platform": "${data_loader.artifacts.platform.url}",
                     "step_config/upload_to_s3": "${pipeline.output/upload_to_s3}",
                     "step_config/s3_bucket": "${pipeline.output/s3_bucket}",
+                    "_meta/code_hash": _step_code_hash("lmdb_creation.py"),
                 },
-                task_overrides=_data_step_overrides,
+                task_overrides=_GIT_VERSION_OVERRIDES,
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
             )
@@ -360,9 +381,6 @@ class UnifiedPipelineController:
         cfg = self.config
         p = self._pipeline
 
-        # Strip git version from cache hash for data steps so they cache across commits
-        _data_step_overrides = {"script.version_num": "", "script.branch": ""}
-
         patch_extraction_steps = []
 
         # Create per-tissue processing steps
@@ -379,10 +397,11 @@ class UnifiedPipelineController:
                     "step_config/dataset_id": tissue_cfg.dataset_id or "",
                     "step_config/platform": tissue_cfg.platform.value,
                     "step_config/local_path": tissue_cfg.local_path or "",
+                    "_meta/code_hash": _step_code_hash("data_loader.py"),
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
-                task_overrides=_data_step_overrides,
+                task_overrides=_GIT_VERSION_OVERRIDES,
             )
 
             # Segmentation for this tissue
@@ -397,10 +416,11 @@ class UnifiedPipelineController:
                     "step_config/flow_threshold": str(cfg.segmentation.flow_threshold),
                     "step_config/data_path": f"${{data_loader_{step_prefix}.artifacts.data_path.url}}",
                     "step_config/platform": f"${{data_loader_{step_prefix}.artifacts.platform.url}}",
+                    "_meta/code_hash": _step_code_hash("segmentation.py"),
                 },
                 execution_queue=cfg.execution.gpu_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
-                task_overrides=_data_step_overrides,
+                task_overrides=_GIT_VERSION_OVERRIDES,
             )
 
             # Annotation for this tissue
@@ -418,10 +438,11 @@ class UnifiedPipelineController:
                     "step_config/platform": f"${{data_loader_{step_prefix}.artifacts.platform.url}}",
                     "step_config/cells_parquet": f"${{data_loader_{step_prefix}.artifacts.cells_parquet.url}}",
                     "step_config/expression_path": f"${{data_loader_{step_prefix}.artifacts.expression_path.url}}",
+                    "_meta/code_hash": _step_code_hash("annotation.py"),
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
-                task_overrides=_data_step_overrides,
+                task_overrides=_GIT_VERSION_OVERRIDES,
             )
 
             # LMDB Creation for this tissue
@@ -441,10 +462,11 @@ class UnifiedPipelineController:
                     "step_config/platform": f"${{data_loader_{step_prefix}.artifacts.platform.url}}",
                     "step_config/tissue": tissue_name,
                     "step_config/dataset_id": tissue_cfg.dataset_id or "",
+                    "_meta/code_hash": _step_code_hash("lmdb_creation.py"),
                 },
                 execution_queue=cfg.execution.default_queue if cfg.execution.execute_remotely else None,
                 cache_executed_step=cfg.execution.cache_data_steps,
-                task_overrides=_data_step_overrides,
+                task_overrides=_GIT_VERSION_OVERRIDES,
             )
             patch_extraction_steps.append(patch_step_name)
 
