@@ -1,4 +1,4 @@
-"""Unified Pipeline Controller for DAPIDL (v2).
+"""Unified Pipeline Controller for DAPIDL.
 
 This is a proof-of-concept controller that uses the unified configuration
 from unified_config.py. It demonstrates how to:
