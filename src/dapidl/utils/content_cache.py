@@ -84,11 +84,11 @@ def compute_directory_hash(directory: Path) -> tuple[str, list[dict]]:
     return combined.hexdigest()[:HASH_LENGTH], manifest
 
 
-def upload_step_output(step_name: str, output_path: Path) -> str:
+def upload_step_output(step_name: str, output_path: Path, force: bool = False) -> str:
     """Upload step output to S3 with content-addressable key.
 
     1. Compute content hash of output_path (file or directory)
-    2. Check if manifest.json already exists on S3 (dedup)
+    2. Check if manifest.json already exists on S3 (dedup) — skip if force=True
     3. If not, upload all files + manifest.json (manifest last)
     4. Return S3 URI
 
@@ -97,6 +97,7 @@ def upload_step_output(step_name: str, output_path: Path) -> str:
     Args:
         step_name: Pipeline step name (e.g. "annotation", "lmdb_creation")
         output_path: Local path to the step output (file or directory)
+        force: If True, overwrite existing cache (used with --no-cache)
 
     Returns:
         S3 URI like s3://dapidl/pipeline-cache/{step}/{hash}/
@@ -117,12 +118,15 @@ def upload_step_output(step_name: str, output_path: Path) -> str:
 
     # Check if already uploaded (manifest exists = complete upload)
     manifest_key = f"{s3_key_prefix}/manifest.json"
-    try:
-        s3.head_object(Bucket=S3_BUCKET, Key=manifest_key)
-        logger.info(f"Content cache hit — already on S3: {s3_uri}")
-        return s3_uri
-    except s3.exceptions.ClientError:
-        pass  # Not found, proceed with upload
+    if not force:
+        try:
+            s3.head_object(Bucket=S3_BUCKET, Key=manifest_key)
+            logger.info(f"Content cache hit — already on S3: {s3_uri}")
+            return s3_uri
+        except s3.exceptions.ClientError:
+            pass  # Not found, proceed with upload
+    else:
+        logger.info(f"Force upload enabled — overwriting cache if exists")
 
     logger.info(f"Uploading step output to S3: {output_path} → {s3_uri}")
     total_size = sum(entry["size"] for entry in manifest)

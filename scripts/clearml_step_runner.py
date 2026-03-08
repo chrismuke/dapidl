@@ -87,11 +87,16 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
     # Get step configuration from task parameters or local config
     if local_mode and local_config:
         step_config = local_config
+        meta_config = {}
     elif task:
-        step_config = task.get_parameters_as_dict().get("step_config", {})
+        all_params = task.get_parameters_as_dict()
+        step_config = all_params.get("step_config", {})
+        meta_config = all_params.get("_meta", {})
     else:
         step_config = {}
+        meta_config = {}
     logger.info(f"Step config: {step_config}")
+    force_cache_upload = meta_config.get("force_cache_upload", "false").lower() == "true"
 
     # Helper to resolve ClearML artifact URLs (must be defined before step config blocks)
     def _resolve_artifact_value(value: str) -> str | dict:
@@ -534,7 +539,7 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
                         # Upload to S3 content cache, store URI in ClearML
                         try:
                             from dapidl.utils.content_cache import upload_step_output
-                            s3_uri = upload_step_output(step_name, path)
+                            s3_uri = upload_step_output(step_name, path, force=force_cache_upload)
                             logger.info(f"Stored content-cache URI for {key}: {s3_uri}")
                             task.upload_artifact(key, s3_uri)
                         except Exception as e:
