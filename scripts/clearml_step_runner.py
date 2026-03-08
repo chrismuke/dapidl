@@ -127,6 +127,16 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
                         return str(local_path)
             except Exception as e:
                 logger.warning(f"  Failed to resolve artifact URL: {e}")
+        # Check if content is an S3 content-cache URI
+        if isinstance(value, str) and value.startswith("s3://") and "/pipeline-cache/" in value:
+            try:
+                from dapidl.utils.content_cache import download_cached_output
+                local_path = download_cached_output(value)
+                logger.info(f"  Resolved content-cache URI to: {local_path}")
+                return str(local_path)
+            except Exception as e:
+                logger.warning(f"  Failed to resolve content-cache URI: {e}")
+                return value
         if isinstance(value, str) and value.startswith("{"):
             try:
                 return json.loads(value)
@@ -505,9 +515,10 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
         raise
 
     # Upload output artifacts (only if we have a ClearML task)
-    # IMPORTANT: Never upload large data (datasets, models) directly to ClearML
-    # Only upload: metrics, small configs, and path references
-    # Large data should go to S3 and only the URI stored in ClearML
+    # Large outputs (dirs, big files) go to S3 content cache; ClearML stores the S3 URI.
+    # data_loader is skipped because raw datasets are already on S3.
+    skip_cache_steps = {"data_loader"}
+
     if task:
         for key, value in result.outputs.items():
             if isinstance(value, (dict, list)):
@@ -515,19 +526,24 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
                 task.upload_artifact(key, json.dumps(value))
             elif isinstance(value, (str, Path)):
                 path = Path(value)
-                if path.exists():
-                    if path.is_dir():
-                        # Directory path - store as path reference, NOT upload
-                        # This prevents uploading large datasets to ClearML
+                if path.exists() and (path.is_dir() or path.stat().st_size > 10 * 1024 * 1024):
+                    if step_name not in skip_cache_steps:
+                        # Upload to S3 content cache, store URI in ClearML
+                        try:
+                            from dapidl.utils.content_cache import upload_step_output
+                            s3_uri = upload_step_output(step_name, path)
+                            logger.info(f"Stored content-cache URI for {key}: {s3_uri}")
+                            task.upload_artifact(key, s3_uri)
+                        except Exception as e:
+                            logger.warning(f"Content cache upload failed for {key}, falling back to path ref: {e}")
+                            task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
+                    else:
+                        # data_loader: raw data already on S3, store path reference
                         logger.info(f"Storing local path reference for {key}: {path}")
                         task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
-                    elif path.stat().st_size > 10 * 1024 * 1024:  # > 10MB
-                        # Large file - store path reference, should be uploaded to S3 separately
-                        logger.warning(f"Large file {key} ({path.stat().st_size / 1024 / 1024:.1f}MB) - storing path reference only")
-                        task.upload_artifact(key, json.dumps({"local_path": str(path), "type": "path_reference"}))
-                    else:
-                        # Small file - OK to upload
-                        task.upload_artifact(key, str(value))
+                elif path.exists():
+                    # Small file - OK to upload directly
+                    task.upload_artifact(key, str(value))
                 else:
                     # Non-existent path or string value - store as-is
                     task.upload_artifact(key, str(value))

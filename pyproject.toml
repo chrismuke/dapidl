@@ -59,6 +59,7 @@ dependencies = [
     "obonet>=1.1.1",
     "networkx>=3.6",
     "rapidfuzz>=3.14.3",
+    "xxhash>=3.4.0",
     "popv>=0.6.0",
     "cell2location>=0.1.5",
     "cuml-cu12>=25.12.0",

@@ -72,6 +72,13 @@ def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> 
         logger.info(f"Using existing local path: {potential_path}")
         return potential_path
 
+    # Check if it's an S3 content-cache URI — use our download_cached_output
+    if value_str.startswith("s3://") and "/pipeline-cache/" in value_str:
+        logger.info(f"Resolving content-cache URI: {artifact_name or value_str[:80]}...")
+        from dapidl.utils.content_cache import download_cached_output
+
+        return download_cached_output(value_str)
+
     # Check if it's an S3 URI — use ClearML StorageManager (boto3-based, no aws CLI needed)
     if value_str.startswith("s3://"):
         logger.info(f"Resolving S3 URI: {artifact_name or value_str[:80]}...")
