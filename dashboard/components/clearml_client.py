@@ -251,6 +251,31 @@ class ClearMLClient:
             })
         return result
 
+    # -- User identity --
+
+    def get_current_user_id(self) -> str:
+        """Return the ID of the currently authenticated user."""
+        data = self._post("users.get_current_user", {})
+        return data.get("user", {}).get("id", "") if isinstance(data, dict) else ""
+
+    # -- Queue worker control --
+
+    def remove_worker_from_queue(self, worker_id: str, queue_id: str) -> bool:
+        """Remove a worker from a queue (stops it picking up tasks from that queue)."""
+        result = self._post("queues.remove_worker", {
+            "queue": queue_id,
+            "worker": worker_id,
+        })
+        return bool(result) or result == {}
+
+    def add_worker_to_queue(self, worker_id: str, queue_id: str) -> bool:
+        """Add a worker to a queue (allows it to pick up tasks from that queue)."""
+        result = self._post("queues.add_worker", {
+            "queue": queue_id,
+            "worker": worker_id,
+        })
+        return bool(result) or result == {}
+
     # -- Queue stats --
 
     def get_queue_stats(self) -> list[dict]:

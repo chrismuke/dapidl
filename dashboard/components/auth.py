@@ -13,6 +13,7 @@ import os
 import streamlit as st
 
 from .clearml_client import ClearMLClient
+from .constants import ADMIN_USER_ID
 
 
 def _try_clearml_login(
@@ -65,6 +66,9 @@ def login_page() -> None:
                         st.session_state.authenticated = True
                         st.session_state.username = username
                         st.session_state.clearml_client = client
+                        # Check admin status
+                        user_id = client.get_current_user_id()
+                        st.session_state.is_admin = (user_id == ADMIN_USER_ID)
                         st.rerun()
                     else:
                         st.error("Invalid username or password")
@@ -81,6 +85,20 @@ def require_auth() -> bool:
     return True
 
 
+def require_admin() -> bool:
+    """Gate a page behind admin authentication.
+
+    Returns True if the user is an authenticated admin, False otherwise.
+    Renders login page if not authenticated, or a warning if not admin.
+    """
+    if not require_auth():
+        return False
+    if not st.session_state.get("is_admin", False):
+        st.warning("Admin access required. You are not authorized to view this page.")
+        return False
+    return True
+
+
 def logout_button() -> None:
     """Render a logout button and user info in the sidebar."""
     with st.sidebar:
@@ -88,7 +106,7 @@ def logout_button() -> None:
         if user:
             st.caption(f"Signed in as **{user}**")
         if st.button("Sign out", use_container_width=True):
-            for key in ("authenticated", "username", "clearml_client"):
+            for key in ("authenticated", "username", "clearml_client", "is_admin"):
                 st.session_state.pop(key, None)
             st.rerun()
 

@@ -152,3 +152,18 @@ WORKER_HEALTH_WARN = 600     # < 10 min = warning, else = error
 
 # Template task ID for cloning pipeline controllers via REST API
 PIPELINE_TEMPLATE_TASK_ID = "26a8c58439514026b9b3d789da71c135"
+
+# ---------------------------------------------------------------------------
+# Admin settings
+# ---------------------------------------------------------------------------
+
+# ClearML user ID for the "Admin User" account (fixed users mode)
+ADMIN_USER_ID = "98084d9e341946bbd6445bf2d44819d2"
+
+# Default queue assignments per worker — used to restore queues after disabling
+WORKER_DEFAULT_QUEUES: dict[str, list[str]] = {
+    "clearml-agent-gpu-ubuntu3090": ["gpu-training", "gpu-local"],
+    "clearml-agent-cpu-ubuntu3090": ["default", "cpu-local"],
+    "clearml-agent-services": ["services"],
+    "clearml-agent-cpu": ["default"],
+}
