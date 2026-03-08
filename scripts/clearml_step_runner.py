@@ -517,7 +517,10 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
     # Upload output artifacts (only if we have a ClearML task)
     # Large outputs (dirs, big files) go to S3 content cache; ClearML stores the S3 URI.
     # data_loader is skipped because raw datasets are already on S3.
+    # Pass-through keys (data_path, expression_path, cells_parquet) are raw dataset
+    # files that downstream steps pass through unchanged — never re-upload these.
     skip_cache_steps = {"data_loader"}
+    skip_cache_keys = {"data_path", "expression_path", "cells_parquet"}
 
     if task:
         for key, value in result.outputs.items():
@@ -527,7 +530,7 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
             elif isinstance(value, (str, Path)):
                 path = Path(value)
                 if path.exists() and (path.is_dir() or path.stat().st_size > 10 * 1024 * 1024):
-                    if step_name not in skip_cache_steps:
+                    if step_name not in skip_cache_steps and key not in skip_cache_keys:
                         # Upload to S3 content cache, store URI in ClearML
                         try:
                             from dapidl.utils.content_cache import upload_step_output
