@@ -1,5 +1,5 @@
 {
-  "description": "Patch cascade images at 32, 64, 128, 256 px centered on annotated cells",
+  "description": "Individual DAPI + annotation images at [32, 64, 128, 256, 512] px",
   "datasets": [
     "rep1",
     "rep2",
@@ -124,1369 +124,2658 @@
       113
     ]
   },
-  "display_size_px": 256,
   "patch_sizes_px": [
     32,
     64,
     128,
-    256
+    256,
+    512
   ],
-  "border_width_px": 4,
   "cells": {
     "rep1": [
       {
         "index": 0,
         "dataset": "rep1",
-        "cell_id": "115317",
-        "cell_type_fine": "CD4+_T_Cells",
-        "cell_type_broad": "Immune",
-        "x_px": 20563.451171875,
-        "y_px": 15022.7294921875,
+        "cell_id": "140395",
+        "cell_type_fine": "Myoepi_KRT15+",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9735463261604309,
+        "x_px": 30206.20703125,
+        "y_px": 15675.490234375,
         "color_rgb": [
-          234,
-          67,
-          53
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          255,
-          99,
-          71
-        ],
-        "grayscale_file": "00_Immune_115317_grayscale.png",
-        "colored_file": "00_Immune_115317_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "00_Epithelial_140395/dapi_32.png",
+            "anno": "00_Epithelial_140395/anno_32.png"
+          },
+          "64": {
+            "dapi": "00_Epithelial_140395/dapi_64.png",
+            "anno": "00_Epithelial_140395/anno_64.png"
+          },
+          "128": {
+            "dapi": "00_Epithelial_140395/dapi_128.png",
+            "anno": "00_Epithelial_140395/anno_128.png"
+          },
+          "256": {
+            "dapi": "00_Epithelial_140395/dapi_256.png",
+            "anno": "00_Epithelial_140395/anno_256.png"
+          },
+          "512": {
+            "dapi": "00_Epithelial_140395/dapi_512.png",
+            "anno": "00_Epithelial_140395/anno_512.png"
+          }
+        }
       },
       {
         "index": 1,
         "dataset": "rep1",
-        "cell_id": "95474",
-        "cell_type_fine": "Macrophages_1",
-        "cell_type_broad": "Immune",
-        "x_px": 12614.912109375,
-        "y_px": 12660.916015625,
+        "cell_id": "165719",
+        "cell_type_fine": "DCIS_1",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9655870199203491,
+        "x_px": 33828.78515625,
+        "y_px": 25006.64453125,
         "color_rgb": [
-          234,
-          67,
-          53
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          200,
-          50,
-          50
-        ],
-        "grayscale_file": "01_Immune_95474_grayscale.png",
-        "colored_file": "01_Immune_95474_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "01_Epithelial_165719/dapi_32.png",
+            "anno": "01_Epithelial_165719/anno_32.png"
+          },
+          "64": {
+            "dapi": "01_Epithelial_165719/dapi_64.png",
+            "anno": "01_Epithelial_165719/anno_64.png"
+          },
+          "128": {
+            "dapi": "01_Epithelial_165719/dapi_128.png",
+            "anno": "01_Epithelial_165719/anno_128.png"
+          },
+          "256": {
+            "dapi": "01_Epithelial_165719/dapi_256.png",
+            "anno": "01_Epithelial_165719/anno_256.png"
+          },
+          "512": {
+            "dapi": "01_Epithelial_165719/dapi_512.png",
+            "anno": "01_Epithelial_165719/anno_512.png"
+          }
+        }
       },
       {
         "index": 2,
         "dataset": "rep1",
-        "cell_id": "105925",
-        "cell_type_fine": "B_Cells",
-        "cell_type_broad": "Immune",
-        "x_px": 18729.880859375,
-        "y_px": 19037.455078125,
+        "cell_id": "157009",
+        "cell_type_fine": "Myoepi_ACTA2+",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9513654708862305,
+        "x_px": 33501.72265625,
+        "y_px": 14944.0927734375,
         "color_rgb": [
-          234,
-          67,
-          53
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          255,
-          140,
-          0
-        ],
-        "grayscale_file": "02_Immune_105925_grayscale.png",
-        "colored_file": "02_Immune_105925_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "02_Epithelial_157009/dapi_32.png",
+            "anno": "02_Epithelial_157009/anno_32.png"
+          },
+          "64": {
+            "dapi": "02_Epithelial_157009/dapi_64.png",
+            "anno": "02_Epithelial_157009/anno_64.png"
+          },
+          "128": {
+            "dapi": "02_Epithelial_157009/dapi_128.png",
+            "anno": "02_Epithelial_157009/anno_128.png"
+          },
+          "256": {
+            "dapi": "02_Epithelial_157009/dapi_256.png",
+            "anno": "02_Epithelial_157009/anno_256.png"
+          },
+          "512": {
+            "dapi": "02_Epithelial_157009/dapi_512.png",
+            "anno": "02_Epithelial_157009/anno_512.png"
+          }
+        }
       },
       {
         "index": 3,
         "dataset": "rep1",
-        "cell_id": "74241",
-        "cell_type_fine": "Macrophages_2",
-        "cell_type_broad": "Immune",
-        "x_px": 10282.463867187498,
-        "y_px": 10896.6767578125,
+        "cell_id": "10886",
+        "cell_type_fine": "DCIS_2",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9470829963684082,
+        "x_px": 27515.435546875,
+        "y_px": 4050.6396484375,
         "color_rgb": [
-          234,
-          67,
-          53
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          180,
-          40,
-          40
-        ],
-        "grayscale_file": "03_Immune_74241_grayscale.png",
-        "colored_file": "03_Immune_74241_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "03_Epithelial_10886/dapi_32.png",
+            "anno": "03_Epithelial_10886/anno_32.png"
+          },
+          "64": {
+            "dapi": "03_Epithelial_10886/dapi_64.png",
+            "anno": "03_Epithelial_10886/anno_64.png"
+          },
+          "128": {
+            "dapi": "03_Epithelial_10886/dapi_128.png",
+            "anno": "03_Epithelial_10886/anno_128.png"
+          },
+          "256": {
+            "dapi": "03_Epithelial_10886/dapi_256.png",
+            "anno": "03_Epithelial_10886/anno_256.png"
+          },
+          "512": {
+            "dapi": "03_Epithelial_10886/dapi_512.png",
+            "anno": "03_Epithelial_10886/anno_512.png"
+          }
+        }
       },
       {
         "index": 4,
         "dataset": "rep1",
-        "cell_id": "95283",
-        "cell_type_fine": "Macrophages_1",
+        "cell_id": "132430",
+        "cell_type_fine": "Invasive_Tumor",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9417943954467773,
+        "x_px": 26284.7265625,
+        "y_px": 16081.1455078125,
+        "color_rgb": [
+          66,
+          133,
+          244
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "04_Epithelial_132430/dapi_32.png",
+            "anno": "04_Epithelial_132430/anno_32.png"
+          },
+          "64": {
+            "dapi": "04_Epithelial_132430/dapi_64.png",
+            "anno": "04_Epithelial_132430/anno_64.png"
+          },
+          "128": {
+            "dapi": "04_Epithelial_132430/dapi_128.png",
+            "anno": "04_Epithelial_132430/anno_128.png"
+          },
+          "256": {
+            "dapi": "04_Epithelial_132430/dapi_256.png",
+            "anno": "04_Epithelial_132430/anno_256.png"
+          },
+          "512": {
+            "dapi": "04_Epithelial_132430/dapi_512.png",
+            "anno": "04_Epithelial_132430/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 5,
+        "dataset": "rep1",
+        "cell_id": "28111",
+        "cell_type_fine": "DCIS_2",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9388522505760193,
+        "x_px": 863.9242553710938,
+        "y_px": 11040.90234375,
+        "color_rgb": [
+          66,
+          133,
+          244
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "05_Epithelial_28111/dapi_32.png",
+            "anno": "05_Epithelial_28111/anno_32.png"
+          },
+          "64": {
+            "dapi": "05_Epithelial_28111/dapi_64.png",
+            "anno": "05_Epithelial_28111/anno_64.png"
+          },
+          "128": {
+            "dapi": "05_Epithelial_28111/dapi_128.png",
+            "anno": "05_Epithelial_28111/anno_128.png"
+          },
+          "256": {
+            "dapi": "05_Epithelial_28111/dapi_256.png",
+            "anno": "05_Epithelial_28111/anno_256.png"
+          },
+          "512": {
+            "dapi": "05_Epithelial_28111/dapi_512.png",
+            "anno": "05_Epithelial_28111/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 6,
+        "dataset": "rep1",
+        "cell_id": "99176",
+        "cell_type_fine": "CD8+_T_Cells",
         "cell_type_broad": "Immune",
-        "x_px": 12079.0283203125,
-        "y_px": 14863.6494140625,
+        "circularity": 0.9672453999519348,
+        "x_px": 16706.37890625,
+        "y_px": 1761.3018798828125,
         "color_rgb": [
           234,
           67,
           53
         ],
-        "fine_color_rgb": [
-          200,
-          50,
-          50
-        ],
-        "grayscale_file": "04_Immune_95283_grayscale.png",
-        "colored_file": "04_Immune_95283_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
-      },
-      {
-        "index": 5,
-        "dataset": "rep1",
-        "cell_id": "133649",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 24968.158203125,
-        "y_px": 17674.900390625,
-        "color_rgb": [
-          52,
-          168,
-          83
+          256,
+          512
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "05_Stromal_133649_grayscale.png",
-        "colored_file": "05_Stromal_133649_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
-      },
-      {
-        "index": 6,
-        "dataset": "rep1",
-        "cell_id": "74293",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 10520.476562499998,
-        "y_px": 10855.0146484375,
-        "color_rgb": [
-          52,
-          168,
-          83
-        ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "06_Stromal_74293_grayscale.png",
-        "colored_file": "06_Stromal_74293_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
+        "files": {
+          "32": {
+            "dapi": "06_Immune_99176/dapi_32.png",
+            "anno": "06_Immune_99176/anno_32.png"
+          },
+          "64": {
+            "dapi": "06_Immune_99176/dapi_64.png",
+            "anno": "06_Immune_99176/anno_64.png"
+          },
+          "128": {
+            "dapi": "06_Immune_99176/dapi_128.png",
+            "anno": "06_Immune_99176/anno_128.png"
+          },
+          "256": {
+            "dapi": "06_Immune_99176/dapi_256.png",
+            "anno": "06_Immune_99176/anno_256.png"
+          },
+          "512": {
+            "dapi": "06_Immune_99176/dapi_512.png",
+            "anno": "06_Immune_99176/anno_512.png"
+          }
+        }
       },
       {
         "index": 7,
         "dataset": "rep1",
-        "cell_id": "102787",
-        "cell_type_fine": "Endothelial",
-        "cell_type_broad": "Stromal",
-        "x_px": 18389.431640625,
-        "y_px": 10027.2802734375,
+        "cell_id": "8988",
+        "cell_type_fine": "B_Cells",
+        "cell_type_broad": "Immune",
+        "circularity": 0.966964602470398,
+        "x_px": 23235.64453125,
+        "y_px": 7534.315917968751,
         "color_rgb": [
-          52,
-          168,
-          83
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          0,
-          200,
-          100
-        ],
-        "grayscale_file": "07_Stromal_102787_grayscale.png",
-        "colored_file": "07_Stromal_102787_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "07_Immune_8988/dapi_32.png",
+            "anno": "07_Immune_8988/anno_32.png"
+          },
+          "64": {
+            "dapi": "07_Immune_8988/dapi_64.png",
+            "anno": "07_Immune_8988/anno_64.png"
+          },
+          "128": {
+            "dapi": "07_Immune_8988/dapi_128.png",
+            "anno": "07_Immune_8988/anno_128.png"
+          },
+          "256": {
+            "dapi": "07_Immune_8988/dapi_256.png",
+            "anno": "07_Immune_8988/anno_256.png"
+          },
+          "512": {
+            "dapi": "07_Immune_8988/dapi_512.png",
+            "anno": "07_Immune_8988/anno_512.png"
+          }
+        }
       },
       {
         "index": 8,
         "dataset": "rep1",
-        "cell_id": "114649",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 22960.208984375,
-        "y_px": 15736.1494140625,
+        "cell_id": "83399",
+        "cell_type_fine": "Macrophages_2",
+        "cell_type_broad": "Immune",
+        "circularity": 0.9668412804603577,
+        "x_px": 10064.036132812498,
+        "y_px": 21028.146484375,
         "color_rgb": [
-          52,
-          168,
-          83
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "08_Stromal_114649_grayscale.png",
-        "colored_file": "08_Stromal_114649_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "08_Immune_83399/dapi_32.png",
+            "anno": "08_Immune_83399/anno_32.png"
+          },
+          "64": {
+            "dapi": "08_Immune_83399/dapi_64.png",
+            "anno": "08_Immune_83399/anno_64.png"
+          },
+          "128": {
+            "dapi": "08_Immune_83399/dapi_128.png",
+            "anno": "08_Immune_83399/anno_128.png"
+          },
+          "256": {
+            "dapi": "08_Immune_83399/dapi_256.png",
+            "anno": "08_Immune_83399/anno_256.png"
+          },
+          "512": {
+            "dapi": "08_Immune_83399/dapi_512.png",
+            "anno": "08_Immune_83399/anno_512.png"
+          }
+        }
       },
       {
         "index": 9,
         "dataset": "rep1",
-        "cell_id": "114089",
-        "cell_type_fine": "Endothelial",
+        "cell_id": "114118",
+        "cell_type_fine": "Macrophages_1",
+        "cell_type_broad": "Immune",
+        "circularity": 0.966280460357666,
+        "x_px": 22072.927734375,
+        "y_px": 9791.9619140625,
+        "color_rgb": [
+          234,
+          67,
+          53
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "09_Immune_114118/dapi_32.png",
+            "anno": "09_Immune_114118/anno_32.png"
+          },
+          "64": {
+            "dapi": "09_Immune_114118/dapi_64.png",
+            "anno": "09_Immune_114118/anno_64.png"
+          },
+          "128": {
+            "dapi": "09_Immune_114118/dapi_128.png",
+            "anno": "09_Immune_114118/anno_128.png"
+          },
+          "256": {
+            "dapi": "09_Immune_114118/dapi_256.png",
+            "anno": "09_Immune_114118/anno_256.png"
+          },
+          "512": {
+            "dapi": "09_Immune_114118/dapi_512.png",
+            "anno": "09_Immune_114118/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 10,
+        "dataset": "rep1",
+        "cell_id": "135515",
+        "cell_type_fine": "Macrophages_1",
+        "cell_type_broad": "Immune",
+        "circularity": 0.9657036066055298,
+        "x_px": 26718.203125,
+        "y_px": 20761.73046875,
+        "color_rgb": [
+          234,
+          67,
+          53
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "10_Immune_135515/dapi_32.png",
+            "anno": "10_Immune_135515/anno_32.png"
+          },
+          "64": {
+            "dapi": "10_Immune_135515/dapi_64.png",
+            "anno": "10_Immune_135515/anno_64.png"
+          },
+          "128": {
+            "dapi": "10_Immune_135515/dapi_128.png",
+            "anno": "10_Immune_135515/anno_128.png"
+          },
+          "256": {
+            "dapi": "10_Immune_135515/dapi_256.png",
+            "anno": "10_Immune_135515/anno_256.png"
+          },
+          "512": {
+            "dapi": "10_Immune_135515/dapi_512.png",
+            "anno": "10_Immune_135515/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 11,
+        "dataset": "rep1",
+        "cell_id": "145293",
+        "cell_type_fine": "Macrophages_1",
+        "cell_type_broad": "Immune",
+        "circularity": 0.9655870199203491,
+        "x_px": 29451.93359375,
+        "y_px": 16548.232421875,
+        "color_rgb": [
+          234,
+          67,
+          53
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "11_Immune_145293/dapi_32.png",
+            "anno": "11_Immune_145293/anno_32.png"
+          },
+          "64": {
+            "dapi": "11_Immune_145293/dapi_64.png",
+            "anno": "11_Immune_145293/anno_64.png"
+          },
+          "128": {
+            "dapi": "11_Immune_145293/dapi_128.png",
+            "anno": "11_Immune_145293/anno_128.png"
+          },
+          "256": {
+            "dapi": "11_Immune_145293/dapi_256.png",
+            "anno": "11_Immune_145293/anno_256.png"
+          },
+          "512": {
+            "dapi": "11_Immune_145293/dapi_512.png",
+            "anno": "11_Immune_145293/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 12,
+        "dataset": "rep1",
+        "cell_id": "149188",
+        "cell_type_fine": "Stromal",
         "cell_type_broad": "Stromal",
-        "x_px": 22721.58203125,
-        "y_px": 9025.9892578125,
+        "circularity": 0.9701791405677795,
+        "x_px": 27649.171875,
+        "y_px": 22484.125,
         "color_rgb": [
           52,
           168,
           83
         ],
-        "fine_color_rgb": [
-          0,
-          200,
-          100
-        ],
-        "grayscale_file": "09_Stromal_114089_grayscale.png",
-        "colored_file": "09_Stromal_114089_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
-      },
-      {
-        "index": 10,
-        "dataset": "rep1",
-        "cell_id": "94470",
-        "cell_type_fine": "Myoepi_ACTA2+",
-        "cell_type_broad": "Epithelial",
-        "x_px": 13030.6044921875,
-        "y_px": 13205.109375,
-        "color_rgb": [
-          66,
-          133,
-          244
+          256,
+          512
         ],
-        "fine_color_rgb": [
-          120,
-          160,
-          240
-        ],
-        "grayscale_file": "10_Epithelial_94470_grayscale.png",
-        "colored_file": "10_Epithelial_94470_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
-      },
-      {
-        "index": 11,
-        "dataset": "rep1",
-        "cell_id": "118135",
-        "cell_type_fine": "Myoepi_KRT15+",
-        "cell_type_broad": "Epithelial",
-        "x_px": 20215.025390624996,
-        "y_px": 17580.859375,
-        "color_rgb": [
-          66,
-          133,
-          244
-        ],
-        "fine_color_rgb": [
-          135,
-          180,
-          255
-        ],
-        "grayscale_file": "11_Epithelial_118135_grayscale.png",
-        "colored_file": "11_Epithelial_118135_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
-      },
-      {
-        "index": 12,
-        "dataset": "rep1",
-        "cell_id": "91390",
-        "cell_type_fine": "Invasive_Tumor",
-        "cell_type_broad": "Epithelial",
-        "x_px": 12988.1845703125,
-        "y_px": 9344.896484375,
-        "color_rgb": [
-          66,
-          133,
-          244
-        ],
-        "fine_color_rgb": [
-          30,
-          80,
-          200
-        ],
-        "grayscale_file": "12_Epithelial_91390_grayscale.png",
-        "colored_file": "12_Epithelial_91390_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
+        "files": {
+          "32": {
+            "dapi": "12_Stromal_149188/dapi_32.png",
+            "anno": "12_Stromal_149188/anno_32.png"
+          },
+          "64": {
+            "dapi": "12_Stromal_149188/dapi_64.png",
+            "anno": "12_Stromal_149188/anno_64.png"
+          },
+          "128": {
+            "dapi": "12_Stromal_149188/dapi_128.png",
+            "anno": "12_Stromal_149188/anno_128.png"
+          },
+          "256": {
+            "dapi": "12_Stromal_149188/dapi_256.png",
+            "anno": "12_Stromal_149188/anno_256.png"
+          },
+          "512": {
+            "dapi": "12_Stromal_149188/dapi_512.png",
+            "anno": "12_Stromal_149188/anno_512.png"
+          }
+        }
       },
       {
         "index": 13,
         "dataset": "rep1",
-        "cell_id": "89205",
-        "cell_type_fine": "Invasive_Tumor",
-        "cell_type_broad": "Epithelial",
-        "x_px": 13377.84765625,
-        "y_px": 7056.92724609375,
+        "cell_id": "98253",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9693254828453064,
+        "x_px": 12695.3564453125,
+        "y_px": 20864.138671875,
         "color_rgb": [
-          66,
-          133,
-          244
+          52,
+          168,
+          83
         ],
-        "fine_color_rgb": [
-          30,
-          80,
-          200
-        ],
-        "grayscale_file": "13_Epithelial_89205_grayscale.png",
-        "colored_file": "13_Epithelial_89205_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "13_Stromal_98253/dapi_32.png",
+            "anno": "13_Stromal_98253/anno_32.png"
+          },
+          "64": {
+            "dapi": "13_Stromal_98253/dapi_64.png",
+            "anno": "13_Stromal_98253/anno_64.png"
+          },
+          "128": {
+            "dapi": "13_Stromal_98253/dapi_128.png",
+            "anno": "13_Stromal_98253/anno_128.png"
+          },
+          "256": {
+            "dapi": "13_Stromal_98253/dapi_256.png",
+            "anno": "13_Stromal_98253/anno_256.png"
+          },
+          "512": {
+            "dapi": "13_Stromal_98253/dapi_512.png",
+            "anno": "13_Stromal_98253/anno_512.png"
+          }
+        }
       },
       {
         "index": 14,
         "dataset": "rep1",
-        "cell_id": "79297",
-        "cell_type_fine": "DCIS_2",
-        "cell_type_broad": "Epithelial",
-        "x_px": 9372.5390625,
-        "y_px": 13616.7861328125,
+        "cell_id": "29383",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9690573215484619,
+        "x_px": 3223.93603515625,
+        "y_px": 15537.0078125,
         "color_rgb": [
-          66,
-          133,
-          244
+          52,
+          168,
+          83
         ],
-        "fine_color_rgb": [
-          65,
-          105,
-          225
-        ],
-        "grayscale_file": "14_Epithelial_79297_grayscale.png",
-        "colored_file": "14_Epithelial_79297_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "14_Stromal_29383/dapi_32.png",
+            "anno": "14_Stromal_29383/anno_32.png"
+          },
+          "64": {
+            "dapi": "14_Stromal_29383/dapi_64.png",
+            "anno": "14_Stromal_29383/anno_64.png"
+          },
+          "128": {
+            "dapi": "14_Stromal_29383/dapi_128.png",
+            "anno": "14_Stromal_29383/anno_128.png"
+          },
+          "256": {
+            "dapi": "14_Stromal_29383/dapi_256.png",
+            "anno": "14_Stromal_29383/anno_256.png"
+          },
+          "512": {
+            "dapi": "14_Stromal_29383/dapi_512.png",
+            "anno": "14_Stromal_29383/anno_512.png"
+          }
+        }
       },
       {
         "index": 15,
         "dataset": "rep1",
-        "cell_id": "100964",
-        "cell_type_fine": "Invasive_Tumor",
-        "cell_type_broad": "Epithelial",
-        "x_px": 15924.1474609375,
-        "y_px": 6516.69873046875,
+        "cell_id": "136535",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9688896536827087,
+        "x_px": 30151.443359375004,
+        "y_px": 2240.111083984375,
         "color_rgb": [
-          66,
-          133,
-          244
+          52,
+          168,
+          83
         ],
-        "fine_color_rgb": [
-          30,
-          80,
-          200
-        ],
-        "grayscale_file": "15_Epithelial_100964_grayscale.png",
-        "colored_file": "15_Epithelial_100964_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "15_Stromal_136535/dapi_32.png",
+            "anno": "15_Stromal_136535/anno_32.png"
+          },
+          "64": {
+            "dapi": "15_Stromal_136535/dapi_64.png",
+            "anno": "15_Stromal_136535/anno_64.png"
+          },
+          "128": {
+            "dapi": "15_Stromal_136535/dapi_128.png",
+            "anno": "15_Stromal_136535/anno_128.png"
+          },
+          "256": {
+            "dapi": "15_Stromal_136535/dapi_256.png",
+            "anno": "15_Stromal_136535/anno_256.png"
+          },
+          "512": {
+            "dapi": "15_Stromal_136535/dapi_512.png",
+            "anno": "15_Stromal_136535/anno_512.png"
+          }
+        }
       },
       {
         "index": 16,
         "dataset": "rep1",
-        "cell_id": "116932",
-        "cell_type_fine": "DCIS_2",
+        "cell_id": "83450",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9688226580619812,
+        "x_px": 9284.08203125,
+        "y_px": 22822.986328125,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "16_Stromal_83450/dapi_32.png",
+            "anno": "16_Stromal_83450/anno_32.png"
+          },
+          "64": {
+            "dapi": "16_Stromal_83450/dapi_64.png",
+            "anno": "16_Stromal_83450/anno_64.png"
+          },
+          "128": {
+            "dapi": "16_Stromal_83450/dapi_128.png",
+            "anno": "16_Stromal_83450/anno_128.png"
+          },
+          "256": {
+            "dapi": "16_Stromal_83450/dapi_256.png",
+            "anno": "16_Stromal_83450/anno_256.png"
+          },
+          "512": {
+            "dapi": "16_Stromal_83450/dapi_512.png",
+            "anno": "16_Stromal_83450/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 17,
+        "dataset": "rep1",
+        "cell_id": "83448",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9687204360961914,
+        "x_px": 9234.6279296875,
+        "y_px": 22663.9375,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "17_Stromal_83448/dapi_32.png",
+            "anno": "17_Stromal_83448/anno_32.png"
+          },
+          "64": {
+            "dapi": "17_Stromal_83448/dapi_64.png",
+            "anno": "17_Stromal_83448/anno_64.png"
+          },
+          "128": {
+            "dapi": "17_Stromal_83448/dapi_128.png",
+            "anno": "17_Stromal_83448/anno_128.png"
+          },
+          "256": {
+            "dapi": "17_Stromal_83448/dapi_256.png",
+            "anno": "17_Stromal_83448/anno_256.png"
+          },
+          "512": {
+            "dapi": "17_Stromal_83448/dapi_512.png",
+            "anno": "17_Stromal_83448/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 18,
+        "dataset": "rep1",
+        "cell_id": "33855",
+        "cell_type_fine": "Invasive_Tumor",
         "cell_type_broad": "Epithelial",
-        "x_px": 20745.640624999996,
-        "y_px": 19384.990234375,
+        "circularity": 0.6904946565628052,
+        "x_px": 1764.0198974609375,
+        "y_px": 19655.025390624996,
         "color_rgb": [
           66,
           133,
           244
         ],
-        "fine_color_rgb": [
-          65,
-          105,
-          225
-        ],
-        "grayscale_file": "16_Epithelial_116932_grayscale.png",
-        "colored_file": "16_Epithelial_116932_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "18_Epithelial_33855/dapi_32.png",
+            "anno": "18_Epithelial_33855/anno_32.png"
+          },
+          "64": {
+            "dapi": "18_Epithelial_33855/dapi_64.png",
+            "anno": "18_Epithelial_33855/anno_64.png"
+          },
+          "128": {
+            "dapi": "18_Epithelial_33855/dapi_128.png",
+            "anno": "18_Epithelial_33855/anno_128.png"
+          },
+          "256": {
+            "dapi": "18_Epithelial_33855/dapi_256.png",
+            "anno": "18_Epithelial_33855/anno_256.png"
+          },
+          "512": {
+            "dapi": "18_Epithelial_33855/dapi_512.png",
+            "anno": "18_Epithelial_33855/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 19,
+        "dataset": "rep1",
+        "cell_id": "154310",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.7677890062332153,
+        "x_px": 34199.83984375,
+        "y_px": 8746.171875,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "19_Stromal_154310/dapi_32.png",
+            "anno": "19_Stromal_154310/anno_32.png"
+          },
+          "64": {
+            "dapi": "19_Stromal_154310/dapi_64.png",
+            "anno": "19_Stromal_154310/anno_64.png"
+          },
+          "128": {
+            "dapi": "19_Stromal_154310/dapi_128.png",
+            "anno": "19_Stromal_154310/anno_128.png"
+          },
+          "256": {
+            "dapi": "19_Stromal_154310/dapi_256.png",
+            "anno": "19_Stromal_154310/anno_256.png"
+          },
+          "512": {
+            "dapi": "19_Stromal_154310/dapi_512.png",
+            "anno": "19_Stromal_154310/anno_512.png"
+          }
+        }
       }
     ],
     "rep2": [
       {
         "index": 0,
         "dataset": "rep2",
-        "cell_id": "6764",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 19448.123046875,
-        "y_px": 8150.5322265625,
+        "cell_id": "10337",
+        "cell_type_fine": "DCIS_2",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9716750383377075,
+        "x_px": 34934.10546875,
+        "y_px": 18181.583984375,
         "color_rgb": [
-          52,
-          168,
-          83
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "00_Stromal_6764_grayscale.png",
-        "colored_file": "00_Stromal_6764_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "00_Epithelial_10337/dapi_32.png",
+            "anno": "00_Epithelial_10337/anno_32.png"
+          },
+          "64": {
+            "dapi": "00_Epithelial_10337/dapi_64.png",
+            "anno": "00_Epithelial_10337/anno_64.png"
+          },
+          "128": {
+            "dapi": "00_Epithelial_10337/dapi_128.png",
+            "anno": "00_Epithelial_10337/anno_128.png"
+          },
+          "256": {
+            "dapi": "00_Epithelial_10337/dapi_256.png",
+            "anno": "00_Epithelial_10337/anno_256.png"
+          },
+          "512": {
+            "dapi": "00_Epithelial_10337/dapi_512.png",
+            "anno": "00_Epithelial_10337/anno_512.png"
+          }
+        }
       },
       {
         "index": 1,
         "dataset": "rep2",
-        "cell_id": "77918",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 16039.0986328125,
-        "y_px": 9057.6181640625,
+        "cell_id": "93598",
+        "cell_type_fine": "Invasive_Tumor",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9704721570014954,
+        "x_px": 23869.037109375,
+        "y_px": 22388.208984374996,
         "color_rgb": [
-          52,
-          168,
-          83
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "01_Stromal_77918_grayscale.png",
-        "colored_file": "01_Stromal_77918_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "01_Epithelial_93598/dapi_32.png",
+            "anno": "01_Epithelial_93598/anno_32.png"
+          },
+          "64": {
+            "dapi": "01_Epithelial_93598/dapi_64.png",
+            "anno": "01_Epithelial_93598/anno_64.png"
+          },
+          "128": {
+            "dapi": "01_Epithelial_93598/dapi_128.png",
+            "anno": "01_Epithelial_93598/anno_128.png"
+          },
+          "256": {
+            "dapi": "01_Epithelial_93598/dapi_256.png",
+            "anno": "01_Epithelial_93598/anno_256.png"
+          },
+          "512": {
+            "dapi": "01_Epithelial_93598/dapi_512.png",
+            "anno": "01_Epithelial_93598/anno_512.png"
+          }
+        }
       },
       {
         "index": 2,
         "dataset": "rep2",
-        "cell_id": "72522",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 12253.1416015625,
-        "y_px": 19030.544921875,
+        "cell_id": "117269",
+        "cell_type_fine": "DCIS_2",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9664539694786072,
+        "x_px": 34721.78515625,
+        "y_px": 16925.28515625,
         "color_rgb": [
-          52,
-          168,
-          83
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "02_Stromal_72522_grayscale.png",
-        "colored_file": "02_Stromal_72522_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "02_Epithelial_117269/dapi_32.png",
+            "anno": "02_Epithelial_117269/anno_32.png"
+          },
+          "64": {
+            "dapi": "02_Epithelial_117269/dapi_64.png",
+            "anno": "02_Epithelial_117269/anno_64.png"
+          },
+          "128": {
+            "dapi": "02_Epithelial_117269/dapi_128.png",
+            "anno": "02_Epithelial_117269/anno_128.png"
+          },
+          "256": {
+            "dapi": "02_Epithelial_117269/dapi_256.png",
+            "anno": "02_Epithelial_117269/anno_256.png"
+          },
+          "512": {
+            "dapi": "02_Epithelial_117269/dapi_512.png",
+            "anno": "02_Epithelial_117269/anno_512.png"
+          }
+        }
       },
       {
         "index": 3,
         "dataset": "rep2",
-        "cell_id": "79025",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 16077.923828125002,
-        "y_px": 19227.23828125,
+        "cell_id": "9861",
+        "cell_type_fine": "Myoepi_ACTA2+",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.964404821395874,
+        "x_px": 34943.55078125,
+        "y_px": 5291.8603515625,
         "color_rgb": [
-          52,
-          168,
-          83
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "03_Stromal_79025_grayscale.png",
-        "colored_file": "03_Stromal_79025_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "03_Epithelial_9861/dapi_32.png",
+            "anno": "03_Epithelial_9861/anno_32.png"
+          },
+          "64": {
+            "dapi": "03_Epithelial_9861/dapi_64.png",
+            "anno": "03_Epithelial_9861/anno_64.png"
+          },
+          "128": {
+            "dapi": "03_Epithelial_9861/dapi_128.png",
+            "anno": "03_Epithelial_9861/anno_128.png"
+          },
+          "256": {
+            "dapi": "03_Epithelial_9861/dapi_256.png",
+            "anno": "03_Epithelial_9861/anno_256.png"
+          },
+          "512": {
+            "dapi": "03_Epithelial_9861/dapi_512.png",
+            "anno": "03_Epithelial_9861/anno_512.png"
+          }
+        }
       },
       {
         "index": 4,
         "dataset": "rep2",
-        "cell_id": "76598",
-        "cell_type_fine": "Stromal",
-        "cell_type_broad": "Stromal",
-        "x_px": 18412.40625,
-        "y_px": 11655.2119140625,
+        "cell_id": "117202",
+        "cell_type_fine": "Myoepi_ACTA2+",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.9619733691215515,
+        "x_px": 32616.771484375,
+        "y_px": 17689.513671875,
         "color_rgb": [
-          52,
-          168,
-          83
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "04_Stromal_76598_grayscale.png",
-        "colored_file": "04_Stromal_76598_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "04_Epithelial_117202/dapi_32.png",
+            "anno": "04_Epithelial_117202/anno_32.png"
+          },
+          "64": {
+            "dapi": "04_Epithelial_117202/dapi_64.png",
+            "anno": "04_Epithelial_117202/anno_64.png"
+          },
+          "128": {
+            "dapi": "04_Epithelial_117202/dapi_128.png",
+            "anno": "04_Epithelial_117202/anno_128.png"
+          },
+          "256": {
+            "dapi": "04_Epithelial_117202/dapi_256.png",
+            "anno": "04_Epithelial_117202/anno_256.png"
+          },
+          "512": {
+            "dapi": "04_Epithelial_117202/dapi_512.png",
+            "anno": "04_Epithelial_117202/anno_512.png"
+          }
+        }
       },
       {
         "index": 5,
         "dataset": "rep2",
-        "cell_id": "85166",
-        "cell_type_fine": "Myoepi_KRT15+",
+        "cell_id": "15671",
+        "cell_type_fine": "DCIS_1",
         "cell_type_broad": "Epithelial",
-        "x_px": 19670.705078125,
-        "y_px": 9463.0302734375,
+        "circularity": 0.9384807348251343,
+        "x_px": 529.9090576171875,
+        "y_px": 1447.9686279296875,
         "color_rgb": [
           66,
           133,
           244
         ],
-        "fine_color_rgb": [
-          135,
-          180,
-          255
-        ],
-        "grayscale_file": "05_Epithelial_85166_grayscale.png",
-        "colored_file": "05_Epithelial_85166_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "05_Epithelial_15671/dapi_32.png",
+            "anno": "05_Epithelial_15671/anno_32.png"
+          },
+          "64": {
+            "dapi": "05_Epithelial_15671/dapi_64.png",
+            "anno": "05_Epithelial_15671/anno_64.png"
+          },
+          "128": {
+            "dapi": "05_Epithelial_15671/dapi_128.png",
+            "anno": "05_Epithelial_15671/anno_128.png"
+          },
+          "256": {
+            "dapi": "05_Epithelial_15671/dapi_256.png",
+            "anno": "05_Epithelial_15671/anno_256.png"
+          },
+          "512": {
+            "dapi": "05_Epithelial_15671/dapi_512.png",
+            "anno": "05_Epithelial_15671/anno_512.png"
+          }
+        }
       },
       {
         "index": 6,
         "dataset": "rep2",
-        "cell_id": "67853",
-        "cell_type_fine": "Myoepi_ACTA2+",
-        "cell_type_broad": "Epithelial",
-        "x_px": 14908.759765625,
-        "y_px": 5814.14306640625,
+        "cell_id": "105349",
+        "cell_type_fine": "Macrophages_2",
+        "cell_type_broad": "Immune",
+        "circularity": 0.9691550135612488,
+        "x_px": 30545.693359375,
+        "y_px": 20793.857421875,
         "color_rgb": [
-          66,
-          133,
-          244
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          120,
-          160,
-          240
-        ],
-        "grayscale_file": "06_Epithelial_67853_grayscale.png",
-        "colored_file": "06_Epithelial_67853_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "06_Immune_105349/dapi_32.png",
+            "anno": "06_Immune_105349/anno_32.png"
+          },
+          "64": {
+            "dapi": "06_Immune_105349/dapi_64.png",
+            "anno": "06_Immune_105349/anno_64.png"
+          },
+          "128": {
+            "dapi": "06_Immune_105349/dapi_128.png",
+            "anno": "06_Immune_105349/anno_128.png"
+          },
+          "256": {
+            "dapi": "06_Immune_105349/dapi_256.png",
+            "anno": "06_Immune_105349/anno_256.png"
+          },
+          "512": {
+            "dapi": "06_Immune_105349/dapi_512.png",
+            "anno": "06_Immune_105349/anno_512.png"
+          }
+        }
       },
       {
         "index": 7,
         "dataset": "rep2",
-        "cell_id": "82385",
-        "cell_type_fine": "Myoepi_ACTA2+",
-        "cell_type_broad": "Epithelial",
-        "x_px": 19637.25,
-        "y_px": 7715.86572265625,
+        "cell_id": "117479",
+        "cell_type_fine": "Macrophages_2",
+        "cell_type_broad": "Immune",
+        "circularity": 0.9687723517417908,
+        "x_px": 33752.28125,
+        "y_px": 22225.87890625,
         "color_rgb": [
-          66,
-          133,
-          244
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          120,
-          160,
-          240
-        ],
-        "grayscale_file": "07_Epithelial_82385_grayscale.png",
-        "colored_file": "07_Epithelial_82385_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "07_Immune_117479/dapi_32.png",
+            "anno": "07_Immune_117479/anno_32.png"
+          },
+          "64": {
+            "dapi": "07_Immune_117479/dapi_64.png",
+            "anno": "07_Immune_117479/anno_64.png"
+          },
+          "128": {
+            "dapi": "07_Immune_117479/dapi_128.png",
+            "anno": "07_Immune_117479/anno_128.png"
+          },
+          "256": {
+            "dapi": "07_Immune_117479/dapi_256.png",
+            "anno": "07_Immune_117479/anno_256.png"
+          },
+          "512": {
+            "dapi": "07_Immune_117479/dapi_512.png",
+            "anno": "07_Immune_117479/anno_512.png"
+          }
+        }
       },
       {
         "index": 8,
         "dataset": "rep2",
-        "cell_id": "84431",
-        "cell_type_fine": "DCIS_1",
-        "cell_type_broad": "Epithelial",
-        "x_px": 22101.708984375,
-        "y_px": 10250.071289062498,
+        "cell_id": "92902",
+        "cell_type_fine": "Macrophages_1",
+        "cell_type_broad": "Immune",
+        "circularity": 0.9687249064445496,
+        "x_px": 25909.927734375,
+        "y_px": 15614.8994140625,
         "color_rgb": [
-          66,
-          133,
-          244
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          100,
-          149,
-          237
-        ],
-        "grayscale_file": "08_Epithelial_84431_grayscale.png",
-        "colored_file": "08_Epithelial_84431_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "08_Immune_92902/dapi_32.png",
+            "anno": "08_Immune_92902/anno_32.png"
+          },
+          "64": {
+            "dapi": "08_Immune_92902/dapi_64.png",
+            "anno": "08_Immune_92902/anno_64.png"
+          },
+          "128": {
+            "dapi": "08_Immune_92902/dapi_128.png",
+            "anno": "08_Immune_92902/anno_128.png"
+          },
+          "256": {
+            "dapi": "08_Immune_92902/dapi_256.png",
+            "anno": "08_Immune_92902/anno_256.png"
+          },
+          "512": {
+            "dapi": "08_Immune_92902/dapi_512.png",
+            "anno": "08_Immune_92902/anno_512.png"
+          }
+        }
       },
       {
         "index": 9,
         "dataset": "rep2",
-        "cell_id": "92240",
-        "cell_type_fine": "Myoepi_KRT15+",
-        "cell_type_broad": "Epithelial",
-        "x_px": 25314.59375,
-        "y_px": 8144.923828125001,
+        "cell_id": "115157",
+        "cell_type_fine": "Macrophages_1",
+        "cell_type_broad": "Immune",
+        "circularity": 0.9685022830963135,
+        "x_px": 33405.9375,
+        "y_px": 15821.5380859375,
         "color_rgb": [
-          66,
-          133,
-          244
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          135,
-          180,
-          255
-        ],
-        "grayscale_file": "09_Epithelial_92240_grayscale.png",
-        "colored_file": "09_Epithelial_92240_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "09_Immune_115157/dapi_32.png",
+            "anno": "09_Immune_115157/anno_32.png"
+          },
+          "64": {
+            "dapi": "09_Immune_115157/dapi_64.png",
+            "anno": "09_Immune_115157/anno_64.png"
+          },
+          "128": {
+            "dapi": "09_Immune_115157/dapi_128.png",
+            "anno": "09_Immune_115157/anno_128.png"
+          },
+          "256": {
+            "dapi": "09_Immune_115157/dapi_256.png",
+            "anno": "09_Immune_115157/anno_256.png"
+          },
+          "512": {
+            "dapi": "09_Immune_115157/dapi_512.png",
+            "anno": "09_Immune_115157/anno_512.png"
+          }
+        }
       },
       {
         "index": 10,
         "dataset": "rep2",
-        "cell_id": "56867",
-        "cell_type_fine": "CD4+_T_Cells",
+        "cell_id": "79686",
+        "cell_type_fine": "Macrophages_2",
         "cell_type_broad": "Immune",
-        "x_px": 10251.0537109375,
-        "y_px": 7838.388671875,
+        "circularity": 0.9677560925483704,
+        "x_px": 22130.912109375,
+        "y_px": 859.801513671875,
         "color_rgb": [
           234,
           67,
           53
         ],
-        "fine_color_rgb": [
-          255,
-          99,
-          71
-        ],
-        "grayscale_file": "10_Immune_56867_grayscale.png",
-        "colored_file": "10_Immune_56867_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "10_Immune_79686/dapi_32.png",
+            "anno": "10_Immune_79686/anno_32.png"
+          },
+          "64": {
+            "dapi": "10_Immune_79686/dapi_64.png",
+            "anno": "10_Immune_79686/anno_64.png"
+          },
+          "128": {
+            "dapi": "10_Immune_79686/dapi_128.png",
+            "anno": "10_Immune_79686/anno_128.png"
+          },
+          "256": {
+            "dapi": "10_Immune_79686/dapi_256.png",
+            "anno": "10_Immune_79686/anno_256.png"
+          },
+          "512": {
+            "dapi": "10_Immune_79686/dapi_512.png",
+            "anno": "10_Immune_79686/anno_512.png"
+          }
+        }
       },
       {
         "index": 11,
         "dataset": "rep2",
-        "cell_id": "69441",
+        "cell_id": "117401",
         "cell_type_fine": "B_Cells",
         "cell_type_broad": "Immune",
-        "x_px": 11794.6357421875,
-        "y_px": 7275.390625,
+        "circularity": 0.9675657749176025,
+        "x_px": 32468.142578125004,
+        "y_px": 19044.830078125,
         "color_rgb": [
           234,
           67,
           53
         ],
-        "fine_color_rgb": [
-          255,
-          140,
-          0
-        ],
-        "grayscale_file": "11_Immune_69441_grayscale.png",
-        "colored_file": "11_Immune_69441_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "11_Immune_117401/dapi_32.png",
+            "anno": "11_Immune_117401/anno_32.png"
+          },
+          "64": {
+            "dapi": "11_Immune_117401/dapi_64.png",
+            "anno": "11_Immune_117401/anno_64.png"
+          },
+          "128": {
+            "dapi": "11_Immune_117401/dapi_128.png",
+            "anno": "11_Immune_117401/anno_128.png"
+          },
+          "256": {
+            "dapi": "11_Immune_117401/dapi_256.png",
+            "anno": "11_Immune_117401/anno_256.png"
+          },
+          "512": {
+            "dapi": "11_Immune_117401/dapi_512.png",
+            "anno": "11_Immune_117401/anno_512.png"
+          }
+        }
       },
       {
         "index": 12,
         "dataset": "rep2",
-        "cell_id": "90594",
-        "cell_type_fine": "CD4+_T_Cells",
-        "cell_type_broad": "Immune",
-        "x_px": 23634.51953125,
-        "y_px": 7834.76318359375,
-        "color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "fine_color_rgb": [
-          255,
-          99,
-          71
-        ],
-        "grayscale_file": "12_Immune_90594_grayscale.png",
-        "colored_file": "12_Immune_90594_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
-      },
-      {
-        "index": 13,
-        "dataset": "rep2",
-        "cell_id": "77746",
-        "cell_type_fine": "B_Cells",
-        "cell_type_broad": "Immune",
-        "x_px": 17190.947265625,
-        "y_px": 9248.66015625,
-        "color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "fine_color_rgb": [
-          255,
-          140,
-          0
-        ],
-        "grayscale_file": "13_Immune_77746_grayscale.png",
-        "colored_file": "13_Immune_77746_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
-      },
-      {
-        "index": 14,
-        "dataset": "rep2",
-        "cell_id": "68648",
-        "cell_type_fine": "B_Cells",
-        "cell_type_broad": "Immune",
-        "x_px": 14334.220703125,
-        "y_px": 6494.21337890625,
-        "color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "fine_color_rgb": [
-          255,
-          140,
-          0
-        ],
-        "grayscale_file": "14_Immune_68648_grayscale.png",
-        "colored_file": "14_Immune_68648_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
-      },
-      {
-        "index": 15,
-        "dataset": "rep2",
-        "cell_id": "86047",
-        "cell_type_fine": "Macrophages_1",
-        "cell_type_broad": "Immune",
-        "x_px": 21706.6015625,
-        "y_px": 13348.72265625,
-        "color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "fine_color_rgb": [
-          200,
-          50,
-          50
-        ],
-        "grayscale_file": "15_Immune_86047_grayscale.png",
-        "colored_file": "15_Immune_86047_colored.png",
-        "patch_sizes_px": [
-          32,
-          64,
-          128,
-          256
-        ]
-      },
-      {
-        "index": 16,
-        "dataset": "rep2",
-        "cell_id": "68634",
+        "cell_id": "105230",
         "cell_type_fine": "Stromal",
         "cell_type_broad": "Stromal",
-        "x_px": 14293.6357421875,
-        "y_px": 6314.921875,
+        "circularity": 0.9703534841537476,
+        "x_px": 28979.357421875,
+        "y_px": 21210.132812499996,
         "color_rgb": [
           52,
           168,
           83
         ],
-        "fine_color_rgb": [
-          34,
-          139,
-          34
-        ],
-        "grayscale_file": "16_Stromal_68634_grayscale.png",
-        "colored_file": "16_Stromal_68634_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "12_Stromal_105230/dapi_32.png",
+            "anno": "12_Stromal_105230/anno_32.png"
+          },
+          "64": {
+            "dapi": "12_Stromal_105230/dapi_64.png",
+            "anno": "12_Stromal_105230/anno_64.png"
+          },
+          "128": {
+            "dapi": "12_Stromal_105230/dapi_128.png",
+            "anno": "12_Stromal_105230/anno_128.png"
+          },
+          "256": {
+            "dapi": "12_Stromal_105230/dapi_256.png",
+            "anno": "12_Stromal_105230/anno_256.png"
+          },
+          "512": {
+            "dapi": "12_Stromal_105230/dapi_512.png",
+            "anno": "12_Stromal_105230/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 13,
+        "dataset": "rep2",
+        "cell_id": "60794",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9698835015296936,
+        "x_px": 9740.12109375,
+        "y_px": 14080.384765625,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "13_Stromal_60794/dapi_32.png",
+            "anno": "13_Stromal_60794/anno_32.png"
+          },
+          "64": {
+            "dapi": "13_Stromal_60794/dapi_64.png",
+            "anno": "13_Stromal_60794/anno_64.png"
+          },
+          "128": {
+            "dapi": "13_Stromal_60794/dapi_128.png",
+            "anno": "13_Stromal_60794/anno_128.png"
+          },
+          "256": {
+            "dapi": "13_Stromal_60794/dapi_256.png",
+            "anno": "13_Stromal_60794/anno_256.png"
+          },
+          "512": {
+            "dapi": "13_Stromal_60794/dapi_512.png",
+            "anno": "13_Stromal_60794/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 14,
+        "dataset": "rep2",
+        "cell_id": "59991",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9698744416236877,
+        "x_px": 10989.6767578125,
+        "y_px": 10861.072265624998,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "14_Stromal_59991/dapi_32.png",
+            "anno": "14_Stromal_59991/anno_32.png"
+          },
+          "64": {
+            "dapi": "14_Stromal_59991/dapi_64.png",
+            "anno": "14_Stromal_59991/anno_64.png"
+          },
+          "128": {
+            "dapi": "14_Stromal_59991/dapi_128.png",
+            "anno": "14_Stromal_59991/anno_128.png"
+          },
+          "256": {
+            "dapi": "14_Stromal_59991/dapi_256.png",
+            "anno": "14_Stromal_59991/anno_256.png"
+          },
+          "512": {
+            "dapi": "14_Stromal_59991/dapi_512.png",
+            "anno": "14_Stromal_59991/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 15,
+        "dataset": "rep2",
+        "cell_id": "105223",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9697945713996887,
+        "x_px": 28846.564453125,
+        "y_px": 22601.67578125,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "15_Stromal_105223/dapi_32.png",
+            "anno": "15_Stromal_105223/anno_32.png"
+          },
+          "64": {
+            "dapi": "15_Stromal_105223/dapi_64.png",
+            "anno": "15_Stromal_105223/anno_64.png"
+          },
+          "128": {
+            "dapi": "15_Stromal_105223/dapi_128.png",
+            "anno": "15_Stromal_105223/anno_128.png"
+          },
+          "256": {
+            "dapi": "15_Stromal_105223/dapi_256.png",
+            "anno": "15_Stromal_105223/anno_256.png"
+          },
+          "512": {
+            "dapi": "15_Stromal_105223/dapi_512.png",
+            "anno": "15_Stromal_105223/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 16,
+        "dataset": "rep2",
+        "cell_id": "8127",
+        "cell_type_fine": "Endothelial",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9691407680511475,
+        "x_px": 25809.63671875,
+        "y_px": 15991.9853515625,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "16_Stromal_8127/dapi_32.png",
+            "anno": "16_Stromal_8127/anno_32.png"
+          },
+          "64": {
+            "dapi": "16_Stromal_8127/dapi_64.png",
+            "anno": "16_Stromal_8127/anno_64.png"
+          },
+          "128": {
+            "dapi": "16_Stromal_8127/dapi_128.png",
+            "anno": "16_Stromal_8127/anno_128.png"
+          },
+          "256": {
+            "dapi": "16_Stromal_8127/dapi_256.png",
+            "anno": "16_Stromal_8127/anno_256.png"
+          },
+          "512": {
+            "dapi": "16_Stromal_8127/dapi_512.png",
+            "anno": "16_Stromal_8127/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 17,
+        "dataset": "rep2",
+        "cell_id": "86936",
+        "cell_type_fine": "Stromal",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.9691383242607117,
+        "x_px": 21390.078125,
+        "y_px": 20935.021484375,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "17_Stromal_86936/dapi_32.png",
+            "anno": "17_Stromal_86936/anno_32.png"
+          },
+          "64": {
+            "dapi": "17_Stromal_86936/dapi_64.png",
+            "anno": "17_Stromal_86936/anno_64.png"
+          },
+          "128": {
+            "dapi": "17_Stromal_86936/dapi_128.png",
+            "anno": "17_Stromal_86936/anno_128.png"
+          },
+          "256": {
+            "dapi": "17_Stromal_86936/dapi_256.png",
+            "anno": "17_Stromal_86936/anno_256.png"
+          },
+          "512": {
+            "dapi": "17_Stromal_86936/dapi_512.png",
+            "anno": "17_Stromal_86936/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 18,
+        "dataset": "rep2",
+        "cell_id": "95977",
+        "cell_type_fine": "CD8+_T_Cells",
+        "cell_type_broad": "Immune",
+        "circularity": 0.818816065788269,
+        "x_px": 30737.171875,
+        "y_px": 5196.14013671875,
+        "color_rgb": [
+          234,
+          67,
+          53
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "18_Immune_95977/dapi_32.png",
+            "anno": "18_Immune_95977/anno_32.png"
+          },
+          "64": {
+            "dapi": "18_Immune_95977/dapi_64.png",
+            "anno": "18_Immune_95977/anno_64.png"
+          },
+          "128": {
+            "dapi": "18_Immune_95977/dapi_128.png",
+            "anno": "18_Immune_95977/anno_128.png"
+          },
+          "256": {
+            "dapi": "18_Immune_95977/dapi_256.png",
+            "anno": "18_Immune_95977/anno_256.png"
+          },
+          "512": {
+            "dapi": "18_Immune_95977/dapi_512.png",
+            "anno": "18_Immune_95977/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 19,
+        "dataset": "rep2",
+        "cell_id": "64024",
+        "cell_type_fine": "Invasive_Tumor",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.771746039390564,
+        "x_px": 14216.8173828125,
+        "y_px": 409.03057861328125,
+        "color_rgb": [
+          66,
+          133,
+          244
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "19_Epithelial_64024/dapi_32.png",
+            "anno": "19_Epithelial_64024/anno_32.png"
+          },
+          "64": {
+            "dapi": "19_Epithelial_64024/dapi_64.png",
+            "anno": "19_Epithelial_64024/anno_64.png"
+          },
+          "128": {
+            "dapi": "19_Epithelial_64024/dapi_128.png",
+            "anno": "19_Epithelial_64024/anno_128.png"
+          },
+          "256": {
+            "dapi": "19_Epithelial_64024/dapi_256.png",
+            "anno": "19_Epithelial_64024/anno_256.png"
+          },
+          "512": {
+            "dapi": "19_Epithelial_64024/dapi_512.png",
+            "anno": "19_Epithelial_64024/anno_512.png"
+          }
+        }
       }
     ],
     "merscope-breast": [
       {
         "index": 0,
         "dataset": "merscope-breast",
-        "cell_id": "233778",
-        "cell_type_fine": "Lumsec-HLA",
-        "cell_type_broad": "Epithelial",
-        "x_px": 36383.981177,
-        "y_px": 33219.969712000006,
+        "cell_id": "496038",
+        "cell_type_fine": "Lymph-valve2",
+        "cell_type_broad": "Endothelial",
+        "circularity": 0.5,
+        "x_px": 98595.9667805,
+        "y_px": 92240.649387,
         "color_rgb": [
-          66,
-          133,
-          244
+          251,
+          188,
+          4
         ],
-        "fine_color_rgb": [
-          66,
-          133,
-          244
-        ],
-        "grayscale_file": "00_Epithelial_233778_grayscale.png",
-        "colored_file": "00_Epithelial_233778_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "00_Endothelial_496038/dapi_32.png",
+            "anno": "00_Endothelial_496038/anno_32.png"
+          },
+          "64": {
+            "dapi": "00_Endothelial_496038/dapi_64.png",
+            "anno": "00_Endothelial_496038/anno_64.png"
+          },
+          "128": {
+            "dapi": "00_Endothelial_496038/dapi_128.png",
+            "anno": "00_Endothelial_496038/anno_128.png"
+          },
+          "256": {
+            "dapi": "00_Endothelial_496038/dapi_256.png",
+            "anno": "00_Endothelial_496038/anno_256.png"
+          },
+          "512": {
+            "dapi": "00_Endothelial_496038/dapi_512.png",
+            "anno": "00_Endothelial_496038/anno_512.png"
+          }
+        }
       },
       {
         "index": 1,
         "dataset": "merscope-breast",
-        "cell_id": "289054",
-        "cell_type_fine": "Lumsec-basal",
-        "cell_type_broad": "Epithelial",
-        "x_px": 57789.01826600001,
-        "y_px": 55861.6651575,
+        "cell_id": "487157",
+        "cell_type_fine": "Vas-venous",
+        "cell_type_broad": "Endothelial",
+        "circularity": 0.5,
+        "x_px": 91813.2457305,
+        "y_px": 93570.14425350001,
         "color_rgb": [
-          66,
-          133,
-          244
+          251,
+          188,
+          4
         ],
-        "fine_color_rgb": [
-          66,
-          133,
-          244
-        ],
-        "grayscale_file": "01_Epithelial_289054_grayscale.png",
-        "colored_file": "01_Epithelial_289054_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "01_Endothelial_487157/dapi_32.png",
+            "anno": "01_Endothelial_487157/anno_32.png"
+          },
+          "64": {
+            "dapi": "01_Endothelial_487157/dapi_64.png",
+            "anno": "01_Endothelial_487157/anno_64.png"
+          },
+          "128": {
+            "dapi": "01_Endothelial_487157/dapi_128.png",
+            "anno": "01_Endothelial_487157/anno_128.png"
+          },
+          "256": {
+            "dapi": "01_Endothelial_487157/dapi_256.png",
+            "anno": "01_Endothelial_487157/anno_256.png"
+          },
+          "512": {
+            "dapi": "01_Endothelial_487157/dapi_512.png",
+            "anno": "01_Endothelial_487157/anno_512.png"
+          }
+        }
       },
       {
         "index": 2,
         "dataset": "merscope-breast",
-        "cell_id": "518710",
-        "cell_type_fine": "basal",
-        "cell_type_broad": "Epithelial",
-        "x_px": 49254.343551000005,
-        "y_px": 26064.111129,
+        "cell_id": "485778",
+        "cell_type_fine": "Vas-arterial",
+        "cell_type_broad": "Endothelial",
+        "circularity": 0.5,
+        "x_px": 71495.528798,
+        "y_px": 93577.76664200002,
         "color_rgb": [
-          66,
-          133,
-          244
+          251,
+          188,
+          4
         ],
-        "fine_color_rgb": [
-          66,
-          133,
-          244
-        ],
-        "grayscale_file": "02_Epithelial_518710_grayscale.png",
-        "colored_file": "02_Epithelial_518710_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "02_Endothelial_485778/dapi_32.png",
+            "anno": "02_Endothelial_485778/anno_32.png"
+          },
+          "64": {
+            "dapi": "02_Endothelial_485778/dapi_64.png",
+            "anno": "02_Endothelial_485778/anno_64.png"
+          },
+          "128": {
+            "dapi": "02_Endothelial_485778/dapi_128.png",
+            "anno": "02_Endothelial_485778/anno_128.png"
+          },
+          "256": {
+            "dapi": "02_Endothelial_485778/dapi_256.png",
+            "anno": "02_Endothelial_485778/anno_256.png"
+          },
+          "512": {
+            "dapi": "02_Endothelial_485778/dapi_512.png",
+            "anno": "02_Endothelial_485778/anno_512.png"
+          }
+        }
       },
       {
         "index": 3,
         "dataset": "merscope-breast",
-        "cell_id": "419727",
-        "cell_type_fine": "Lumsec-myo",
-        "cell_type_broad": "Epithelial",
-        "x_px": 69832.0127775,
-        "y_px": 65018.9335505,
+        "cell_id": "356198",
+        "cell_type_fine": "Lymph-valve2",
+        "cell_type_broad": "Endothelial",
+        "circularity": 0.5,
+        "x_px": 69852.01433200002,
+        "y_px": 92170.62711900001,
         "color_rgb": [
-          66,
-          133,
-          244
+          251,
+          188,
+          4
         ],
-        "fine_color_rgb": [
-          66,
-          133,
-          244
-        ],
-        "grayscale_file": "03_Epithelial_419727_grayscale.png",
-        "colored_file": "03_Epithelial_419727_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "03_Endothelial_356198/dapi_32.png",
+            "anno": "03_Endothelial_356198/anno_32.png"
+          },
+          "64": {
+            "dapi": "03_Endothelial_356198/dapi_64.png",
+            "anno": "03_Endothelial_356198/anno_64.png"
+          },
+          "128": {
+            "dapi": "03_Endothelial_356198/dapi_128.png",
+            "anno": "03_Endothelial_356198/anno_128.png"
+          },
+          "256": {
+            "dapi": "03_Endothelial_356198/dapi_256.png",
+            "anno": "03_Endothelial_356198/anno_256.png"
+          },
+          "512": {
+            "dapi": "03_Endothelial_356198/dapi_512.png",
+            "anno": "03_Endothelial_356198/anno_512.png"
+          }
+        }
       },
       {
         "index": 4,
         "dataset": "merscope-breast",
-        "cell_id": "351159",
-        "cell_type_fine": "Vas-arterial",
+        "cell_id": "485936",
+        "cell_type_fine": "Vas-venous",
         "cell_type_broad": "Endothelial",
-        "x_px": 35214.9507515,
-        "y_px": 51598.423806499995,
+        "circularity": 0.5,
+        "x_px": 68508.2847755,
+        "y_px": 93686.53324500001,
         "color_rgb": [
           251,
           188,
           4
         ],
-        "fine_color_rgb": [
-          251,
-          188,
-          4
-        ],
-        "grayscale_file": "04_Endothelial_351159_grayscale.png",
-        "colored_file": "04_Endothelial_351159_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "04_Endothelial_485936/dapi_32.png",
+            "anno": "04_Endothelial_485936/anno_32.png"
+          },
+          "64": {
+            "dapi": "04_Endothelial_485936/dapi_64.png",
+            "anno": "04_Endothelial_485936/anno_64.png"
+          },
+          "128": {
+            "dapi": "04_Endothelial_485936/dapi_128.png",
+            "anno": "04_Endothelial_485936/anno_128.png"
+          },
+          "256": {
+            "dapi": "04_Endothelial_485936/dapi_256.png",
+            "anno": "04_Endothelial_485936/anno_256.png"
+          },
+          "512": {
+            "dapi": "04_Endothelial_485936/dapi_512.png",
+            "anno": "04_Endothelial_485936/anno_512.png"
+          }
+        }
       },
       {
         "index": 5,
         "dataset": "merscope-breast",
-        "cell_id": "686298",
-        "cell_type_fine": "Vas-capillary",
-        "cell_type_broad": "Endothelial",
-        "x_px": 57720.45395450001,
-        "y_px": 30447.690152,
+        "cell_id": "65598",
+        "cell_type_fine": "Lumsec-HLA",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.5,
+        "x_px": 102863.14162100002,
+        "y_px": 92119.69665400001,
         "color_rgb": [
-          251,
-          188,
-          4
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          251,
-          188,
-          4
-        ],
-        "grayscale_file": "05_Endothelial_686298_grayscale.png",
-        "colored_file": "05_Endothelial_686298_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "05_Epithelial_65598/dapi_32.png",
+            "anno": "05_Epithelial_65598/anno_32.png"
+          },
+          "64": {
+            "dapi": "05_Epithelial_65598/dapi_64.png",
+            "anno": "05_Epithelial_65598/anno_64.png"
+          },
+          "128": {
+            "dapi": "05_Epithelial_65598/dapi_128.png",
+            "anno": "05_Epithelial_65598/anno_128.png"
+          },
+          "256": {
+            "dapi": "05_Epithelial_65598/dapi_256.png",
+            "anno": "05_Epithelial_65598/anno_256.png"
+          },
+          "512": {
+            "dapi": "05_Epithelial_65598/dapi_512.png",
+            "anno": "05_Epithelial_65598/anno_512.png"
+          }
+        }
       },
       {
         "index": 6,
         "dataset": "merscope-breast",
-        "cell_id": "424816",
-        "cell_type_fine": "Vas-arterial",
-        "cell_type_broad": "Endothelial",
-        "x_px": 69110.96020500001,
-        "y_px": 74422.65748000001,
+        "cell_id": "431777",
+        "cell_type_fine": "Lumsec-HLA",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.5,
+        "x_px": 101624.54367400002,
+        "y_px": 91923.27044600002,
         "color_rgb": [
-          251,
-          188,
-          4
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          251,
-          188,
-          4
-        ],
-        "grayscale_file": "06_Endothelial_424816_grayscale.png",
-        "colored_file": "06_Endothelial_424816_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "06_Epithelial_431777/dapi_32.png",
+            "anno": "06_Epithelial_431777/anno_32.png"
+          },
+          "64": {
+            "dapi": "06_Epithelial_431777/dapi_64.png",
+            "anno": "06_Epithelial_431777/anno_64.png"
+          },
+          "128": {
+            "dapi": "06_Epithelial_431777/dapi_128.png",
+            "anno": "06_Epithelial_431777/anno_128.png"
+          },
+          "256": {
+            "dapi": "06_Epithelial_431777/dapi_256.png",
+            "anno": "06_Epithelial_431777/anno_256.png"
+          },
+          "512": {
+            "dapi": "06_Epithelial_431777/dapi_512.png",
+            "anno": "06_Epithelial_431777/anno_512.png"
+          }
+        }
       },
       {
         "index": 7,
         "dataset": "merscope-breast",
-        "cell_id": "301011",
-        "cell_type_fine": "Vas-arterial",
-        "cell_type_broad": "Endothelial",
-        "x_px": 60522.25030400001,
-        "y_px": 78802.86523350002,
+        "cell_id": "431752",
+        "cell_type_fine": "basal",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.5,
+        "x_px": 101327.06355700002,
+        "y_px": 93493.1586715,
         "color_rgb": [
-          251,
-          188,
-          4
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          251,
-          188,
-          4
-        ],
-        "grayscale_file": "07_Endothelial_301011_grayscale.png",
-        "colored_file": "07_Endothelial_301011_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "07_Epithelial_431752/dapi_32.png",
+            "anno": "07_Epithelial_431752/anno_32.png"
+          },
+          "64": {
+            "dapi": "07_Epithelial_431752/dapi_64.png",
+            "anno": "07_Epithelial_431752/anno_64.png"
+          },
+          "128": {
+            "dapi": "07_Epithelial_431752/dapi_128.png",
+            "anno": "07_Epithelial_431752/anno_128.png"
+          },
+          "256": {
+            "dapi": "07_Epithelial_431752/dapi_256.png",
+            "anno": "07_Epithelial_431752/anno_256.png"
+          },
+          "512": {
+            "dapi": "07_Epithelial_431752/dapi_512.png",
+            "anno": "07_Epithelial_431752/anno_512.png"
+          }
+        }
       },
       {
         "index": 8,
         "dataset": "merscope-breast",
-        "cell_id": "99524",
-        "cell_type_fine": "CD4-Th-like",
-        "cell_type_broad": "Immune",
-        "x_px": 34949.3181655,
-        "y_px": 56600.748127000006,
+        "cell_id": "431466",
+        "cell_type_fine": "LummHR-active",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.5,
+        "x_px": 100237.25290700002,
+        "y_px": 92364.78727550001,
         "color_rgb": [
-          234,
-          67,
-          53
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "grayscale_file": "08_Immune_99524_grayscale.png",
-        "colored_file": "08_Immune_99524_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "08_Epithelial_431466/dapi_32.png",
+            "anno": "08_Epithelial_431466/anno_32.png"
+          },
+          "64": {
+            "dapi": "08_Epithelial_431466/dapi_64.png",
+            "anno": "08_Epithelial_431466/anno_64.png"
+          },
+          "128": {
+            "dapi": "08_Epithelial_431466/dapi_128.png",
+            "anno": "08_Epithelial_431466/anno_128.png"
+          },
+          "256": {
+            "dapi": "08_Epithelial_431466/dapi_256.png",
+            "anno": "08_Epithelial_431466/anno_256.png"
+          },
+          "512": {
+            "dapi": "08_Epithelial_431466/dapi_512.png",
+            "anno": "08_Epithelial_431466/anno_512.png"
+          }
+        }
       },
       {
         "index": 9,
         "dataset": "merscope-breast",
-        "cell_id": "544335",
-        "cell_type_fine": "Macro-lipo",
-        "cell_type_broad": "Immune",
-        "x_px": 61423.43710050001,
-        "y_px": 23838.811273500003,
+        "cell_id": "68636",
+        "cell_type_fine": "Lumsec-HLA",
+        "cell_type_broad": "Epithelial",
+        "circularity": 0.5,
+        "x_px": 97462.9922755,
+        "y_px": 92204.81135100001,
         "color_rgb": [
-          234,
-          67,
-          53
+          66,
+          133,
+          244
         ],
-        "fine_color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "grayscale_file": "09_Immune_544335_grayscale.png",
-        "colored_file": "09_Immune_544335_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "09_Epithelial_68636/dapi_32.png",
+            "anno": "09_Epithelial_68636/anno_32.png"
+          },
+          "64": {
+            "dapi": "09_Epithelial_68636/dapi_64.png",
+            "anno": "09_Epithelial_68636/anno_64.png"
+          },
+          "128": {
+            "dapi": "09_Epithelial_68636/dapi_128.png",
+            "anno": "09_Epithelial_68636/anno_128.png"
+          },
+          "256": {
+            "dapi": "09_Epithelial_68636/dapi_256.png",
+            "anno": "09_Epithelial_68636/anno_256.png"
+          },
+          "512": {
+            "dapi": "09_Epithelial_68636/dapi_512.png",
+            "anno": "09_Epithelial_68636/anno_512.png"
+          }
+        }
       },
       {
         "index": 10,
         "dataset": "merscope-breast",
-        "cell_id": "515336",
-        "cell_type_fine": "Mono-classical",
+        "cell_id": "431567",
+        "cell_type_fine": "bmem_unswitched",
         "cell_type_broad": "Immune",
-        "x_px": 33304.0957275,
-        "y_px": 37981.196231,
+        "circularity": 0.5,
+        "x_px": 102265.9855445,
+        "y_px": 92697.1877785,
         "color_rgb": [
           234,
           67,
           53
         ],
-        "fine_color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "grayscale_file": "10_Immune_515336_grayscale.png",
-        "colored_file": "10_Immune_515336_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "10_Immune_431567/dapi_32.png",
+            "anno": "10_Immune_431567/anno_32.png"
+          },
+          "64": {
+            "dapi": "10_Immune_431567/dapi_64.png",
+            "anno": "10_Immune_431567/anno_64.png"
+          },
+          "128": {
+            "dapi": "10_Immune_431567/dapi_128.png",
+            "anno": "10_Immune_431567/anno_128.png"
+          },
+          "256": {
+            "dapi": "10_Immune_431567/dapi_256.png",
+            "anno": "10_Immune_431567/anno_256.png"
+          },
+          "512": {
+            "dapi": "10_Immune_431567/dapi_512.png",
+            "anno": "10_Immune_431567/anno_512.png"
+          }
+        }
       },
       {
         "index": 11,
         "dataset": "merscope-breast",
-        "cell_id": "655303",
+        "cell_id": "431502",
         "cell_type_fine": "bmem_unswitched",
         "cell_type_broad": "Immune",
-        "x_px": 26854.753932,
-        "y_px": 41556.411815,
+        "circularity": 0.5,
+        "x_px": 102013.8609015,
+        "y_px": 92478.85569250002,
         "color_rgb": [
           234,
           67,
           53
         ],
-        "fine_color_rgb": [
-          234,
-          67,
-          53
-        ],
-        "grayscale_file": "11_Immune_655303_grayscale.png",
-        "colored_file": "11_Immune_655303_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "11_Immune_431502/dapi_32.png",
+            "anno": "11_Immune_431502/anno_32.png"
+          },
+          "64": {
+            "dapi": "11_Immune_431502/dapi_64.png",
+            "anno": "11_Immune_431502/anno_64.png"
+          },
+          "128": {
+            "dapi": "11_Immune_431502/dapi_128.png",
+            "anno": "11_Immune_431502/anno_128.png"
+          },
+          "256": {
+            "dapi": "11_Immune_431502/dapi_256.png",
+            "anno": "11_Immune_431502/anno_256.png"
+          },
+          "512": {
+            "dapi": "11_Immune_431502/dapi_512.png",
+            "anno": "11_Immune_431502/anno_512.png"
+          }
+        }
       },
       {
         "index": 12,
         "dataset": "merscope-breast",
-        "cell_id": "319501",
-        "cell_type_fine": "Fibro-matrix",
-        "cell_type_broad": "Stromal",
-        "x_px": 40572.03497850001,
-        "y_px": 73697.382593,
+        "cell_id": "496291",
+        "cell_type_fine": "Macro-lipo",
+        "cell_type_broad": "Immune",
+        "circularity": 0.5,
+        "x_px": 99594.65140450001,
+        "y_px": 92983.85217400001,
         "color_rgb": [
-          52,
-          168,
-          83
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          52,
-          168,
-          83
-        ],
-        "grayscale_file": "12_Stromal_319501_grayscale.png",
-        "colored_file": "12_Stromal_319501_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "12_Immune_496291/dapi_32.png",
+            "anno": "12_Immune_496291/anno_32.png"
+          },
+          "64": {
+            "dapi": "12_Immune_496291/dapi_64.png",
+            "anno": "12_Immune_496291/anno_64.png"
+          },
+          "128": {
+            "dapi": "12_Immune_496291/dapi_128.png",
+            "anno": "12_Immune_496291/anno_128.png"
+          },
+          "256": {
+            "dapi": "12_Immune_496291/dapi_256.png",
+            "anno": "12_Immune_496291/anno_256.png"
+          },
+          "512": {
+            "dapi": "12_Immune_496291/dapi_512.png",
+            "anno": "12_Immune_496291/anno_512.png"
+          }
+        }
       },
       {
         "index": 13,
         "dataset": "merscope-breast",
-        "cell_id": "707032",
-        "cell_type_fine": "vsmc",
-        "cell_type_broad": "Stromal",
-        "x_px": 76227.87682399999,
-        "y_px": 42283.2733845,
+        "cell_id": "496071",
+        "cell_type_fine": "pDC",
+        "cell_type_broad": "Immune",
+        "circularity": 0.5,
+        "x_px": 99741.5328695,
+        "y_px": 92352.1092755,
         "color_rgb": [
-          52,
-          168,
-          83
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          52,
-          168,
-          83
-        ],
-        "grayscale_file": "13_Stromal_707032_grayscale.png",
-        "colored_file": "13_Stromal_707032_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "13_Immune_496071/dapi_32.png",
+            "anno": "13_Immune_496071/anno_32.png"
+          },
+          "64": {
+            "dapi": "13_Immune_496071/dapi_64.png",
+            "anno": "13_Immune_496071/anno_64.png"
+          },
+          "128": {
+            "dapi": "13_Immune_496071/dapi_128.png",
+            "anno": "13_Immune_496071/anno_128.png"
+          },
+          "256": {
+            "dapi": "13_Immune_496071/dapi_256.png",
+            "anno": "13_Immune_496071/anno_256.png"
+          },
+          "512": {
+            "dapi": "13_Immune_496071/dapi_512.png",
+            "anno": "13_Immune_496071/anno_512.png"
+          }
+        }
       },
       {
         "index": 14,
         "dataset": "merscope-breast",
-        "cell_id": "498298",
-        "cell_type_fine": "Fibro-major",
-        "cell_type_broad": "Stromal",
-        "x_px": 50149.857206500004,
-        "y_px": 43897.768413499994,
+        "cell_id": "496358",
+        "cell_type_fine": "Mono-classical",
+        "cell_type_broad": "Immune",
+        "circularity": 0.5,
+        "x_px": 97867.185014,
+        "y_px": 93251.66342850002,
         "color_rgb": [
-          52,
-          168,
-          83
+          234,
+          67,
+          53
         ],
-        "fine_color_rgb": [
-          52,
-          168,
-          83
-        ],
-        "grayscale_file": "14_Stromal_498298_grayscale.png",
-        "colored_file": "14_Stromal_498298_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "14_Immune_496358/dapi_32.png",
+            "anno": "14_Immune_496358/anno_32.png"
+          },
+          "64": {
+            "dapi": "14_Immune_496358/dapi_64.png",
+            "anno": "14_Immune_496358/anno_64.png"
+          },
+          "128": {
+            "dapi": "14_Immune_496358/dapi_128.png",
+            "anno": "14_Immune_496358/anno_128.png"
+          },
+          "256": {
+            "dapi": "14_Immune_496358/dapi_256.png",
+            "anno": "14_Immune_496358/anno_256.png"
+          },
+          "512": {
+            "dapi": "14_Immune_496358/dapi_512.png",
+            "anno": "14_Immune_496358/anno_512.png"
+          }
+        }
       },
       {
         "index": 15,
         "dataset": "merscope-breast",
-        "cell_id": "585557",
+        "cell_id": "431868",
         "cell_type_fine": "Fibro-matrix",
         "cell_type_broad": "Stromal",
-        "x_px": 39465.52036250001,
-        "y_px": 45347.4212375,
+        "circularity": 0.5,
+        "x_px": 102339.74061600001,
+        "y_px": 93444.06697100001,
         "color_rgb": [
           52,
           168,
           83
         ],
-        "fine_color_rgb": [
-          52,
-          168,
-          83
-        ],
-        "grayscale_file": "15_Stromal_585557_grayscale.png",
-        "colored_file": "15_Stromal_585557_colored.png",
         "patch_sizes_px": [
           32,
           64,
           128,
-          256
-        ]
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "15_Stromal_431868/dapi_32.png",
+            "anno": "15_Stromal_431868/anno_32.png"
+          },
+          "64": {
+            "dapi": "15_Stromal_431868/dapi_64.png",
+            "anno": "15_Stromal_431868/anno_64.png"
+          },
+          "128": {
+            "dapi": "15_Stromal_431868/dapi_128.png",
+            "anno": "15_Stromal_431868/anno_128.png"
+          },
+          "256": {
+            "dapi": "15_Stromal_431868/dapi_256.png",
+            "anno": "15_Stromal_431868/anno_256.png"
+          },
+          "512": {
+            "dapi": "15_Stromal_431868/dapi_512.png",
+            "anno": "15_Stromal_431868/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 16,
+        "dataset": "merscope-breast",
+        "cell_id": "270197",
+        "cell_type_fine": "Fibro-major",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.5,
+        "x_px": 82734.010378,
+        "y_px": 93722.61530800002,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "16_Stromal_270197/dapi_32.png",
+            "anno": "16_Stromal_270197/anno_32.png"
+          },
+          "64": {
+            "dapi": "16_Stromal_270197/dapi_64.png",
+            "anno": "16_Stromal_270197/anno_64.png"
+          },
+          "128": {
+            "dapi": "16_Stromal_270197/dapi_128.png",
+            "anno": "16_Stromal_270197/anno_128.png"
+          },
+          "256": {
+            "dapi": "16_Stromal_270197/dapi_256.png",
+            "anno": "16_Stromal_270197/anno_256.png"
+          },
+          "512": {
+            "dapi": "16_Stromal_270197/dapi_512.png",
+            "anno": "16_Stromal_270197/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 17,
+        "dataset": "merscope-breast",
+        "cell_id": "269957",
+        "cell_type_fine": "Fibro-major",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.5,
+        "x_px": 81144.54416100001,
+        "y_px": 92986.46063750001,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "17_Stromal_269957/dapi_32.png",
+            "anno": "17_Stromal_269957/anno_32.png"
+          },
+          "64": {
+            "dapi": "17_Stromal_269957/dapi_64.png",
+            "anno": "17_Stromal_269957/anno_64.png"
+          },
+          "128": {
+            "dapi": "17_Stromal_269957/dapi_128.png",
+            "anno": "17_Stromal_269957/anno_128.png"
+          },
+          "256": {
+            "dapi": "17_Stromal_269957/dapi_256.png",
+            "anno": "17_Stromal_269957/anno_256.png"
+          },
+          "512": {
+            "dapi": "17_Stromal_269957/dapi_512.png",
+            "anno": "17_Stromal_269957/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 18,
+        "dataset": "merscope-breast",
+        "cell_id": "495117",
+        "cell_type_fine": "pericytes",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.5,
+        "x_px": 64508.488399,
+        "y_px": 92118.17067650001,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "18_Stromal_495117/dapi_32.png",
+            "anno": "18_Stromal_495117/anno_32.png"
+          },
+          "64": {
+            "dapi": "18_Stromal_495117/dapi_64.png",
+            "anno": "18_Stromal_495117/anno_64.png"
+          },
+          "128": {
+            "dapi": "18_Stromal_495117/dapi_128.png",
+            "anno": "18_Stromal_495117/anno_128.png"
+          },
+          "256": {
+            "dapi": "18_Stromal_495117/dapi_256.png",
+            "anno": "18_Stromal_495117/anno_256.png"
+          },
+          "512": {
+            "dapi": "18_Stromal_495117/dapi_512.png",
+            "anno": "18_Stromal_495117/anno_512.png"
+          }
+        }
+      },
+      {
+        "index": 19,
+        "dataset": "merscope-breast",
+        "cell_id": "497142",
+        "cell_type_fine": "Fibro-matrix",
+        "cell_type_broad": "Stromal",
+        "circularity": 0.5,
+        "x_px": 63125.73515300001,
+        "y_px": 93436.75587900002,
+        "color_rgb": [
+          52,
+          168,
+          83
+        ],
+        "patch_sizes_px": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "files": {
+          "32": {
+            "dapi": "19_Stromal_497142/dapi_32.png",
+            "anno": "19_Stromal_497142/anno_32.png"
+          },
+          "64": {
+            "dapi": "19_Stromal_497142/dapi_64.png",
+            "anno": "19_Stromal_497142/anno_64.png"
+          },
+          "128": {
+            "dapi": "19_Stromal_497142/dapi_128.png",
+            "anno": "19_Stromal_497142/anno_128.png"
+          },
+          "256": {
+            "dapi": "19_Stromal_497142/dapi_256.png",
+            "anno": "19_Stromal_497142/anno_256.png"
+          },
+          "512": {
+            "dapi": "19_Stromal_497142/dapi_512.png",
+            "anno": "19_Stromal_497142/anno_512.png"
+          }
+        }
       }
     ]
   }
