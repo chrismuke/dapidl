@@ -25,6 +25,10 @@ from dapidl.pipeline.base import (
     get_pipeline_output_dir,
     resolve_artifact_path,
 )
+from dapidl.pipeline.components.annotators.auto_selector import (
+    get_models_for_dataset,
+    get_tissue_for_dataset,
+)
 from dapidl.pipeline.registry import get_annotator
 
 
@@ -208,6 +212,30 @@ class AnnotationStep(PipelineStep):
         else:
             platform = str(platform_value)
 
+        # Auto-detect tissue type and CellTypist models from dataset path
+        data_path_str = str(data_path)
+        detected_tissue = get_tissue_for_dataset(data_path_str)
+        detected_models = get_models_for_dataset(data_path_str)
+
+        # Use detected models if config still has the default breast models
+        default_models = ["Immune_All_High.pkl", "Cells_Adult_Breast.pkl"]
+        if cfg.model_names == default_models and detected_tissue != "generic":
+            logger.info(
+                f"Auto-detected tissue='{detected_tissue}' from path, "
+                f"using models: {detected_models}"
+            )
+            cfg.model_names = detected_models
+        elif cfg.model_names == default_models:
+            logger.info(
+                f"Could not detect tissue from path '{data_path.name}', "
+                f"using default models: {cfg.model_names}"
+            )
+        else:
+            logger.info(
+                f"Using explicitly configured models: {cfg.model_names} "
+                f"(detected tissue='{detected_tissue}')"
+            )
+
         # Check for existing outputs (skip if exists)
         output_dir = get_pipeline_output_dir("annotation", data_path)
         annotations_path = output_dir / "annotations.parquet"
@@ -263,6 +291,7 @@ class AnnotationStep(PipelineStep):
             cell_id_column=cfg.cell_id_column,
             celltype_column=cfg.celltype_column,
             extended_consensus=cfg.extended_consensus,
+            tissue_type=detected_tissue,
         )
 
         # Get annotator

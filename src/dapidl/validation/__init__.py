@@ -27,6 +27,15 @@ from dapidl.validation.marker_validation import (
     validate_with_markers,
 )
 
+from dapidl.validation.annotation_confidence import (
+    AnnotationConfidenceConfig,
+    AnnotationConfidenceResult,
+    CellTypeConfidence,
+    FilterResult,
+    compute_annotation_confidence,
+    filter_predictions,
+)
+
 __all__ = [
     # Cross-modal validation
     "ValidationMetrics",
@@ -43,4 +52,11 @@ __all__ = [
     "MarkerValidationResult",
     "compute_marker_scores",
     "validate_with_markers",
+    # Annotation confidence (GT-free)
+    "AnnotationConfidenceConfig",
+    "AnnotationConfidenceResult",
+    "CellTypeConfidence",
+    "FilterResult",
+    "compute_annotation_confidence",
+    "filter_predictions",
 ]

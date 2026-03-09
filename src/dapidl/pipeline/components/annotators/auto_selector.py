@@ -38,81 +38,462 @@ warnings.filterwarnings("ignore")
 # Configuration
 # =============================================================================
 
+# Tissue → CellTypist model candidates for auto-selection.
+# Ordered by relevance: tissue-specific first, then immune, then general.
+# Validated against gene panel overlap (March 2026 analysis).
 TISSUE_MODELS = {
+    "breast": [
+        "Cells_Adult_Breast.pkl",       # 77% overlap w/ hBreast_320g panel, 58 types
+        "Immune_All_High.pkl",          # 78% overlap, 32 broad immune types
+    ],
     "breast_tumor": [
-        "Cells_Adult_Breast.pkl",
-        "Human_Colorectal_Cancer.pkl",
-        "Immune_All_High.pkl",
-        "Pan_Fetal_Human.pkl",
-        "Adult_Human_Vascular.pkl",
-        "Healthy_Human_Liver.pkl",
-        "Fetal_Human_AdrenalGlands.pkl",
-    ],
-    "lymph_node": [
-        "Immune_All_High.pkl",
-        "Immune_All_Low.pkl",
-        "Cells_Human_Tonsil.pkl",
-        "Pan_Fetal_Human.pkl",
-        "COVID19_Immune_Landscape.pkl",
-    ],
-    "liver": [
-        "Healthy_Human_Liver.pkl",
-        "Immune_All_High.pkl",
-        "Pan_Fetal_Human.pkl",
-        "Human_Colorectal_Cancer.pkl",
+        "Cells_Adult_Breast.pkl",       # Tissue-specific, 58 types
+        "Immune_All_High.pkl",          # Broad immune, 32 types
     ],
     "lung": [
-        "Human_Lung_Atlas.pkl",
-        "Cells_Lung_Airway.pkl",
-        "Immune_All_High.pkl",
-        "Pan_Fetal_Human.pkl",
+        "Human_Lung_Atlas.pkl",         # 81-88% overlap, 61 types (HLCA)
+        "Cells_Lung_Airway.pkl",        # 80-91% overlap, 78 types (more granular)
+        "Immune_All_High.pkl",          # Immune detail
+    ],
+    "liver": [
+        "Healthy_Human_Liver.pkl",      # 48-50% overlap but correct types (hepatocytes!)
+        "Immune_All_High.pkl",          # Immune detail
+    ],
+    "kidney": [
+        "Immune_All_High.pkl",          # No kidney-specific CT model exists
+        "Pan_Fetal_Human.pkl",          # 82% overlap, broad coverage
+    ],
+    "heart": [
+        "Healthy_Adult_Heart.pkl",      # 51% overlap, 75 types (cardiomyocytes)
+        "Immune_All_High.pkl",          # Immune detail
+    ],
+    "colon": [
+        "Cells_Intestinal_Tract.pkl",   # 70% overlap, 134 types (most granular)
+        "Human_Colorectal_Cancer.pkl",  # 84% overlap, 36 types (CRC-specific)
+        "Immune_All_High.pkl",          # Immune detail
+    ],
+    "colorectal": [
+        "Human_Colorectal_Cancer.pkl",  # 69% overlap, 36 types (CRC-specific)
+        "Cells_Intestinal_Tract.pkl",   # 65% overlap, 134 types
+        "Immune_All_High.pkl",          # Immune detail
     ],
     "skin": [
-        "Adult_Human_Skin.pkl",
-        "Fetal_Human_Skin.pkl",
-        "Immune_All_High.pkl",
-        "Pan_Fetal_Human.pkl",
+        "Adult_Human_Skin.pkl",         # 57% overlap, 34 types (KC, melanocyte, etc.)
+        "Immune_All_High.pkl",          # Immune detail
+    ],
+    "tonsil": [
+        "Cells_Human_Tonsil.pkl",       # 51% overlap, 117 types (lymphoid-heavy)
+        "Immune_All_High.pkl",          # Immune detail
+    ],
+    "lymph_node": [
+        "Cells_Human_Tonsil.pkl",       # Closest lymphoid model
+        "Immune_All_High.pkl",          # Immune detail
+        "Immune_All_Low.pkl",           # Fine-grained immune
+    ],
+    "pancreas": [
+        "Immune_All_High.pkl",          # PancreaticIslet model is useless (18% overlap)
+        "Pan_Fetal_Human.pkl",          # Broad coverage
     ],
     "brain": [
-        "Developing_Human_Brain.pkl",
-        "Adult_Human_MTG.pkl",
-        "Adult_Human_PrefrontalCortex.pkl",
+        "Immune_All_High.pkl",          # No adult human brain CT model
+        "Pan_Fetal_Human.pkl",          # Broad coverage
+    ],
+    "ovary": [
+        "Immune_All_High.pkl",          # No ovary-specific CT model
+        "Pan_Fetal_Human.pkl",          # Broad coverage
+    ],
+    "cervix": [
+        "Immune_All_High.pkl",          # No cervix-specific CT model
+        "Pan_Fetal_Human.pkl",          # Broad coverage
+    ],
+    "mouse_brain": [
+        "Mouse_Isocortex_Hippocampus.pkl",  # 97% overlap, 42 types
+        "Mouse_Whole_Brain.pkl",            # 96% overlap, 334 types
     ],
     "generic": [
-        "Immune_All_High.pkl",
-        "Pan_Fetal_Human.pkl",
-        "Human_Colorectal_Cancer.pkl",
-        "Healthy_Human_Liver.pkl",
-        "Human_Lung_Atlas.pkl",
+        "Immune_All_High.pkl",          # Works everywhere with immune markers
+        "Pan_Fetal_Human.pkl",          # Broadest coverage (138 types)
     ],
 }
 
+# Per-dataset model mapping: dataset directory name → best CellTypist models.
+# Primary model is first, immune model second, optional extras after.
+# Validated against gene panel overlap analysis (March 2026).
+DATASET_MODELS = {
+    # ── Breast ──────────────────────────────────────────────────────
+    "xenium-breast-tumor-rep1": {
+        "tissue": "breast",
+        "models": ["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 313,
+        "notes": "hBreast_320g panel, GT available",
+    },
+    "xenium-breast-tumor-rep2": {
+        "tissue": "breast",
+        "models": ["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 313,
+        "notes": "hBreast_320g panel, GT available",
+    },
+    "xenium-breast-cancer-prime": {
+        "tissue": "breast",
+        "models": ["Cells_Adult_Breast.pkl", "Immune_All_Low.pkl"],
+        "panel_genes": 5101,
+        "notes": "5K panel → fine-grained immune possible",
+    },
+    "merscope-breast": {
+        "tissue": "breast",
+        "models": ["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE 500g, weak epithelial markers (EPCAM/CDH1 only)",
+    },
+    # ── Lung ────────────────────────────────────────────────────────
+    "xenium-lung-2fov": {
+        "tissue": "lung",
+        "models": ["Cells_Lung_Airway.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 289,
+        "notes": "Lung-specific panel, 91% overlap w/ Lung_Airway — best fit!",
+    },
+    "xenium-lung-cancer": {
+        "tissue": "lung",
+        "models": ["Human_Lung_Atlas.pkl", "Cells_Lung_Airway.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "Multi-tissue panel, 81% HLCA overlap",
+    },
+    # ── Liver ───────────────────────────────────────────────────────
+    "xenium-liver-normal": {
+        "tissue": "liver",
+        "models": ["Healthy_Human_Liver.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "48% overlap but correct liver types (hepatocytes, Kupffer)",
+    },
+    "xenium-liver-cancer": {
+        "tissue": "liver",
+        "models": ["Healthy_Human_Liver.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 474,
+        "notes": "Multi-tissue+addon panel, 50% overlap",
+    },
+    # ── Kidney ──────────────────────────────────────────────────────
+    "xenium-kidney-normal": {
+        "tissue": "kidney",
+        "models": ["Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "No kidney CT model; use immune + BANKSY/scType for broad types",
+    },
+    "xenium-kidney-cancer": {
+        "tissue": "kidney",
+        "models": ["Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "No kidney CT model",
+    },
+    # ── Heart ───────────────────────────────────────────────────────
+    "xenium-heart-normal": {
+        "tissue": "heart",
+        "models": ["Healthy_Adult_Heart.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "51% overlap, 75 types incl. cardiomyocyte subtypes",
+    },
+    # ── Colon ───────────────────────────────────────────────────────
+    "xenium-colon-cancer": {
+        "tissue": "colon",
+        "models": ["Cells_Intestinal_Tract.pkl", "Human_Colorectal_Cancer.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 325,
+        "notes": "Colon-specific panel, 70% overlap w/ IntestinalTract",
+    },
+    "xenium-colon-normal": {
+        "tissue": "colon",
+        "models": ["Cells_Intestinal_Tract.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 325,
+        "notes": "Same panel as colon-cancer",
+    },
+    "xenium-colorectal-cancer": {
+        "tissue": "colorectal",
+        "models": ["Human_Colorectal_Cancer.pkl", "Cells_Intestinal_Tract.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 480,
+        "notes": "Immuno-Oncology panel A, 69% CRC model overlap",
+    },
+    # ── Skin ────────────────────────────────────────────────────────
+    "xenium-skin-normal-sample1": {
+        "tissue": "skin",
+        "models": ["Adult_Human_Skin.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "57% overlap, multi-tissue panel",
+    },
+    "xenium-skin-normal-sample2": {
+        "tissue": "skin",
+        "models": ["Adult_Human_Skin.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "Same panel as sample1",
+    },
+    "xenium-skin-prime-ffpe": {
+        "tissue": "skin",
+        "models": ["Adult_Human_Skin.pkl", "Immune_All_Low.pkl"],
+        "panel_genes": 5006,
+        "notes": "5K panel → fine-grained immune possible",
+    },
+    # ── Tonsil/Lymphoid ─────────────────────────────────────────────
+    "xenium-tonsil-lymphoid": {
+        "tissue": "tonsil",
+        "models": ["Cells_Human_Tonsil.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "51% overlap, heavily lymphoid tissue",
+    },
+    "xenium-tonsil-reactive": {
+        "tissue": "tonsil",
+        "models": ["Cells_Human_Tonsil.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "Same panel, 1.3M cells (largest dataset)",
+    },
+    "xenium-lymph-node-normal": {
+        "tissue": "lymph_node",
+        "models": ["Cells_Human_Tonsil.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 377,
+        "notes": "Tonsil model is closest lymphoid reference",
+    },
+    # ── Pancreas ────────────────────────────────────────────────────
+    "xenium-pancreas-cancer": {
+        "tissue": "pancreas",
+        "models": ["Immune_All_High.pkl"],
+        "panel_genes": 474,
+        "notes": "PancreaticIslet model useless (18% overlap, islet-only). Use immune+BANKSY",
+    },
+    # ── Brain ───────────────────────────────────────────────────────
+    "xenium-brain-gbm": {
+        "tissue": "brain",
+        "models": ["Immune_All_High.pkl"],
+        "panel_genes": 480,
+        "notes": "No adult human brain CT model; immuno-onc panel B",
+    },
+    "xenium-mouse-brain": {
+        "tissue": "mouse_brain",
+        "models": ["Mouse_Isocortex_Hippocampus.pkl", "Mouse_Whole_Brain.pkl"],
+        "panel_genes": 248,
+        "notes": "Mouse genes, 97% overlap w/ Isocortex model",
+    },
+    # ── Ovarian ─────────────────────────────────────────────────────
+    "xenium-ovarian-cancer": {
+        "tissue": "ovary",
+        "models": ["Immune_All_Low.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 5101,
+        "notes": "5K panel, no ovary CT model; fine-grained immune possible",
+    },
+    "xenium-ovary-cancer-ff": {
+        "tissue": "ovary",
+        "models": ["Immune_All_High.pkl"],
+        "panel_genes": 477,
+        "notes": "No ovary CT model",
+    },
+    # ── Cervical ────────────────────────────────────────────────────
+    "xenium-cervical-cancer-prime": {
+        "tissue": "cervix",
+        "models": ["Immune_All_Low.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 5101,
+        "notes": "5K panel, no cervix CT model; fine-grained immune possible",
+    },
+}
+
+
+def _extract_dataset_name(dataset_name_or_path: str) -> str:
+    """Extract a canonical dataset name from a path or name string.
+
+    Handles:
+    - Full paths: /mnt/work/datasets/raw/xenium/xenium-breast-tumor-rep1/outs/
+    - Relative paths: xenium-breast-tumor-rep1/outs
+    - Plain names: xenium-breast-tumor-rep1
+    - Underscored names: breast_tumor_rep1
+
+    Returns the directory name most likely to match DATASET_MODELS keys.
+    """
+    from pathlib import Path
+
+    path = Path(dataset_name_or_path)
+
+    # Walk up from the deepest component, skipping generic dirs like 'outs'
+    skip_dirs = {"outs", "output", "data", "raw", "processed", "derived"}
+    for part in reversed(path.parts):
+        if part in skip_dirs or part == "/":
+            continue
+        # Return the first non-generic directory component
+        return part
+
+    return str(path.name or path)
+
+
+# Tissue keywords to search for in dataset names and paths.
+# Ordered longest-first so "lymph_node" matches before "lymph".
+_TISSUE_KEYWORDS = [
+    ("colorectal", "colorectal"),
+    ("lymph_node", "lymph_node"),
+    ("lymph-node", "lymph_node"),
+    ("mouse_brain", "mouse_brain"),
+    ("mouse-brain", "mouse_brain"),
+    ("breast", "breast"),
+    ("lung", "lung"),
+    ("liver", "liver"),
+    ("kidney", "kidney"),
+    ("heart", "heart"),
+    ("colon", "colon"),
+    ("skin", "skin"),
+    ("tonsil", "tonsil"),
+    ("pancreas", "pancreas"),
+    ("brain", "brain"),
+    ("ovary", "ovary"),
+    ("ovarian", "ovary"),
+    ("cervix", "cervix"),
+    ("cervical", "cervix"),
+]
+
+
+def get_models_for_dataset(dataset_name_or_path: str) -> list[str]:
+    """Get the recommended CellTypist models for a dataset.
+
+    Accepts a dataset name, directory name, or full filesystem path.
+    Falls back: DATASET_MODELS → tissue keyword match → generic.
+    """
+    name = _extract_dataset_name(dataset_name_or_path)
+
+    # 1. Direct lookup by canonical name
+    if name in DATASET_MODELS:
+        return DATASET_MODELS[name]["models"]
+
+    # 2. Try underscore variant (breast_tumor_rep1 → xenium-breast-tumor-rep1)
+    dashed = name.replace("_", "-")
+    if dashed in DATASET_MODELS:
+        return DATASET_MODELS[dashed]["models"]
+
+    # 3. Fuzzy: check if any DATASET_MODELS key is contained in the name
+    name_lower = name.lower()
+    for key, cfg in DATASET_MODELS.items():
+        if key in name_lower or name_lower in key:
+            return cfg["models"]
+
+    # 4. Tissue keyword matching from name or full path
+    tissue = _detect_tissue_from_string(dataset_name_or_path)
+    if tissue in TISSUE_MODELS:
+        return TISSUE_MODELS[tissue]
+
+    return TISSUE_MODELS["generic"]
+
+
+def get_tissue_for_dataset(dataset_name_or_path: str) -> str:
+    """Get the tissue type for a dataset.
+
+    Accepts a dataset name, directory name, or full filesystem path.
+    Falls back: DATASET_MODELS → tissue keyword match → generic.
+    """
+    name = _extract_dataset_name(dataset_name_or_path)
+
+    # 1. Direct lookup
+    if name in DATASET_MODELS:
+        return DATASET_MODELS[name]["tissue"]
+
+    # 2. Underscore variant
+    dashed = name.replace("_", "-")
+    if dashed in DATASET_MODELS:
+        return DATASET_MODELS[dashed]["tissue"]
+
+    # 3. Fuzzy match
+    name_lower = name.lower()
+    for key, cfg in DATASET_MODELS.items():
+        if key in name_lower or name_lower in key:
+            return cfg["tissue"]
+
+    # 4. Tissue keyword matching
+    return _detect_tissue_from_string(dataset_name_or_path)
+
+
+def _detect_tissue_from_string(s: str) -> str:
+    """Detect tissue type from any string (path, name, description).
+
+    Scans the full string for tissue keywords. Longest match wins.
+    """
+    s_lower = s.lower().replace("_", "-")
+    for keyword, tissue in _TISSUE_KEYWORDS:
+        if keyword in s_lower:
+            return tissue
+    return "generic"
+
 # Expected proportions by tissue (for plausibility checks)
+# Expected cell type proportions by tissue for plausibility checks.
+# (min, max) ranges allow ~50% tolerance for biological variation.
 TISSUE_PROPORTIONS = {
+    "breast": {
+        "Epithelial": (0.30, 0.70),
+        "Immune": (0.10, 0.40),
+        "Stromal": (0.10, 0.30),
+    },
     "breast_tumor": {
         "Epithelial": (0.30, 0.70),
         "Immune": (0.10, 0.40),
         "Stromal": (0.10, 0.30),
+    },
+    "lung": {
+        "Epithelial": (0.30, 0.60),
+        "Immune": (0.15, 0.35),
+        "Stromal": (0.10, 0.30),
+    },
+    "liver": {
+        "Epithelial": (0.50, 0.80),  # hepatocytes dominate
+        "Immune": (0.05, 0.25),
+        "Stromal": (0.05, 0.20),
+    },
+    "kidney": {
+        "Epithelial": (0.50, 0.80),  # tubular epithelium
+        "Immune": (0.05, 0.20),
+        "Stromal": (0.10, 0.30),
+    },
+    "heart": {
+        "Epithelial": (0.00, 0.10),  # minimal epithelial in heart
+        "Immune": (0.05, 0.20),
+        "Stromal": (0.40, 0.80),  # cardiomyocytes + fibroblasts + endothelial
+    },
+    "colon": {
+        "Epithelial": (0.40, 0.70),
+        "Immune": (0.15, 0.35),
+        "Stromal": (0.10, 0.25),
+    },
+    "colorectal": {
+        "Epithelial": (0.30, 0.60),  # may have more immune in tumor
+        "Immune": (0.15, 0.40),
+        "Stromal": (0.10, 0.30),
+    },
+    "skin": {
+        "Epithelial": (0.40, 0.80),  # keratinocytes dominate
+        "Immune": (0.05, 0.25),
+        "Stromal": (0.10, 0.30),
+    },
+    "tonsil": {
+        "Epithelial": (0.00, 0.15),
+        "Immune": (0.60, 0.90),  # lymphoid tissue
+        "Stromal": (0.05, 0.20),
     },
     "lymph_node": {
         "Epithelial": (0.00, 0.10),
         "Immune": (0.70, 0.95),
         "Stromal": (0.05, 0.20),
     },
-    "liver": {
-        "Epithelial": (0.60, 0.80),
-        "Immune": (0.10, 0.25),
-        "Stromal": (0.05, 0.20),
-    },
-    "lung": {
-        "Epithelial": (0.40, 0.70),
-        "Immune": (0.15, 0.35),
+    "pancreas": {
+        "Epithelial": (0.50, 0.80),  # acinar + ductal + islet
+        "Immune": (0.05, 0.25),
         "Stromal": (0.10, 0.25),
     },
-    "generic": {
+    "brain": {
+        "Epithelial": (0.00, 0.05),  # essentially none
+        "Immune": (0.05, 0.30),  # microglia + infiltrating
+        "Stromal": (0.20, 0.50),  # endothelial + pericytes
+    },
+    "ovary": {
         "Epithelial": (0.30, 0.60),
-        "Immune": (0.10, 0.40),
+        "Immune": (0.10, 0.35),
+        "Stromal": (0.15, 0.40),
+    },
+    "cervix": {
+        "Epithelial": (0.40, 0.70),
+        "Immune": (0.10, 0.30),
         "Stromal": (0.10, 0.30),
+    },
+    "generic": {
+        "Epithelial": (0.20, 0.70),
+        "Immune": (0.05, 0.40),
+        "Stromal": (0.10, 0.40),
     },
 }
 
@@ -709,6 +1090,265 @@ class AutoModelSelector:
             best_model=model_names[0] if model_names else "",
             stats=stats,
         )
+
+
+    def build_tiered_consensus(
+        self,
+        adata: Any,
+        models: list[str] | None = None,
+        min_agreement: float = 0.5,
+    ) -> ConsensusResult:
+        """Build tiered consensus: tissue model primary, immune model for refinement.
+
+        Strategy:
+        1. Use tissue model (first) as primary: its fine-grained labels already
+           contain stromal/endothelial types that map correctly to broad categories.
+        2. For cells the tissue model calls "Immune", let the immune model refine
+           the subtype if it has higher confidence.
+        3. For low-confidence primary predictions, allow secondary model to
+           override if its confidence is significantly higher.
+        4. Boost confidence when models agree on broad, penalize when they disagree.
+
+        Args:
+            adata: AnnData object with expression data
+            models: Model names (first = tissue-specific, rest = immune/refinement)
+            min_agreement: Minimum agreement for high-confidence flag
+
+        Returns:
+            ConsensusResult with tiered annotations
+        """
+        import celltypist
+        from celltypist import models as ct_models
+        import scanpy as sc
+
+        model_names = models or self.candidate_models[:5]
+        if len(model_names) < 2:
+            return self.build_consensus(adata, models=model_names)
+
+        logger.info(f"Tiered consensus: primary={model_names[0]}, "
+                     f"refinement={model_names[1:]}")
+
+        # Normalize once
+        adata_norm = adata.copy()
+        sc.pp.normalize_total(adata_norm, target_sum=1e4)
+        sc.pp.log1p(adata_norm)
+
+        # Run all models
+        results = []
+        for model_name in model_names:
+            try:
+                model = ct_models.Model.load(model_name)
+                pred = celltypist.annotate(
+                    adata_norm, model=model, majority_voting=True
+                )
+                predictions = pred.predicted_labels["majority_voting"].values
+                confidence = pred.probability_matrix.max(axis=1).values
+                broad_preds = np.array([map_to_broad(p) for p in predictions])
+
+                results.append({
+                    "model": model_name,
+                    "predictions": predictions,
+                    "broad": broad_preds,
+                    "confidence": confidence,
+                })
+                logger.info(f"  ✓ {model_name}")
+            except Exception as e:
+                logger.warning(f"  ✗ {model_name}: {e}")
+
+        if not results:
+            raise ValueError("No models succeeded")
+        if len(results) == 1:
+            return self.build_consensus(adata, models=[results[0]["model"]])
+
+        primary = results[0]
+        secondary = results[1:]
+        n_cells = len(adata)
+
+        # Start with primary model's predictions
+        consensus_broad = primary["broad"].copy()
+        consensus_fine = list(primary["predictions"])
+        consensus_confidence = primary["confidence"].copy()
+        n_models_agree = np.ones(n_cells, dtype=int)
+
+        for sec in secondary:
+            agrees = primary["broad"] == sec["broad"]
+            n_models_agree[agrees] += 1
+
+        # ── Override rules ──
+        for sec in secondary:
+            for i in range(n_cells):
+                pri_broad = primary["broad"][i]
+                sec_broad = sec["broad"][i]
+                pri_conf = primary["confidence"][i]
+                sec_conf = sec["confidence"][i]
+
+                # Rule 1: Both agree on immune → use higher-confidence fine label
+                if pri_broad == "Immune" and sec_broad == "Immune":
+                    if sec_conf > pri_conf:
+                        consensus_fine[i] = sec["predictions"][i]
+                        consensus_confidence[i] = (pri_conf + sec_conf) / 2
+
+                # Rule 2: Primary low-confidence, secondary high → override
+                elif pri_conf < 0.3 and sec_conf > 0.5:
+                    consensus_broad[i] = sec_broad
+                    consensus_fine[i] = sec["predictions"][i]
+                    consensus_confidence[i] = sec_conf * 0.8  # Slight penalty
+
+                # Rule 3: Agreement on broad → boost confidence
+                elif pri_broad == sec_broad:
+                    consensus_confidence[i] = (pri_conf + sec_conf) / 2
+
+                # Rule 4: Disagreement, both low-conf → flag low confidence
+                elif pri_conf < 0.4 and sec_conf < 0.4:
+                    consensus_confidence[i] = min(pri_conf, sec_conf) * 0.5
+
+        # Re-derive broad from fine (in case overrides changed things)
+        consensus_broad = np.array([map_to_broad(f) for f in consensus_fine])
+
+        # Consensus score
+        total_models = len(results)
+        consensus_score = n_models_agree / total_models
+
+        # Medium-grained
+        medium_predictions = [_map_to_medium(f, b) for f, b in zip(consensus_fine, consensus_broad)]
+
+        # Build DataFrame
+        annotations_df = pl.DataFrame({
+            "cell_id": range(n_cells),
+            "consensus_broad": consensus_broad.tolist(),
+            "consensus_medium": medium_predictions,
+            "consensus_fine": consensus_fine,
+            "consensus_score": consensus_score,
+            "consensus_confidence": consensus_confidence,
+            "n_models_agree": n_models_agree,
+            "is_high_confidence": (consensus_score >= min_agreement) &
+                                   (consensus_confidence >= 0.3),
+        })
+
+        for r in results:
+            model_short = r["model"].replace(".pkl", "")
+            preds = list(r["predictions"]) if hasattr(r["predictions"], "__iter__") else r["predictions"]
+            broad = list(r["broad"]) if hasattr(r["broad"], "__iter__") else r["broad"]
+            annotations_df = annotations_df.with_columns([
+                pl.Series(f"{model_short}_pred", preds),
+                pl.Series(f"{model_short}_broad", broad),
+                pl.Series(f"{model_short}_conf", r["confidence"]),
+            ])
+
+        n_high_conf = int(annotations_df["is_high_confidence"].sum())
+        stats = {
+            "n_cells": n_cells,
+            "n_models": total_models,
+            "n_high_confidence": n_high_conf,
+            "pct_high_confidence": n_high_conf / n_cells * 100,
+            "mean_agreement": float(n_models_agree.mean()),
+            "strategy": "tiered",
+            "broad_distribution": dict(zip(
+                *np.unique(consensus_broad, return_counts=True)
+            )),
+        }
+
+        return ConsensusResult(
+            annotations_df=annotations_df,
+            model_scores=[],
+            best_model=model_names[0],
+            stats=stats,
+        )
+
+
+# =============================================================================
+# Medium-Grained Category Mapping
+# =============================================================================
+
+# Maps fine-grained CellTypist labels → ~10-15 medium categories
+_MEDIUM_PATTERNS = {
+    # Epithelial subtypes
+    "Epithelial_Luminal": [
+        "lumm", "lums", "lumsec", "luminal", "secretory", "club",
+        "ductal", "duct", "goblet", "mucus", "serous",
+        "at2", "alveolar type 2", "at2 proliferating",
+        "colonocyte", "enterocyte", "absorptive",
+        "hepatocyte",
+    ],
+    "Epithelial_Basal": [
+        "basal", "myoepi", "myoepithelial", "suprabasal",
+        "undifferentiated_kc", "keratinocyte", "krt15",
+    ],
+    "Epithelial_Ciliated": [
+        "ciliated", "multiciliated", "deuterosomal",
+    ],
+    "Epithelial_Other": [
+        "at1", "alveolar type 1",
+        "ionocyte", "tuft", "paneth", "enteroendocrine",
+        "enterochromaffin", "hillock", "crypt",
+        "best4", "fdcsp", "squamous",
+    ],
+    # Immune subtypes
+    "T_Cell": [
+        "cd4", "cd8", "t cell", "t_cell", "treg", "t_prol",
+        "th1", "th2", "th17", "tfh", "tfr", "mait", "nkt",
+        "gamma-delta", "gd ", "cytotoxic t", "helper t",
+        "memory t", "naive t", "effector t", "t-eff", "t-trans",
+        "sell+", "tcm", "tem", "trm", "tpex", "t(agonist)",
+        "dn ", "activated t", "activated cd",
+    ],
+    "B_Cell": [
+        "b cell", "b_cell", "b_naive", "bmem", "plasma",
+        "naive b", "memory b", "follicular b", "gc b",
+        "germinal", "dz ", "lz ", "mbc", "nbc",
+        "iga plasma", "igg plasma", "igm plasma", "igd",
+        "cycling b", "immature b", "age-associated b",
+        "pre-b", "precursor",
+    ],
+    "NK_Cell": [
+        "nk cell", "nk ", "nk-", "natural killer",
+        "cd16+ nk", "cd16- nk", "cd16-cd56",
+        "ilc1_nk", "ilc", "innate lymphoid",
+    ],
+    "Macrophage": [
+        "macro", "macrophage", "monocyte", "mono ",
+        "kupffer", "hofbauer", "microglia",
+        "myeloid", "mnp", "myelocyte",
+        "inf_mac", "lyve1+", "mmp9+", "erythrophagocytic",
+    ],
+    "Dendritic_Cell": [
+        "dendritic", "dc", "cdc", "pdc", "mdc",
+        "langerhans", "lc ", "migdc", "miglc", "modc",
+        "adc3", "c1q slan", "irf7",
+    ],
+    "Mast_Cell": [
+        "mast", "basophil", "granulocyte", "neutrophil",
+        "eosinophil", "clc+ mast",
+    ],
+    # Stromal subtypes
+    "Fibroblast": [
+        "fibro", "fibroblast", "myofibroblast", "caf",
+        "stromal 1", "stromal 2", "stromal 3", "stromal 4",
+        "mesenchymal", "mesenchyme", "stellate", "adventitial",
+        "f1", "f2", "f3",
+    ],
+    "Endothelial": [
+        "endothelial", "vas-", "vas ", "vascular",
+        "lymph-", "lymphatic", "capillary", "arterial", "venous",
+        "ec ", "lec", "vec", "art_ec", "cap_ec", "ven_ec",
+        "pul_cap", "liver_hsec",
+    ],
+    "Pericyte_SMC": [
+        "pericyte", "pericytes", "vsmc", "smooth muscle", "smc",
+        "cap_pc", "liver_pc", "heart_pc",
+    ],
+}
+
+
+def _map_to_medium(fine_label: str, broad_cat: str) -> str:
+    """Map a fine-grained CellTypist label to medium-grained category."""
+    fine_lower = fine_label.lower()
+    for medium_cat, patterns in _MEDIUM_PATTERNS.items():
+        for p in patterns:
+            if p in fine_lower:
+                return medium_cat
+    # Fallback: use broad category as medium
+    return broad_cat
 
 
 # =============================================================================

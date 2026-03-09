@@ -438,6 +438,9 @@ class AnnotationConfig:
     majority_voting: bool = True
     extended_consensus: bool = False  # Use 6 CellTypist models for better coverage
 
+    # Tissue type for auto model selection (auto-detected from data_path if not set)
+    tissue_type: str = "generic"
+
     # Ground truth options
     ground_truth_file: str | None = None
     ground_truth_sheet: str | None = None  # Excel sheet name

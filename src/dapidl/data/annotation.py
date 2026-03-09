@@ -21,8 +21,30 @@ from loguru import logger
 from dapidl.data.xenium import XeniumDataReader
 
 
-# Default model for breast tissue
+# Default model for breast tissue (legacy — use get_default_model() for tissue-aware selection)
 DEFAULT_MODEL = "Cells_Adult_Breast.pkl"
+
+# Tissue-specific default CellTypist models.
+# Validated against gene panel overlap analysis (March 2026).
+# See auto_selector.py for full DATASET_MODELS per-dataset mapping.
+TISSUE_DEFAULT_MODELS: dict[str, str] = {
+    "breast": "Cells_Adult_Breast.pkl",
+    "lung": "Human_Lung_Atlas.pkl",
+    "liver": "Healthy_Human_Liver.pkl",
+    "heart": "Healthy_Adult_Heart.pkl",
+    "colon": "Cells_Intestinal_Tract.pkl",
+    "colorectal": "Human_Colorectal_Cancer.pkl",
+    "skin": "Adult_Human_Skin.pkl",
+    "tonsil": "Cells_Human_Tonsil.pkl",
+    "lymph_node": "Cells_Human_Tonsil.pkl",
+    "mouse_brain": "Mouse_Isocortex_Hippocampus.pkl",
+}
+
+
+def get_default_model(tissue: str = "breast") -> str:
+    """Get the default CellTypist model for a tissue type."""
+    return TISSUE_DEFAULT_MODELS.get(tissue, "Immune_All_High.pkl")
+
 
 # Extended consensus models for comprehensive cell type annotation
 # These models cover different aspects: breast-specific, pan-immune, vascular, stromal
