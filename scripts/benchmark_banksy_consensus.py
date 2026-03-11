@@ -635,6 +635,77 @@ def run_benchmark(dataset_keys: list[str], sample_size: int | None = None):
 
         print_results(config["name"], results, base_methods)
 
+        # ────────────────────────────────────────────────────────
+        # PHASE 7: GT-Free Validation (annotation_confidence + marker_validation)
+        # ────────────────────────────────────────────────────────
+
+        logger.info(f"\n>>> GT-Free Validation Module...")
+        try:
+            from dapidl.validation.annotation_confidence import (
+                AnnotationConfidenceConfig,
+                compute_annotation_confidence,
+            )
+            from dapidl.validation.marker_validation import validate_with_markers
+
+            # Find best consensus combination by macro F1
+            sorted_results = sorted(results, key=lambda x: -x.macro_f1)
+            best_method_name = sorted_results[0].method
+            logger.info(f"  Best method: {best_method_name} (Macro F1 = {sorted_results[0].macro_f1:.4f})")
+
+            # Get predictions for best method — reconstruct from method_preds
+            if best_method_name.startswith("Consensus("):
+                combo_str = best_method_name[len("Consensus("):-1]
+                combo_methods = combo_str.split("+")
+                best_preds = majority_vote(method_preds, combo_methods)
+            elif best_method_name in method_preds:
+                best_preds = method_preds[best_method_name]
+            else:
+                # Try to match result name back to method_preds key
+                best_preds = method_preds.get(base_methods[0], [])
+
+            best_preds_arr = np.array(best_preds)
+
+            # 1. Marker Gene Validation
+            logger.info("\n  [Validation 1/2] Marker Gene Validation...")
+            marker_results = validate_with_markers(adata, best_preds_arr, tissue_type="breast")
+            print(f"\n  Marker Gene Validation ({best_method_name}):")
+            print(f"    Overall Marker Score:  {marker_results['overall_marker_score']:.3f}")
+            print(f"    Weighted Marker Score: {marker_results['weighted_marker_score']:.3f}")
+            print(f"    Types Validated:       {marker_results['n_types_validated']}")
+            if marker_results.get("per_type_results"):
+                print(f"    {'Cell Type':<25} {'Score':>7} {'Enrich':>8} {'Frac':>6} {'Leak':>6}")
+                print(f"    {'-'*55}")
+                for ct, r in sorted(marker_results["per_type_results"].items(), key=lambda x: -x[1]["marker_score"]):
+                    print(f"    {ct:<25} {r['marker_score']:>7.3f} {r['positive_enrichment']:>8.2f} {r['positive_fraction']:>6.2f} {r['negative_leakage']:>6.2f}")
+
+            # 2. Annotation Confidence (marker + spatial + consensus + proportions)
+            logger.info("\n  [Validation 2/2] Annotation Confidence (GT-free)...")
+            predictions_dict = {name: preds for name, preds in method_preds.items() if name != "BANKSY_Smooth"}
+            conf_config = AnnotationConfidenceConfig(tissue_type="breast")
+            conf_result = compute_annotation_confidence(
+                adata=adata,
+                predictions=predictions_dict,
+                spatial_coords=spatial_coords,
+                config=conf_config,
+                primary_method=None,  # Uses first (BANKSY) — we override below
+            )
+            # Re-run with best method as primary
+            # First key of predictions_dict will be used if primary_method is None
+            # We want the best consensus — add it to predictions_dict
+            predictions_dict["_BEST"] = best_preds
+            conf_result = compute_annotation_confidence(
+                adata=adata,
+                predictions=predictions_dict,
+                spatial_coords=spatial_coords,
+                config=conf_config,
+                primary_method="_BEST",
+            )
+            print(f"\n{conf_result.summary()}")
+
+        except Exception as e:
+            logger.error(f"GT-Free Validation failed: {e}")
+            import traceback; traceback.print_exc()
+
         # Convert to dicts for JSON serialization
         all_results[ds_key] = [asdict(r) for r in results]
 
