@@ -119,3 +119,25 @@ def test_ensemble_config_from_dict_bool_parsing():
     cfg = EnsembleAnnotationConfig.from_dict(d)
     assert cfg.fine_grained is False
     assert cfg.use_confidence_weighting is True
+
+
+def test_registry_list_annotators():
+    """Verify list_annotators() returns registered annotators."""
+    from dapidl.pipeline.registry import list_annotators
+
+    # Import annotators module to trigger registration
+    import dapidl.pipeline.components.annotators  # noqa: F401
+
+    available = list_annotators()
+    assert "celltypist" in available
+    assert "ground_truth" in available
+    # singler, sctype etc. may or may not be available depending on deps
+    assert len(available) >= 2
+
+
+def test_registry_get_annotator_unknown_raises():
+    from dapidl.pipeline.registry import get_annotator
+
+    import pytest
+    with pytest.raises(ValueError, match="Unknown annotator 'nonexistent'"):
+        get_annotator("nonexistent")
