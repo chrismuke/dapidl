@@ -23,7 +23,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import polars as pl
 from loguru import logger
 
@@ -607,206 +606,83 @@ class EnsembleAnnotationStep(PipelineStep):
 
     def _build_consensus(
         self,
-        all_predictions: list[dict],
-        cell_ids: list[str],
+        results: list[AnnotationResult],
         cfg: EnsembleAnnotationConfig,
-    ) -> tuple[pl.DataFrame, dict]:
-        """Build consensus from multiple annotation methods.
+    ) -> tuple[pl.DataFrame, dict[str, Any]]:
+        """Build consensus from AnnotationResult objects using polars."""
+        all_votes = pl.concat([
+            r.annotations_df.select([
+                pl.col("cell_id"),
+                pl.col("predicted_type"),
+                pl.col("broad_category"),
+                pl.col("confidence"),
+            ]).with_columns(
+                pl.lit(r.stats["source"]).alias("source")
+            )
+            for r in results
+        ])
 
-        Uses confidence-weighted voting when available.
-        For single-annotator cases, uses predictions directly.
-        """
-        from collections import defaultdict
-
-        # Adjust min_agreement if we have fewer annotators than required
-        num_annotators = len(all_predictions)
-        effective_min_agreement = min(cfg.min_agreement, num_annotators)
-        if num_annotators == 1:
-            logger.info("Single annotator mode: using predictions directly")
-            effective_min_agreement = 1
-
-        # Create cell_id to prediction mapping
-        cell_votes = defaultdict(list)
-
-        for pred in all_predictions:
-            pred_dict = dict(zip(pred["cell_ids"], pred["predictions"]))
-            conf_dict = dict(
-                zip(pred["cell_ids"], pred.get("confidence", [1.0] * len(pred["cell_ids"])))
+        if cfg.use_confidence_weighting:
+            vote_scores = (
+                all_votes
+                .group_by(["cell_id", "broad_category"])
+                .agg([
+                    pl.col("confidence").sum().alias("vote_score"),
+                    pl.len().alias("vote_count"),
+                    pl.col("predicted_type").sort_by("confidence", descending=True).first().alias("best_predicted_type"),
+                ])
+            )
+        else:
+            vote_scores = (
+                all_votes
+                .group_by(["cell_id", "broad_category"])
+                .agg([
+                    pl.len().alias("vote_score"),
+                    pl.len().alias("vote_count"),
+                    pl.col("predicted_type").first().alias("best_predicted_type"),
+                ])
             )
 
-            for cell_id in cell_ids:
-                if cell_id in pred_dict:
-                    cell_votes[cell_id].append(
-                        {
-                            "source": pred["source"],
-                            "label": pred_dict[cell_id],
-                            "confidence": conf_dict[cell_id],
-                        }
-                    )
+        winners = (
+            vote_scores
+            .sort("vote_score", descending=True)
+            .group_by("cell_id")
+            .first()
+        )
 
-        # Build consensus
-        consensus_records = []
-        method_agreements = defaultdict(int)
-        n_unanimous = 0
-        n_majority = 0
-        n_insufficient = 0
+        total_votes_per_cell = (
+            all_votes
+            .group_by("cell_id")
+            .agg(pl.len().alias("n_votes"))
+        )
 
-        for cell_id, votes in cell_votes.items():
-            if len(votes) < effective_min_agreement:
-                n_insufficient += 1
-                continue
+        consensus = (
+            winners
+            .join(total_votes_per_cell, on="cell_id")
+            .select([
+                pl.col("cell_id"),
+                pl.col("best_predicted_type").alias("predicted_type"),
+                pl.col("broad_category"),
+                (pl.col("vote_score") / pl.col("n_votes")).alias("confidence"),
+                pl.col("n_votes"),
+                pl.col("vote_count").alias("n_agreement"),
+            ])
+        )
 
-            # Standardize labels to broad categories for voting
-            vote_labels = [self._standardize_label(v["label"]) for v in votes]
-            vote_confidences = [v["confidence"] for v in votes]
+        consensus = consensus.filter(pl.col("n_agreement") >= cfg.min_agreement)
 
-            # Weighted voting
-            label_scores = defaultdict(float)
-            for label, conf in zip(vote_labels, vote_confidences):
-                if cfg.use_confidence_weighting:
-                    label_scores[label] += conf
-                else:
-                    label_scores[label] += 1.0
-
-            # Get winner
-            if not label_scores:
-                continue
-
-            sorted_labels = sorted(label_scores.items(), key=lambda x: -x[1])
-            winner_label = sorted_labels[0][0]
-            winner_score = sorted_labels[0][1]
-            total_score = sum(label_scores.values())
-
-            # Calculate consensus confidence
-            consensus_confidence = winner_score / total_score if total_score > 0 else 0
-
-            if consensus_confidence < cfg.confidence_threshold:
-                continue
-
-            # Count agreement type
-            unique_labels = set(vote_labels)
-            if len(unique_labels) == 1:
-                n_unanimous += 1
-            else:
-                n_majority += 1
-
-            # Track which methods agreed
-            for vote in votes:
-                if self._standardize_label(vote["label"]) == winner_label:
-                    method_agreements[vote["source"]] += 1
-
-            # Get original fine-grained label from winner method
-            winner_vote = next(
-                (v for v in votes if self._standardize_label(v["label"]) == winner_label), votes[0]
-            )
-
-            consensus_records.append(
-                {
-                    "cell_id": cell_id,
-                    "predicted_type": winner_vote["label"],  # Original fine-grained
-                    "broad_category": winner_label,  # Standardized
-                    "confidence": consensus_confidence,
-                    "n_votes": len(votes),
-                    "n_agreement": sum(1 for l in vote_labels if l == winner_label),
-                }
-            )
-
-        # Create DataFrame
-        consensus_df = pl.DataFrame(consensus_records)
-
+        n_total = all_votes.select("cell_id").n_unique()
+        n_unanimous = consensus.filter(pl.col("n_agreement") == pl.col("n_votes")).height
         stats = {
-            "total_cells": len(cell_ids),
-            "annotated_cells": len(consensus_records),
+            "total_cells": n_total,
+            "annotated_cells": consensus.height,
             "unanimous_agreement": n_unanimous,
-            "majority_agreement": n_majority,
-            "insufficient_votes": n_insufficient,
-            "methods_used": [p["source"] for p in all_predictions],
-            "method_agreements": dict(method_agreements),
+            "majority_agreement": consensus.height - n_unanimous,
+            "insufficient_votes": n_total - consensus.height,
+            "methods_used": [r.stats["source"] for r in results],
         }
 
-        return consensus_df, stats
-
-    def _standardize_label(self, label: str) -> str:
-        """Standardize cell type label to broad category.
-
-        Maps fine-grained cell types to: Epithelial, Immune, Stromal, Endothelial, Other
-        """
-        label_lower = label.lower()
-
-        # Epithelial markers
-        if any(
-            marker in label_lower
-            for marker in [
-                "epithelial",
-                "luminal",
-                "basal",
-                "keratinocyte",
-                "secretory",
-                "ductal",
-                "acinar",
-                "alveolar",
-                "squamous",
-                "glandular",
-                "mammary",
-                "breast",
-                "tumor",
-            ]
-        ):
-            return "Epithelial"
-
-        # Immune markers
-        if any(
-            marker in label_lower
-            for marker in [
-                "t cell",
-                "t_cell",
-                "cd4",
-                "cd8",
-                "nk",
-                "natural killer",
-                "b cell",
-                "b_cell",
-                "plasma",
-                "myeloid",
-                "monocyte",
-                "macrophage",
-                "dendritic",
-                "dc",
-                "neutrophil",
-                "granulocyte",
-                "mast",
-                "lymphocyte",
-                "immune",
-                "leukocyte",
-            ]
-        ):
-            return "Immune"
-
-        # Stromal markers
-        if any(
-            marker in label_lower
-            for marker in [
-                "fibroblast",
-                "stromal",
-                "mesenchymal",
-                "adipocyte",
-                "fat",
-                "myofibroblast",
-                "pericyte",
-                "smooth muscle",
-                "caf",
-            ]
-        ):
-            return "Stromal"
-
-        # Endothelial markers
-        if any(
-            marker in label_lower
-            for marker in ["endothelial", "vascular", "blood vessel", "lymphatic"]
-        ):
-            return "Endothelial"
-
-        return "Other"
+        return consensus, stats
 
     def _compute_class_mapping(
         self, annotations_df: pl.DataFrame, fine_grained: bool

@@ -278,3 +278,137 @@ def test_config_hash_different_methods():
     cfg1 = EnsembleAnnotationConfig(methods=[MethodSpec("celltypist", {"model": "A.pkl"})])
     cfg2 = EnsembleAnnotationConfig(methods=[MethodSpec("celltypist", {"model": "B.pkl"})])
     assert step._get_config_hash(cfg1, "ds") != step._get_config_hash(cfg2, "ds")
+
+
+import polars as pl
+from dapidl.pipeline.base import AnnotationResult
+
+
+def _make_result(source: str, data: list[tuple[str, str, str, float]]) -> AnnotationResult:
+    """Helper: create AnnotationResult from (cell_id, predicted_type, broad_category, confidence)."""
+    df = pl.DataFrame(
+        data,
+        schema={"cell_id": pl.Utf8, "predicted_type": pl.Utf8, "broad_category": pl.Utf8, "confidence": pl.Float64},
+        orient="row",
+    )
+    return AnnotationResult(annotations_df=df, stats={"source": source})
+
+
+def test_consensus_unanimous():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg = EnsembleAnnotationConfig(
+        methods=[MethodSpec("a"), MethodSpec("b")],
+        min_agreement=2,
+        use_confidence_weighting=False,
+    )
+    results = [
+        _make_result("a", [("c1", "T-cell", "Immune", 0.9), ("c2", "Luminal", "Epithelial", 0.8)]),
+        _make_result("b", [("c1", "T-cell", "Immune", 0.7), ("c2", "Luminal", "Epithelial", 0.6)]),
+    ]
+    consensus, stats = step._build_consensus(results, cfg)
+    assert consensus.height == 2
+    assert stats["unanimous_agreement"] == 2
+    row_c1 = consensus.filter(pl.col("cell_id") == "c1")
+    assert row_c1["broad_category"][0] == "Immune"
+    assert row_c1["n_agreement"][0] == 2
+
+
+def test_consensus_majority():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg = EnsembleAnnotationConfig(
+        methods=[MethodSpec("a"), MethodSpec("b"), MethodSpec("c")],
+        min_agreement=2,
+        use_confidence_weighting=False,
+    )
+    results = [
+        _make_result("a", [("c1", "T-cell", "Immune", 0.9)]),
+        _make_result("b", [("c1", "T-cell", "Immune", 0.7)]),
+        _make_result("c", [("c1", "Fibroblast", "Stromal", 0.5)]),
+    ]
+    consensus, stats = step._build_consensus(results, cfg)
+    assert consensus.height == 1
+    row = consensus.row(0, named=True)
+    assert row["broad_category"] == "Immune"
+    assert row["n_agreement"] == 2
+    assert row["n_votes"] == 3
+
+
+def test_consensus_min_agreement_filter():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg = EnsembleAnnotationConfig(
+        methods=[MethodSpec("a"), MethodSpec("b"), MethodSpec("c")],
+        min_agreement=3,
+        use_confidence_weighting=False,
+    )
+    results = [
+        _make_result("a", [("c1", "T-cell", "Immune", 0.9)]),
+        _make_result("b", [("c1", "T-cell", "Immune", 0.7)]),
+        _make_result("c", [("c1", "Fibroblast", "Stromal", 0.5)]),
+    ]
+    consensus, stats = step._build_consensus(results, cfg)
+    assert consensus.height == 0
+    assert stats["insufficient_votes"] == 1
+
+
+def test_consensus_weighted():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg = EnsembleAnnotationConfig(
+        methods=[MethodSpec("a"), MethodSpec("b")],
+        min_agreement=1,
+        use_confidence_weighting=True,
+    )
+    results = [
+        _make_result("a", [("c1", "T-cell", "Immune", 0.9)]),
+        _make_result("b", [("c1", "Fibroblast", "Stromal", 0.1)]),
+    ]
+    consensus, stats = step._build_consensus(results, cfg)
+    assert consensus.height == 1
+    assert consensus["broad_category"][0] == "Immune"
+
+
+def test_consensus_weighted_overrides_majority():
+    """One high-confidence vote should beat two low-confidence votes."""
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg = EnsembleAnnotationConfig(
+        methods=[MethodSpec("a"), MethodSpec("b"), MethodSpec("c")],
+        min_agreement=1,
+        use_confidence_weighting=True,
+    )
+    results = [
+        _make_result("a", [("c1", "T-cell", "Immune", 0.95)]),
+        _make_result("b", [("c1", "Fibroblast", "Stromal", 0.1)]),
+        _make_result("c", [("c1", "Pericyte", "Stromal", 0.1)]),
+    ]
+    consensus, stats = step._build_consensus(results, cfg)
+    assert consensus.height == 1
+    assert consensus["broad_category"][0] == "Immune"
