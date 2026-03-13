@@ -96,16 +96,15 @@ def create_sota_config(
         # CRITICAL: Blueprint reference adds +117% Stromal F1
         annotation=AnnotationConfig(
             strategy=AnnotationStrategy.ENSEMBLE,
-            # Best performing CellTypist models for breast
-            celltypist_models=[
-                "Cells_Adult_Breast.pkl",
-                "Immune_All_High.pkl",
-                "Immune_All_Low.pkl",  # Marginal benefit but helps
+            # Best performing methods for breast (Jan 2025 benchmarking)
+            # CRITICAL: Unweighted voting beats confidence-weighted by 15-22%
+            # CRITICAL: Blueprint reference adds +117% Stromal F1
+            methods=[
+                {"name": "celltypist", "params": {"model": "Cells_Adult_Breast.pkl"}},
+                {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+                {"name": "celltypist", "params": {"model": "Immune_All_Low.pkl"}},
+                {"name": "singler", "params": {"reference": "blueprint"}},
             ],
-            include_singler=True,  # ESSENTIAL
-            singler_reference="blueprint",  # CRITICAL: +117% Stromal F1
-            include_sctype=False,  # Not yet integrated
-            include_popv=False,  # Using CellTypist ensemble instead
             min_agreement=2,  # >=2 methods must agree
             confidence_threshold=0.5,
             use_confidence_weighting=False,  # CRITICAL: Unweighted is better!

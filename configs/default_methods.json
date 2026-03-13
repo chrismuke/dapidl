@@ -1,0 +1,24 @@
+{
+  "breast_standard": [
+    {"name": "celltypist", "params": {"model": "Cells_Adult_Breast.pkl"}},
+    {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+    {"name": "singler", "params": {"reference": "blueprint"}}
+  ],
+  "lung_standard": [
+    {"name": "celltypist", "params": {"model": "Human_Lung_Atlas.pkl"}},
+    {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+    {"name": "singler", "params": {"reference": "blueprint"}}
+  ],
+  "universal": [
+    {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+    {"name": "celltypist", "params": {"model": "Immune_All_Low.pkl"}},
+    {"name": "singler", "params": {"reference": "blueprint"}},
+    {"name": "singler", "params": {"reference": "hpca"}}
+  ],
+  "immune_focused": [
+    {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+    {"name": "celltypist", "params": {"model": "Immune_All_Low.pkl"}},
+    {"name": "celltypist", "params": {"model": "Adult_COVID19_PBMC.pkl"}},
+    {"name": "singler", "params": {"reference": "monaco"}}
+  ]
+}

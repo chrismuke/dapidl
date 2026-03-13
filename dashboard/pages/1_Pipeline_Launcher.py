@@ -16,7 +16,6 @@ from components.constants import (
     BACKBONE_DESCRIPTIONS,
     BACKBONES,
     BUILTIN_RECIPES,
-    CELLTYPIST_MODELS,
     CL_TARGET_LEVEL_DESCRIPTIONS,
     CL_TARGET_LEVELS,
     GPU_TARGETS,
@@ -27,8 +26,6 @@ from components.constants import (
     RECIPE_DESCRIPTIONS,
     SAMPLING_STRATEGIES,
     SAMPLING_STRATEGY_DESCRIPTIONS,
-    SINGLER_REFERENCE_DESCRIPTIONS,
-    SINGLER_REFERENCES,
     TRAINING_MODE_DESCRIPTIONS,
     TRAINING_MODES,
 )
@@ -209,20 +206,38 @@ def _pipeline_config() -> dict:
             format_func=lambda s: ANNOTATION_STRATEGY_DESCRIPTIONS.get(s, s),
         )
 
-        cfg["celltypist_models"] = c1.multiselect(
-            "CellTypist models", CELLTYPIST_MODELS,
-            default=["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
-        )
-        cfg["extended_consensus"] = c1.checkbox(
-            "Extended consensus (6 models)", value=False,
+        import json as _json
+        from pathlib import Path as _Path
+
+        # Load method presets
+        presets_path = _Path(__file__).parent.parent.parent / "configs" / "default_methods.json"
+        presets: dict = {}
+        if presets_path.exists():
+            with open(presets_path) as f:
+                presets = _json.load(f)
+
+        preset_choice = c1.selectbox(
+            "Method Preset",
+            options=["custom"] + list(presets.keys()),
+            index=list(presets.keys()).index("breast_standard") + 1
+            if "breast_standard" in presets
+            else 0,
         )
 
-        cfg["include_singler"] = c2.checkbox("Include SingleR", value=True)
-        cfg["singler_reference"] = c2.selectbox(
-            "SingleR reference", SINGLER_REFERENCES,
-            format_func=lambda r: SINGLER_REFERENCE_DESCRIPTIONS.get(r, r),
-            disabled=not cfg["include_singler"],
-        )
+        if preset_choice != "custom":
+            cfg["methods"] = presets[preset_choice]
+            c2.json(cfg["methods"])
+        else:
+            methods_json = c1.text_area(
+                "Methods (JSON)",
+                value=_json.dumps(presets.get("breast_standard", []), indent=2),
+                height=200,
+            )
+            try:
+                cfg["methods"] = _json.loads(methods_json)
+            except _json.JSONDecodeError:
+                c1.error("Invalid JSON")
+                cfg["methods"] = []
         cfg["confidence_threshold"] = c2.slider(
             "Confidence threshold", 0.0, 1.0, 0.5, 0.05,
         )
@@ -388,9 +403,9 @@ def _build_clearml_params(cfg: dict) -> dict[str, str]:
 
     # -- Annotation --
     params["annotation/strategy"] = cfg["annotation_strategy"]
-    params["annotation/celltypist_models"] = ",".join(cfg["celltypist_models"])
-    params["annotation/include_singler"] = str(cfg["include_singler"])
-    params["annotation/singler_reference"] = cfg["singler_reference"]
+    import json as _json
+
+    params["annotation/methods"] = _json.dumps(cfg.get("methods", []))
     params["annotation/confidence_threshold"] = str(cfg["confidence_threshold"])
     params["annotation/min_agreement"] = str(cfg["min_agreement"])
     params["annotation/fine_grained"] = str(cfg["fine_grained"])

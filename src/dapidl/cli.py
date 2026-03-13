@@ -2697,15 +2697,16 @@ def run_universal_pipeline(tissue, tissue_local, sampling, backbone, epochs, bat
     help="Platform type (auto-detected if not specified)",
 )
 @click.option(
-    "--celltypist-models",
+    "--methods",
+    type=str,
     multiple=True,
-    default=["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
-    help="CellTypist models for ensemble annotation (can specify multiple)",
+    help='Annotation method specs as JSON: \'{"name":"celltypist","params":{"model":"Breast.pkl"}}\'',
 )
 @click.option(
-    "--include-singler/--no-singler",
-    default=True,
-    help="Include SingleR in ensemble annotation",
+    "--method-preset",
+    type=str,
+    default=None,
+    help="Named preset from configs/default_methods.json (e.g., 'breast_standard', 'universal')",
 )
 @click.option(
     "--patch-sizes",
@@ -2764,8 +2765,8 @@ def run_enhanced_pipeline(
     raw_dataset_id: str | None,
     s3_uri: str | None,
     platform: str,
-    celltypist_models: tuple,
-    include_singler: bool,
+    methods: tuple,
+    method_preset: str | None,
     patch_sizes: tuple,
     epochs: int,
     backbone: str,
@@ -2792,23 +2793,55 @@ def run_enhanced_pipeline(
         # Local execution with S3 data
         dapidl clearml-pipeline enhanced --s3-uri s3://dapidl/raw-data/xenium-breast/ --local
 
-        # Multiple patch sizes and CellTypist models
+        # Multiple patch sizes with method preset
         dapidl clearml-pipeline enhanced \\
             --raw-dataset-id abc123 \\
-            --celltypist-models Cells_Adult_Breast.pkl \\
-            --celltypist-models Immune_All_High.pkl \\
+            --method-preset breast_standard \\
             --patch-sizes 64 --patch-sizes 128 --patch-sizes 256 \\
             --local
     """
-    from dapidl.pipeline import GUIPipelineConfig, EnhancedDAPIDLPipelineController
+    import json as _json
+    from pathlib import Path as _Path
+
+    from dapidl.pipeline import EnhancedDAPIDLPipelineController, GUIPipelineConfig
+
+    # Resolve annotation methods from preset, explicit JSON, or defaults
+    if method_preset:
+        presets_path = _Path(__file__).parent.parent.parent / "configs" / "default_methods.json"
+        with open(presets_path) as f:
+            presets = _json.load(f)
+        if method_preset not in presets:
+            raise click.BadParameter(
+                f"Unknown preset '{method_preset}'. Available: {list(presets.keys())}"
+            )
+        methods_list = presets[method_preset]
+    elif methods:
+        methods_list = [_json.loads(m) for m in methods]
+    else:
+        methods_list = [
+            {"name": "celltypist", "params": {"model": "Cells_Adult_Breast.pkl"}},
+            {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+            {"name": "singler", "params": {"reference": "blueprint"}},
+        ]
+
+    # Derive old-style fields from methods_list for GUIPipelineConfig compatibility
+    celltypist_model_names = [
+        m["params"]["model"] for m in methods_list if m["name"] == "celltypist"
+    ]
+    has_singler = any(m["name"] == "singler" for m in methods_list)
+    singler_ref = next(
+        (m["params"].get("reference", "blueprint") for m in methods_list if m["name"] == "singler"),
+        "blueprint",
+    )
 
     # Build configuration
     config = GUIPipelineConfig(
         raw_dataset_id=raw_dataset_id,
         s3_data_uri=s3_uri,
         platform=platform,
-        celltypist_models=list(celltypist_models),
-        include_singler=include_singler,
+        celltypist_models=celltypist_model_names or ["Cells_Adult_Breast.pkl"],
+        include_singler=has_singler,
+        singler_reference=singler_ref,
         patch_sizes=list(patch_sizes),
         epochs=epochs,
         backbone=backbone,
@@ -2823,9 +2856,9 @@ def run_enhanced_pipeline(
 
     console.print("[bold blue]Enhanced DAPIDL Pipeline[/bold blue]\n")
     console.print(f"Platform: {platform}")
-    console.print(f"Annotation: Ensemble with {len(celltypist_models)} CellTypist models")
-    if include_singler:
-        console.print("  + SingleR (blueprint reference)")
+    console.print(f"Annotation: {len(methods_list)} methods")
+    for m in methods_list:
+        console.print(f"  - {m['name']}: {m.get('params', {})}")
     console.print(f"Patch sizes: {list(patch_sizes)}")
     console.print(f"Training: {training_mode} mode, {epochs} epochs")
     console.print(f"Backbone: {backbone}")
@@ -3175,8 +3208,9 @@ def sota_pipeline(
 
     # Show SOTA settings
     console.print("[cyan]Annotation (SOTA):[/cyan]")
-    console.print(f"  Models: {config.annotation.celltypist_models}")
-    console.print(f"  SingleR: {config.annotation.singler_reference} (CRITICAL for Stromal)")
+    console.print(f"  Methods: {len(config.annotation.methods)} configured")
+    for m in config.annotation.methods:
+        console.print(f"    - {m['name']}: {m.get('params', {})}")
     console.print(f"  Voting: UNWEIGHTED (beats confidence-weighted by 15-22%)")
 
     console.print("\n[cyan]Training (SOTA):[/cyan]")
