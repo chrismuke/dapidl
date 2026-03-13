@@ -29,6 +29,7 @@ from loguru import logger
 
 from dapidl.pipeline.base import (
     AnnotationConfig,
+    AnnotationResult,
     PipelineStep,
     StepArtifacts,
     get_pipeline_output_dir,
@@ -234,6 +235,27 @@ class EnsembleAnnotationStep(PipelineStep):
         if suffix:
             return f"{spec.name}_{suffix}"
         return spec.name
+
+    def _run_methods(
+        self,
+        methods: list[MethodSpec],
+        adata: Any,
+        data_path: Path,
+    ) -> list[AnnotationResult]:
+        """Run all declared annotation methods via the registry."""
+        from dapidl.pipeline.registry import get_annotator
+
+        results = []
+        for spec in methods:
+            annotator = get_annotator(spec.name, config=self._build_annotator_config(spec))
+            result = annotator.annotate(
+                adata=adata,
+                expression_path=data_path,
+            )
+            result.stats["source"] = self._make_source_label(spec)
+            results.append(result)
+            logger.info(f"{spec.name}: {len(result.annotations_df)} cells annotated")
+        return results
 
     def _get_config_hash(self, cfg: EnsembleAnnotationConfig, raw_dataset_id: str) -> str:
         """Generate deterministic hash of annotation configuration.
@@ -589,143 +611,6 @@ class EnsembleAnnotationStep(PipelineStep):
         adata.obs["cell_id"] = adata.obs_names
 
         return adata
-
-    def _run_celltypist(self, adata, model_name: str) -> dict:
-        """Run CellTypist annotation."""
-        import celltypist
-        from celltypist import models
-
-        # Download model if needed
-        models.download_models(force_update=False, model=model_name)
-        model = models.Model.load(model=model_name)
-
-        # Normalize data (CellTypist expects normalized)
-        import scanpy as sc
-
-        adata_norm = adata.copy()
-        sc.pp.normalize_total(adata_norm, target_sum=1e4)
-        sc.pp.log1p(adata_norm)
-
-        # Predict
-        predictions = celltypist.annotate(
-            adata_norm,
-            model=model,
-            majority_voting=True,
-        )
-
-        # Extract results
-        labels = predictions.predicted_labels.predicted_labels.tolist()
-        confidence = predictions.probability_matrix.max(axis=1).tolist()
-
-        return {
-            "source": f"celltypist_{model_name.replace('.pkl', '')}",
-            "predictions": labels,
-            "confidence": confidence,
-            "cell_ids": adata.obs.index.tolist(),
-        }
-
-    def _run_singler(self, adata, reference: str, data_path: Path) -> dict:
-        """Run SingleR annotation (requires R).
-
-        This uses rpy2 to call SingleR from Python.
-        """
-        # Check if R is available
-        import shutil
-
-        if not shutil.which("Rscript"):
-            raise RuntimeError("R is not installed or not in PATH")
-
-        # Save expression to temp file for R
-        import tempfile
-
-        temp_dir = Path(tempfile.mkdtemp())
-        expr_path = temp_dir / "expression.h5ad"
-        adata.write_h5ad(expr_path)
-
-        # Run SingleR via R script
-        r_script = self._get_singler_script()
-        r_script_path = temp_dir / "run_singler.R"
-        with open(r_script_path, "w") as f:
-            f.write(r_script)
-
-        import subprocess
-
-        result = subprocess.run(
-            ["Rscript", str(r_script_path), str(expr_path), reference, str(temp_dir)],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"SingleR failed: {result.stderr}")
-
-        # Load results
-        results_path = temp_dir / "singler_results.csv"
-        results_df = pl.read_csv(results_path)
-
-        # Clean up
-        import shutil as sh
-
-        sh.rmtree(temp_dir)
-
-        # Convert cell_ids to strings to match CellTypist format
-        # (pandas reads numeric strings from CSV as integers)
-        cell_ids = [str(cid) for cid in results_df["cell_id"].to_list()]
-
-        return {
-            "source": f"singler_{reference}",
-            "predictions": results_df["labels"].to_list(),
-            "confidence": results_df["delta.next"].to_list(),
-            "cell_ids": cell_ids,
-        }
-
-    def _get_singler_script(self) -> str:
-        """Return R script for SingleR annotation."""
-        return """
-library(SingleR)
-library(celldex)
-library(anndata)
-
-args <- commandArgs(trailingOnly = TRUE)
-expr_path <- args[1]
-reference_name <- args[2]
-output_dir <- args[3]
-
-# Load expression data
-adata <- read_h5ad(expr_path)
-counts <- t(adata$X)
-colnames(counts) <- rownames(adata$obs)
-
-# Load reference
-ref <- switch(reference_name,
-    "blueprint" = BlueprintEncodeData(),
-    "hpca" = HumanPrimaryCellAtlasData(),
-    "monaco" = MonacoImmuneData(),
-    stop("Unknown reference")
-)
-
-# Run SingleR
-results <- SingleR(
-    test = counts,
-    ref = ref,
-    labels = ref$label.main,
-    de.method = "wilcox"
-)
-
-# Save results
-output <- data.frame(
-    cell_id = rownames(results),
-    labels = results$labels,
-    delta.next = results$delta.next
-)
-write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALSE)
-"""
-
-    def _run_sctype(self, adata) -> dict:
-        """Run scType annotation (marker-based)."""
-        # scType implementation would go here
-        # For now, raise not implemented
-        raise NotImplementedError("scType annotation not yet implemented")
 
     def _build_consensus(
         self,
