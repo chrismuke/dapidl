@@ -299,30 +299,20 @@ class AnnotationConfig(BaseModel):
         description="Strategy: ensemble (multiple methods), single, consensus, or ground_truth",
     )
 
-    # CellTypist configuration
-    celltypist_models: list[str] = Field(
-        default=["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
-        description="CellTypist model names",
+    # Annotation methods (declarative list)
+    methods: list[dict[str, Any]] = Field(
+        default=[
+            {"name": "celltypist", "params": {"model": "Cells_Adult_Breast.pkl"}},
+            {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+            {"name": "singler", "params": {"reference": "blueprint"}},
+        ],
+        description="List of annotation method specs. Each dict has 'name' and 'params'.",
     )
 
-    # SingleR configuration
-    include_singler: bool = Field(
-        default=True,
-        description="Include SingleR annotation (requires R)",
-    )
-    singler_reference: Literal["blueprint", "hpca", "monaco"] = Field(
-        default="blueprint",
-        description="SingleR reference dataset",
-    )
-
-    # Additional annotators
-    include_sctype: bool = Field(
-        default=False,
-        description="Include scType marker-based annotation",
-    )
-    include_popv: bool = Field(
-        default=False,
-        description="Include popV annotation",
+    # Preset name (optional, loads from configs/default_methods.json)
+    method_preset: str | None = Field(
+        default=None,
+        description="Named preset from configs/default_methods.json (overrides methods list)",
     )
 
     # Ground truth
@@ -952,6 +942,24 @@ def _parse_dataset_entry(entry: str) -> TissueDatasetConfig:
 
 
 # ============================================================================
+# Migration Helpers
+# ============================================================================
+
+
+def _convert_old_annotation_fields(old_config: Any) -> list[dict[str, Any]]:
+    """Convert old-style annotation config fields to methods list."""
+    methods: list[dict[str, Any]] = []
+    for model in getattr(old_config, "celltypist_models", []):
+        methods.append({"name": "celltypist", "params": {"model": model}})
+    if getattr(old_config, "include_singler", False):
+        ref = getattr(old_config, "singler_reference", "blueprint")
+        methods.append({"name": "singler", "params": {"reference": ref}})
+    if getattr(old_config, "include_sctype", False):
+        methods.append({"name": "sctype", "params": {}})
+    return methods or [{"name": "celltypist", "params": {"model": "Cells_Adult_Breast.pkl"}}]
+
+
+# ============================================================================
 # Main Unified Configuration
 # ============================================================================
 
@@ -1123,15 +1131,22 @@ class DAPIDLPipelineConfig(BaseModel):
         )
 
         # Build annotation config
+        # Parse methods - could be JSON string from ClearML
+        methods_raw = get_param("annotation", "methods", None)
+        if methods_raw:
+            import json as _json
+
+            methods_list = _json.loads(methods_raw) if isinstance(methods_raw, str) else methods_raw
+        else:
+            methods_list = [
+                {"name": "celltypist", "params": {"model": "Cells_Adult_Breast.pkl"}},
+                {"name": "celltypist", "params": {"model": "Immune_All_High.pkl"}},
+                {"name": "singler", "params": {"reference": "blueprint"}},
+            ]
+
         annotation_config = AnnotationConfig(
             strategy=AnnotationStrategy(get_param("annotation", "strategy", "ensemble")),
-            celltypist_models=parse_list_str(
-                get_param(
-                    "annotation", "celltypist_models", "Cells_Adult_Breast.pkl,Immune_All_High.pkl"
-                )
-            ),
-            include_singler=parse_bool(get_param("annotation", "include_singler", "True")),
-            singler_reference=get_param("annotation", "singler_reference", "blueprint"),
+            methods=methods_list,
             min_agreement=int(get_param("annotation", "min_agreement", "2")),
             confidence_threshold=float(get_param("annotation", "confidence_threshold", "0.5")),
             fine_grained=parse_bool(get_param("annotation", "fine_grained", "True")),
@@ -1262,7 +1277,7 @@ class DAPIDLPipelineConfig(BaseModel):
             ),
             annotation=AnnotationConfig(
                 strategy=AnnotationStrategy(old_config.annotation_strategy),
-                celltypist_models=old_config.model_names,
+                methods=[{"name": "celltypist", "params": {"model": m}} for m in old_config.model_names],
                 confidence_threshold=old_config.confidence_threshold,
                 ground_truth_file=old_config.ground_truth_file,
                 fine_grained=old_config.fine_grained,
@@ -1329,10 +1344,7 @@ class DAPIDLPipelineConfig(BaseModel):
             ),
             annotation=AnnotationConfig(
                 strategy=AnnotationStrategy(old_config.annotation_strategy),
-                celltypist_models=old_config.celltypist_models,
-                include_singler=old_config.include_singler,
-                singler_reference=old_config.singler_reference,
-                include_sctype=old_config.include_sctype,
+                methods=_convert_old_annotation_fields(old_config),
                 min_agreement=old_config.min_agreement,
                 confidence_threshold=old_config.confidence_threshold,
                 use_confidence_weighting=old_config.use_confidence_weighting,
@@ -1457,7 +1469,7 @@ class DAPIDLPipelineConfig(BaseModel):
 #   .match_threshold_um           | .segmentation.match_threshold_um
 #   .annotator                    | .annotation.strategy (use ground_truth)
 #   .annotation_strategy          | .annotation.strategy
-#   .model_names                  | .annotation.celltypist_models
+#   .model_names                  | .annotation.methods (converted)
 #   .confidence_threshold         | .annotation.confidence_threshold
 #   .ground_truth_file            | .annotation.ground_truth_file
 #   .extended_consensus           | .annotation.extended_consensus
@@ -1496,10 +1508,10 @@ class DAPIDLPipelineConfig(BaseModel):
 #   .s3_data_uri                  | .input.s3_uri
 #   .platform                     | .input.platform
 #   .annotation_strategy          | .annotation.strategy
-#   .celltypist_models            | .annotation.celltypist_models
-#   .include_singler              | .annotation.include_singler
-#   .singler_reference            | .annotation.singler_reference
-#   .include_sctype               | .annotation.include_sctype
+#   .celltypist_models            | .annotation.methods (converted via _convert_old_annotation_fields)
+#   .include_singler              | .annotation.methods (converted)
+#   .singler_reference            | .annotation.methods (converted)
+#   .include_sctype               | .annotation.methods (converted)
 #   .min_agreement                | .annotation.min_agreement
 #   .confidence_threshold         | .annotation.confidence_threshold
 #   .use_confidence_weighting     | .annotation.use_confidence_weighting

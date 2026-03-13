@@ -238,22 +238,7 @@ def run_step(step_name: str, local_mode: bool = False, local_config: dict | None
             EnsembleAnnotationStep,
         )
 
-        # Parse celltypist_models list from comma-separated string
-        models_str = step_config.get("celltypist_models", "Cells_Adult_Breast.pkl,Immune_All_High.pkl")
-        models = models_str.split(",") if isinstance(models_str, str) else models_str
-
-        config = EnsembleAnnotationConfig(
-            celltypist_models=models,
-            include_singler=_parse_bool(step_config.get("include_singler", True)),
-            singler_reference=step_config.get("singler_reference", "blueprint"),
-            include_sctype=_parse_bool(step_config.get("include_sctype", False)),
-            min_agreement=int(step_config.get("min_agreement", 2)),
-            confidence_threshold=float(step_config.get("confidence_threshold", 0.5)),
-            use_confidence_weighting=_parse_bool(step_config.get("use_confidence_weighting", False)),
-            fine_grained=_parse_bool(step_config.get("fine_grained", False)),
-            skip_if_exists=_parse_bool(step_config.get("skip_if_exists", True)),
-            create_derived_dataset=_parse_bool(step_config.get("create_derived_dataset", True)),
-        )
+        config = EnsembleAnnotationConfig.from_dict(step_config)
         step = EnsembleAnnotationStep(config)
 
     elif step_name == "lmdb_creation":

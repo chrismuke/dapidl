@@ -269,9 +269,8 @@ class UnifiedPipelineController:
             base_task_project=cfg.project,
             base_task_name="step-ensemble_annotation",
             parameter_override={
-                "step_config/celltypist_models": "${pipeline.annotation/celltypist_models}",
-                "step_config/include_singler": "${pipeline.annotation/include_singler}",
-                "step_config/singler_reference": "${pipeline.annotation/singler_reference}",
+                "step_config/methods": "${pipeline.annotation/methods}",
+                "step_config/use_confidence_weighting": "${pipeline.annotation/use_confidence_weighting}",
                 "step_config/min_agreement": "${pipeline.annotation/min_agreement}",
                 "step_config/confidence_threshold": "${pipeline.annotation/confidence_threshold}",
                 "step_config/fine_grained": "${pipeline.annotation/fine_grained}",
@@ -484,7 +483,9 @@ class UnifiedPipelineController:
                 parameter_override={
                     "step_config/annotator": "celltypist",
                     "step_config/strategy": "consensus",
-                    "step_config/model_names": ",".join(cfg.annotation.celltypist_models),
+                    "step_config/model_names": ",".join(
+                        m["params"]["model"] for m in cfg.annotation.methods if m["name"] == "celltypist"
+                    ),
                     "step_config/fine_grained": str(cfg.annotation.fine_grained),
                     "step_config/data_path": f"${{data_loader_{step_prefix}.artifacts.data_path.url}}",
                     "step_config/platform": f"${{data_loader_{step_prefix}.artifacts.platform.url}}",
@@ -624,10 +625,10 @@ class UnifiedPipelineController:
 
             # Step 2: Ensemble Annotation
             logger.info("Step 2: Running ensemble annotation...")
+            from dapidl.pipeline.steps.ensemble_annotation import MethodSpec
+
             annot_config = EnsembleAnnotationConfig(
-                celltypist_models=cfg.annotation.celltypist_models,
-                include_singler=cfg.annotation.include_singler,
-                singler_reference=cfg.annotation.singler_reference,
+                methods=[MethodSpec.from_dict(m) for m in cfg.annotation.methods],
                 min_agreement=cfg.annotation.min_agreement,
                 confidence_threshold=cfg.annotation.confidence_threshold,
                 fine_grained=cfg.annotation.fine_grained,
@@ -795,10 +796,11 @@ class UnifiedPipelineController:
 
                 # Step 3: Annotation
                 logger.info(f"  Step 3: Annotation ({tissue_name})")
+                celltypist_models = [m["params"]["model"] for m in cfg.annotation.methods if m["name"] == "celltypist"]
                 annot_config = AnnotationStepConfig(
                     annotator="celltypist",
                     strategy="consensus",
-                    model_names=cfg.annotation.celltypist_models,
+                    model_names=celltypist_models or ["Cells_Adult_Breast.pkl"],
                     fine_grained=cfg.annotation.fine_grained,
                 )
                 annotation = AnnotationStep(annot_config)
