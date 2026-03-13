@@ -449,6 +449,8 @@ class AnnotationConfig:
 
     # Output options
     fine_grained: bool = False  # Use detailed cell types vs broad categories
+    # SingleR reference dataset (used when method="singler")
+    singler_reference: str = "blueprint"
 
 
 @dataclass
