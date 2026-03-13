@@ -141,3 +141,90 @@ def test_registry_get_annotator_unknown_raises():
     import pytest
     with pytest.raises(ValueError, match="Unknown annotator 'nonexistent'"):
         get_annotator("nonexistent")
+
+
+def test_validate_methods_passes_for_registered():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+    import dapidl.pipeline.components.annotators  # noqa: F401
+
+    step = EnsembleAnnotationStep()
+    # celltypist is always registered
+    step._validate_methods([MethodSpec("celltypist", {"model": "Breast.pkl"})])
+
+
+def test_validate_methods_fails_for_unregistered():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+    import pytest
+
+    step = EnsembleAnnotationStep()
+    with pytest.raises(ValueError, match="not registered"):
+        step._validate_methods([MethodSpec("nonexistent_method")])
+
+
+def test_build_annotator_config_celltypist():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    spec = MethodSpec("celltypist", {"model": "Cells_Adult_Breast.pkl"})
+    cfg = step._build_annotator_config(spec)
+    assert cfg.method == "celltypist"
+    assert cfg.model_names == ["Cells_Adult_Breast.pkl"]
+
+
+def test_build_annotator_config_singler():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    spec = MethodSpec("singler", {"reference": "hpca"})
+    cfg = step._build_annotator_config(spec)
+    assert cfg.method == "singler"
+    assert cfg.singler_reference == "hpca"
+
+
+def test_build_annotator_config_generic_passthrough():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    spec = MethodSpec("sctype", {"confidence_threshold": 0.8})
+    cfg = step._build_annotator_config(spec)
+    assert cfg.method == "sctype"
+    assert cfg.confidence_threshold == 0.8
+
+
+def test_build_annotator_config_unknown_param_ignored():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    spec = MethodSpec("celltypist", {"model": "A.pkl", "nonexistent_key": "value"})
+    cfg = step._build_annotator_config(spec)
+    # Unknown params are silently dropped (no hasattr match)
+    assert cfg.model_names == ["A.pkl"]
+
+
+def test_make_source_label():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    assert EnsembleAnnotationStep._make_source_label(MethodSpec("celltypist", {"model": "Breast.pkl"})) == "celltypist_Breast.pkl"
+    assert EnsembleAnnotationStep._make_source_label(MethodSpec("singler", {"reference": "hpca"})) == "singler_hpca"
+    assert EnsembleAnnotationStep._make_source_label(MethodSpec("sctype")) == "sctype"

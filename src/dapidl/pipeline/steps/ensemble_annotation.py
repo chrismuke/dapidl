@@ -202,6 +202,39 @@ class EnsembleAnnotationStep(PipelineStep):
         """
         return "expression_path" in artifacts.outputs and "data_path" in artifacts.outputs
 
+    def _validate_methods(self, methods: list[MethodSpec]) -> None:
+        """Fail fast if any requested method is unavailable."""
+        from dapidl.pipeline.registry import list_annotators
+
+        available = list_annotators()
+        for spec in methods:
+            if spec.name not in available:
+                raise ValueError(
+                    f"Annotator '{spec.name}' is not registered. "
+                    f"Available: {available}. "
+                    f"Check that required dependencies are installed."
+                )
+
+    def _build_annotator_config(self, spec: MethodSpec) -> AnnotationConfig:
+        """Translate MethodSpec params into annotator's expected config."""
+        base = AnnotationConfig(method=spec.name)
+        for key, value in spec.params.items():
+            if key == "model":
+                base.model_names = [value]
+            elif key == "reference":
+                base.singler_reference = value
+            elif hasattr(base, key):
+                setattr(base, key, value)
+        return base
+
+    @staticmethod
+    def _make_source_label(spec: MethodSpec) -> str:
+        """Create a human-readable source label for consensus tracking."""
+        suffix = spec.params.get("model", spec.params.get("reference", ""))
+        if suffix:
+            return f"{spec.name}_{suffix}"
+        return spec.name
+
     def _get_config_hash(self, cfg: EnsembleAnnotationConfig, raw_dataset_id: str) -> str:
         """Generate deterministic hash of annotation configuration.
 
