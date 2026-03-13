@@ -228,3 +228,53 @@ def test_make_source_label():
     assert EnsembleAnnotationStep._make_source_label(MethodSpec("celltypist", {"model": "Breast.pkl"})) == "celltypist_Breast.pkl"
     assert EnsembleAnnotationStep._make_source_label(MethodSpec("singler", {"reference": "hpca"})) == "singler_hpca"
     assert EnsembleAnnotationStep._make_source_label(MethodSpec("sctype")) == "sctype"
+
+
+def test_config_hash_deterministic():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg = EnsembleAnnotationConfig(methods=[
+        MethodSpec("celltypist", {"model": "A.pkl"}),
+        MethodSpec("singler", {"reference": "blueprint"}),
+    ])
+    h1 = step._get_config_hash(cfg, "dataset123")
+    h2 = step._get_config_hash(cfg, "dataset123")
+    assert h1 == h2
+
+
+def test_config_hash_order_independent():
+    """Method order should not change the hash."""
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg1 = EnsembleAnnotationConfig(methods=[
+        MethodSpec("celltypist", {"model": "A.pkl"}),
+        MethodSpec("singler", {"reference": "blueprint"}),
+    ])
+    cfg2 = EnsembleAnnotationConfig(methods=[
+        MethodSpec("singler", {"reference": "blueprint"}),
+        MethodSpec("celltypist", {"model": "A.pkl"}),
+    ])
+    assert step._get_config_hash(cfg1, "ds") == step._get_config_hash(cfg2, "ds")
+
+
+def test_config_hash_different_methods():
+    from dapidl.pipeline.steps.ensemble_annotation import (
+        EnsembleAnnotationConfig,
+        EnsembleAnnotationStep,
+        MethodSpec,
+    )
+
+    step = EnsembleAnnotationStep()
+    cfg1 = EnsembleAnnotationConfig(methods=[MethodSpec("celltypist", {"model": "A.pkl"})])
+    cfg2 = EnsembleAnnotationConfig(methods=[MethodSpec("celltypist", {"model": "B.pkl"})])
+    assert step._get_config_hash(cfg1, "ds") != step._get_config_hash(cfg2, "ds")

@@ -258,24 +258,17 @@ class EnsembleAnnotationStep(PipelineStep):
         return results
 
     def _get_config_hash(self, cfg: EnsembleAnnotationConfig, raw_dataset_id: str) -> str:
-        """Generate deterministic hash of annotation configuration.
-
-        This hash is used to identify cached annotations with matching settings.
-        """
-        # Sort models for consistent hashing
-        models_str = ",".join(sorted(cfg.celltypist_models))
-
+        """Generate deterministic hash of annotation configuration."""
+        methods_normalized = sorted(
+            [json.dumps(m.to_dict(), sort_keys=True) for m in cfg.methods]
+        )
         config_str = (
-            f"models={models_str}|"
-            f"singler={cfg.include_singler}|"
-            f"singler_ref={cfg.singler_reference}|"
-            f"sctype={cfg.include_sctype}|"
+            f"methods={'|'.join(methods_normalized)}|"
             f"min_agree={cfg.min_agreement}|"
             f"conf={cfg.confidence_threshold}|"
             f"fine={cfg.fine_grained}|"
             f"raw={raw_dataset_id}"
         )
-
         return hashlib.sha256(config_str.encode()).hexdigest()[:12]
 
     def _check_existing_annotations(
