@@ -37,39 +37,86 @@ from dapidl.pipeline.base import (
 
 
 @dataclass
+class MethodSpec:
+    """Declarative specification for a single annotation method."""
+
+    name: str
+    params: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "params": self.params}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> MethodSpec:
+        return cls(name=d["name"], params=d.get("params", {}))
+
+
+@dataclass
 class EnsembleAnnotationConfig:
     """Configuration for ensemble annotation step."""
 
-    # CellTypist models (multi-select in GUI)
-    celltypist_models: list[str] = field(
-        default_factory=lambda: [
-            "Cells_Adult_Breast.pkl",
-            "Immune_All_High.pkl",
-        ]
-    )
-
-    # Additional annotators
-    include_singler: bool = True
-    singler_reference: str = "blueprint"  # "blueprint", "hpca", "monaco"
-    include_sctype: bool = False
+    methods: list[MethodSpec] = field(default_factory=list)
 
     # Consensus settings
-    min_agreement: int = 2  # Minimum annotators agreeing
+    min_agreement: int = 2
     confidence_threshold: float = 0.5
     use_confidence_weighting: bool = True
 
     # Output settings
-    fine_grained: bool = True  # Use detailed cell types
+    fine_grained: bool = True
     create_derived_dataset: bool = True
-    parent_dataset_id: str | None = None  # For lineage
-
-    # Skip logic - check for existing annotations before running
+    parent_dataset_id: str | None = None
     skip_if_exists: bool = True
-
-    # S3 settings
     upload_to_s3: bool = True
     s3_bucket: str = "dapidl"
     s3_endpoint: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "methods": [m.to_dict() for m in self.methods],
+            "min_agreement": self.min_agreement,
+            "confidence_threshold": self.confidence_threshold,
+            "use_confidence_weighting": self.use_confidence_weighting,
+            "fine_grained": self.fine_grained,
+            "create_derived_dataset": self.create_derived_dataset,
+            "parent_dataset_id": self.parent_dataset_id,
+            "skip_if_exists": self.skip_if_exists,
+            "upload_to_s3": self.upload_to_s3,
+            "s3_bucket": self.s3_bucket,
+            "s3_endpoint": self.s3_endpoint,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> EnsembleAnnotationConfig:
+        methods_raw = d.get("methods", d.get("General/methods", "[]"))
+        if isinstance(methods_raw, str):
+            methods_raw = json.loads(methods_raw)
+        if isinstance(methods_raw, list) and all(isinstance(m, dict) for m in methods_raw):
+            methods = [MethodSpec.from_dict(m) for m in methods_raw]
+        else:
+            methods = []
+
+        def _pb(val: Any, default: bool = True) -> bool:
+            """Parse bool from string or bool (ClearML sends 'True'/'False' strings)."""
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, str):
+                return val.lower() in ("true", "1", "yes")
+            return bool(val) if val is not None else default
+
+        return cls(
+            methods=methods,
+            min_agreement=int(d.get("min_agreement", d.get("General/min_agreement", 2))),
+            confidence_threshold=float(d.get("confidence_threshold", d.get("General/confidence_threshold", 0.5))),
+            use_confidence_weighting=_pb(d.get("use_confidence_weighting", d.get("General/use_confidence_weighting", True))),
+            fine_grained=_pb(d.get("fine_grained", d.get("General/fine_grained", True))),
+            create_derived_dataset=_pb(d.get("create_derived_dataset", True)),
+            parent_dataset_id=d.get("parent_dataset_id"),
+            skip_if_exists=_pb(d.get("skip_if_exists", True)),
+            upload_to_s3=_pb(d.get("upload_to_s3", True)),
+            s3_bucket=str(d.get("s3_bucket", "dapidl")),
+            s3_endpoint=str(d.get("s3_endpoint", "")),
+        )
 
 
 class EnsembleAnnotationStep(PipelineStep):
