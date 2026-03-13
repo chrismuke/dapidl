@@ -3,11 +3,10 @@
 Step 2: Cell type annotation using ensemble of multiple methods.
 
 This step:
-1. Runs multiple CellTypist models
-2. Optionally runs SingleR (R-based reference mapping)
-3. Builds consensus across all methods
-4. Creates derived annotated dataset with ClearML lineage
-5. Uploads to S3 if configured
+1. Runs declaratively-configured annotation methods via the registry
+2. Builds consensus across all methods using polars-native voting
+3. Creates derived annotated dataset with ClearML lineage
+4. Uploads to S3 if configured
 
 The ensemble approach improves annotation quality by:
 - Reducing model-specific biases
@@ -122,15 +121,13 @@ class EnsembleAnnotationConfig:
 class EnsembleAnnotationStep(PipelineStep):
     """Step 2: Cell Type Prediction with Ensemble Annotation.
 
-    Runs multiple annotation methods and creates consensus:
-    1. CellTypist (multiple models)
-    2. SingleR (R-based reference mapping)
-    3. scType (marker-based, optional)
+    Runs declaratively-configured annotation methods via the registry
+    and builds consensus using polars-native voting.
 
     Creates a derived annotated dataset and registers it with ClearML.
     Uses parent_datasets for lineage to avoid re-uploading raw data.
 
-    Queue: default (CPU-bound - CellTypist and R are CPU-only)
+    Queue: default (CPU-bound - annotation methods are CPU-only)
     """
 
     name = "ensemble_annotation"
@@ -150,22 +147,10 @@ class EnsembleAnnotationStep(PipelineStep):
         return {
             "type": "object",
             "properties": {
-                "celltypist_models": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "default": ["Cells_Adult_Breast.pkl", "Immune_All_High.pkl"],
-                    "description": "CellTypist model names (comma-separated)",
-                },
-                "include_singler": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Include SingleR annotation (requires R)",
-                },
-                "singler_reference": {
+                "methods": {
                     "type": "string",
-                    "enum": ["blueprint", "hpca", "monaco"],
-                    "default": "blueprint",
-                    "description": "SingleR reference dataset",
+                    "default": "[]",
+                    "description": "JSON array of method specs: [{\"name\": \"celltypist\", \"params\": {\"model\": \"X.pkl\"}}]",
                 },
                 "min_agreement": {
                     "type": "integer",
@@ -298,7 +283,7 @@ class EnsembleAnnotationStep(PipelineStep):
                 if (
                     meta.get("config_hash") == config_hash
                     and meta.get("raw_dataset_id") == raw_dataset_id
-                    and meta.get("celltypist_models") == sorted(cfg.celltypist_models)
+                    and meta.get("methods") == [m.to_dict() for m in cfg.methods]
                 ):
                     logger.info(f"Found cached annotations: {ds['id']} ({ds['name']})")
                     return ds["id"]
@@ -376,13 +361,9 @@ class EnsembleAnnotationStep(PipelineStep):
                 with open(config_path) as f:
                     saved_config = json.load(f)
                 # Check key annotation parameters
-                config_matches = (
-                    sorted(saved_config.get("celltypist_models", []))
-                    == sorted(cfg.celltypist_models)
-                    and saved_config.get("include_singler") == cfg.include_singler
-                    and saved_config.get("singler_reference") == cfg.singler_reference
-                    and saved_config.get("fine_grained") == cfg.fine_grained
-                )
+                saved_methods = sorted([json.dumps(m, sort_keys=True) for m in saved_config.get("methods", [])])
+                current_methods = sorted([json.dumps(m.to_dict(), sort_keys=True) for m in cfg.methods])
+                config_matches = saved_methods == current_methods
                 if not config_matches:
                     logger.info("Config mismatch - re-running annotation")
 
@@ -447,45 +428,17 @@ class EnsembleAnnotationStep(PipelineStep):
         adata = self._load_expression(expression_path, data_path, platform)
         logger.info(f"Loaded expression data: {adata.n_obs} cells, {adata.n_vars} genes")
 
-        # Run annotation methods
-        all_predictions = []
+        # Validate all methods are available before doing anything
+        self._validate_methods(cfg.methods)
 
-        # 1. Run CellTypist models
-        for model_name in cfg.celltypist_models:
-            try:
-                result = self._run_celltypist(adata, model_name)
-                all_predictions.append(result)
-                logger.info(f"CellTypist {model_name}: {len(result['predictions'])} cells")
-            except Exception as e:
-                logger.warning(f"CellTypist {model_name} failed: {e}")
+        # Run all declared methods via registry
+        results = self._run_methods(cfg.methods, adata, data_path)
 
-        # 2. Run SingleR if enabled
-        if cfg.include_singler:
-            try:
-                result = self._run_singler(adata, cfg.singler_reference, data_path)
-                all_predictions.append(result)
-                logger.info(f"SingleR {cfg.singler_reference}: {len(result['predictions'])} cells")
-            except Exception as e:
-                logger.warning(f"SingleR failed: {e}")
-
-        # 3. Run scType if enabled
-        if cfg.include_sctype:
-            try:
-                result = self._run_sctype(adata)
-                all_predictions.append(result)
-                logger.info(f"scType: {len(result['predictions'])} cells")
-            except Exception as e:
-                logger.warning(f"scType failed: {e}")
-
-        if not all_predictions:
+        if not results:
             raise ValueError("No annotation methods succeeded")
 
         # Build consensus
-        consensus_df, stats = self._build_consensus(
-            all_predictions,
-            adata.obs.index.tolist(),
-            cfg,
-        )
+        consensus_df, stats = self._build_consensus(results, cfg)
         logger.info(f"Consensus built: {len(consensus_df)} cells with agreement")
 
         # Compute class mapping
@@ -501,13 +454,11 @@ class EnsembleAnnotationStep(PipelineStep):
         with open(config_path, "w") as f:
             json.dump(
                 {
-                    "celltypist_models": cfg.celltypist_models,
-                    "include_singler": cfg.include_singler,
-                    "singler_reference": cfg.singler_reference,
-                    "include_sctype": cfg.include_sctype,
-                    "fine_grained": cfg.fine_grained,
+                    "methods": [m.to_dict() for m in cfg.methods],
                     "min_agreement": cfg.min_agreement,
                     "confidence_threshold": cfg.confidence_threshold,
+                    "fine_grained": cfg.fine_grained,
+                    "use_confidence_weighting": cfg.use_confidence_weighting,
                 },
                 f,
                 indent=2,
@@ -549,7 +500,7 @@ class EnsembleAnnotationStep(PipelineStep):
                 "index_to_class": index_to_class,
                 "annotated_dataset_id": dataset_id,
                 "annotation_stats": stats,
-                "annotation_methods": [p["source"] for p in all_predictions],
+                "annotation_methods": [r.stats["source"] for r in results],
             },
         )
 
@@ -779,10 +730,7 @@ class EnsembleAnnotationStep(PipelineStep):
                 {
                     "config_hash": config_hash,
                     "raw_dataset_id": raw_dataset_id,
-                    "celltypist_models": sorted(cfg.celltypist_models),
-                    "include_singler": cfg.include_singler,
-                    "singler_reference": cfg.singler_reference,
-                    "include_sctype": cfg.include_sctype,
+                    "methods": [m.to_dict() for m in cfg.methods],
                     "min_agreement": cfg.min_agreement,
                     "confidence_threshold": cfg.confidence_threshold,
                     "fine_grained": cfg.fine_grained,
@@ -852,9 +800,7 @@ class EnsembleAnnotationStep(PipelineStep):
         # Connect parameters
         params = {
             "step_name": self.name,
-            "celltypist_models": ",".join(self.config.celltypist_models),
-            "include_singler": self.config.include_singler,
-            "singler_reference": self.config.singler_reference,
+            "methods": json.dumps([m.to_dict() for m in self.config.methods]),
             "min_agreement": self.config.min_agreement,
             "confidence_threshold": self.config.confidence_threshold,
             "fine_grained": self.config.fine_grained,
