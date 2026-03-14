@@ -748,7 +748,13 @@ class UnifiedPipelineController:
             SegmentationStep,
         )
         from dapidl.pipeline.steps.annotation import AnnotationStepConfig
+        from dapidl.pipeline.steps.cross_validation import CrossValidationConfig, CrossValidationStep
         from dapidl.pipeline.steps.data_loader import DataLoaderConfig
+        from dapidl.pipeline.steps.ensemble_annotation import (
+            EnsembleAnnotationConfig,
+            EnsembleAnnotationStep,
+            MethodSpec,
+        )
         from dapidl.pipeline.steps.lmdb_creation import LMDBCreationConfig, LMDBCreationStep
         from dapidl.pipeline.steps.segmentation import SegmentationStepConfig
         from dapidl.pipeline.steps.universal_training import (
@@ -796,15 +802,29 @@ class UnifiedPipelineController:
 
                 # Step 3: Annotation
                 logger.info(f"  Step 3: Annotation ({tissue_name})")
-                celltypist_models = [m["params"]["model"] for m in cfg.annotation.methods if m["name"] == "celltypist"]
-                annot_config = AnnotationStepConfig(
-                    annotator="celltypist",
-                    strategy="consensus",
-                    model_names=celltypist_models or ["Cells_Adult_Breast.pkl"],
-                    fine_grained=cfg.annotation.fine_grained,
-                )
-                annotation = AnnotationStep(annot_config)
-                annot_artifacts = annotation.execute(artifacts)
+                has_non_celltypist = any(m["name"] != "celltypist" for m in cfg.annotation.methods)
+                if has_non_celltypist and cfg.annotation.methods:
+                    # Use ensemble annotation with all declared methods
+                    ensemble_config = EnsembleAnnotationConfig(
+                        methods=[MethodSpec.from_dict(m) for m in cfg.annotation.methods],
+                        min_agreement=cfg.annotation.min_agreement,
+                        confidence_threshold=cfg.annotation.confidence_threshold,
+                        use_confidence_weighting=cfg.annotation.use_confidence_weighting,
+                        fine_grained=cfg.annotation.fine_grained,
+                    )
+                    ensemble_step = EnsembleAnnotationStep(ensemble_config)
+                    annot_artifacts = ensemble_step.execute(artifacts)
+                else:
+                    # CellTypist-only: use lightweight annotation step
+                    celltypist_models = [m["params"]["model"] for m in cfg.annotation.methods if m["name"] == "celltypist"]
+                    annot_config = AnnotationStepConfig(
+                        annotator="celltypist",
+                        strategy="consensus",
+                        model_names=celltypist_models or ["Cells_Adult_Breast.pkl"],
+                        fine_grained=cfg.annotation.fine_grained,
+                    )
+                    annotation = AnnotationStep(annot_config)
+                    annot_artifacts = annotation.execute(artifacts)
                 results[f"annotation_{tissue_name}"] = annot_artifacts.outputs
 
                 # Merge outputs — include tissue name and dataset_id for LMDB naming
@@ -872,10 +892,42 @@ class UnifiedPipelineController:
             model_path = training_artifacts.outputs.get("model_path")
             test_metrics = training_artifacts.outputs.get("test_metrics", {})
 
+            # Cross-modal Validation (optional)
+            validation_results = {}
+            if cfg.validation.enabled:
+                logger.info("=" * 60)
+                logger.info("Cross-Modal Validation")
+                logger.info("=" * 60)
+                try:
+                    cv_config = CrossValidationConfig(
+                        run_leiden_check=cfg.validation.run_leiden_check,
+                        run_dapi_check=cfg.validation.run_dapi_check,
+                        run_consensus_check=cfg.validation.run_consensus_check,
+                    )
+                    # Gather validation inputs from all pipeline results
+                    first_tissue = cfg.input.tissues[0].tissue
+                    val_inputs = {}
+                    # Merge outputs from annotation, lmdb, and training steps
+                    for key in [f"annotation_{first_tissue}", f"lmdb_{first_tissue}", "universal_training"]:
+                        val_inputs.update(results.get(key, {}))
+                    val_inputs["model_path"] = model_path
+                    # LMDB step outputs "lmdb_path" but CrossValidationStep expects "patches_path"
+                    if "lmdb_path" in val_inputs and "patches_path" not in val_inputs:
+                        val_inputs["patches_path"] = val_inputs["lmdb_path"]
+                    cv_step = CrossValidationStep(cv_config)
+                    cv_artifacts = cv_step.execute(StepArtifacts(inputs={}, outputs=val_inputs))
+                    validation_results = cv_artifacts.outputs.get("validation_results", {})
+                    logger.info(f"  Validation results: {validation_results}")
+                except Exception as e:
+                    logger.warning(f"Validation step failed (non-fatal): {e}")
+                    validation_results = {"error": str(e)}
+
             logger.info("=" * 60)
             logger.info("Universal Pipeline completed!")
             logger.info(f"  Model: {model_path}")
             logger.info(f"  Test F1: {test_metrics.get('f1_fine', 'N/A')}")
+            if validation_results:
+                logger.info(f"  Validation: {validation_results}")
             logger.info("=" * 60)
 
             return PipelineResult(
