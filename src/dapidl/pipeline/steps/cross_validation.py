@@ -241,8 +241,9 @@ class CrossValidationStep(PipelineStep):
                 )
                 results["leiden"] = leiden_results
 
-                if leiden_results.get("best_ari", 0) < cfg.min_ari_threshold:
-                    warning = f"Low Leiden ARI: {leiden_results['best_ari']:.3f}"
+                best_ari = leiden_results.get("best_ari")
+                if best_ari is not None and best_ari < cfg.min_ari_threshold:
+                    warning = f"Low Leiden ARI: {best_ari:.3f}"
                     results["warnings"].append(warning)
                     logger.warning(warning)
             except Exception as e:
@@ -294,12 +295,13 @@ class CrossValidationStep(PipelineStep):
                 )
                 results["unsupervised"] = unsupervised_results
 
-                if unsupervised_results.get("ari", 0) < cfg.min_unsupervised_ari:
-                    warning = f"Low unsupervised ARI: {unsupervised_results['ari']:.3f} (weak morphological support)"
+                unsup_ari = unsupervised_results.get("ari")
+                if unsup_ari is not None and unsup_ari < cfg.min_unsupervised_ari:
+                    warning = f"Low unsupervised ARI: {unsup_ari:.3f} (weak morphological support)"
                     results["warnings"].append(warning)
                     logger.warning(warning)
-                else:
-                    logger.info(f"Unsupervised ARI: {unsupervised_results['ari']:.3f} - {unsupervised_results['interpretation']}")
+                elif unsup_ari is not None:
+                    logger.info(f"Unsupervised ARI: {unsup_ari:.3f} - {unsupervised_results['interpretation']}")
 
             except Exception as e:
                 logger.warning(f"Unsupervised check failed: {e}")
@@ -385,9 +387,10 @@ class CrossValidationStep(PipelineStep):
             import scanpy as sc
 
             # Load expression data
-            if expression_path.suffix in [".h5ad", ".h5"]:
+            if expression_path.suffix == ".h5ad":
                 adata = ad.read_h5ad(expression_path)
             else:
+                # 10x HDF5 format (cell_feature_matrix.h5 etc.)
                 adata = sc.read_10x_h5(expression_path)
 
             # Add labels
@@ -446,73 +449,64 @@ class CrossValidationStep(PipelineStep):
     ) -> dict:
         """Run DAPI model check."""
         import torch.nn.functional as F
-        from dapidl.models.classifier import CellTypeClassifier
 
-        # Load model
+        # Load model — try HierarchicalClassifier first (current training output),
+        # fall back to CellTypeClassifier (legacy models)
         logger.info(f"Loading model from {model_path}")
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        model = CellTypeClassifier.from_checkpoint(model_path)
+        try:
+            from dapidl.models.hierarchical import HierarchicalClassifier
+            model = HierarchicalClassifier.from_checkpoint(str(model_path))
+            logger.info("Loaded as HierarchicalClassifier")
+        except Exception:
+            from dapidl.models.classifier import CellTypeClassifier
+            model = CellTypeClassifier.from_checkpoint(str(model_path))
+            logger.info("Loaded as CellTypeClassifier")
+
         model.to(device)
-        model.set_mode_inference() if hasattr(model, 'set_mode_inference') else None
+        if hasattr(model, 'set_mode_inference'):
+            model.set_mode_inference()
 
         # Load patches - support both LMDB and Zarr formats
         logger.info(f"Loading patches from {patches_path}")
 
-        is_lmdb = (patches_path / "data.mdb").exists()
+        # LMDB may be at patches_path/data.mdb or patches_path/patches.lmdb/data.mdb
+        lmdb_dir = patches_path
+        if (patches_path / "patches.lmdb" / "data.mdb").exists():
+            lmdb_dir = patches_path / "patches.lmdb"
+        is_lmdb = (lmdb_dir / "data.mdb").exists()
         if is_lmdb:
-            import lmdb
             import json as json_module
+            import struct
 
-            # Load LMDB metadata (try JSON first, fall back to parquet)
+            import lmdb
+
+            # Load metadata from JSON (in dataset dir, not lmdb subdir)
             metadata_json = patches_path / "metadata.json"
-            metadata_parquet = patches_path.parent / "metadata.parquet"
-
             if metadata_json.exists():
                 with open(metadata_json) as f:
                     lmdb_meta = json_module.load(f)
-                patch_shape = tuple(lmdb_meta["patch_shape"])
-                dtype = np.dtype(lmdb_meta["dtype"])
+                patch_size = lmdb_meta.get("patch_size", 128)
                 n_samples = lmdb_meta["n_samples"]
-            elif metadata_parquet.exists():
-                # Infer from parquet metadata and LMDB data
-                meta_df = pl.read_parquet(metadata_parquet)
-                n_samples = len(meta_df)
-
-                # Probe first patch to detect shape and dtype
-                with lmdb.open(str(patches_path), readonly=True, lock=False).begin() as txn:
-                    probe_data = txn.get(b"00000000")
-                    if probe_data is None:
-                        raise ValueError("LMDB is empty")
-                    byte_size = len(probe_data)
-
-                # Determine dtype and shape based on byte size
-                if byte_size == 128 * 128 * 4:  # float32
-                    dtype = np.float32
-                    patch_shape = (128, 128)
-                elif byte_size == 256 * 256 * 1:  # uint8 256x256
-                    dtype = np.uint8
-                    patch_shape = (256, 256)
-                elif byte_size == 128 * 128 * 2:  # uint16
-                    dtype = np.uint16
-                    patch_shape = (128, 128)
-                else:
-                    raise ValueError(f"Unknown LMDB patch format: {byte_size} bytes")
-
-                logger.info(f"Detected from LMDB: patch_shape={patch_shape}, dtype={dtype}")
             else:
-                raise FileNotFoundError(f"No metadata found for LMDB at {patches_path}")
+                patch_size = 128
+                n_samples = len(celltypist_labels)
 
-            # Open LMDB
-            env = lmdb.open(str(patches_path), readonly=True, lock=False)
+            patch_shape = (patch_size, patch_size)
+
+            # Open LMDB — format: key=big-endian uint64, value=int64 label + uint16 patch
+            env = lmdb.open(str(lmdb_dir), readonly=True, lock=False)
+            label_header_size = 8  # int64 label prefix
 
             def get_lmdb_patch(idx: int) -> np.ndarray:
                 with env.begin() as txn:
-                    key = f"{idx:08d}".encode()
+                    key = struct.pack(">Q", idx)
                     data = txn.get(key)
                     if data is None:
                         raise KeyError(f"Patch {idx} not found in LMDB")
-                    patch = np.frombuffer(data, dtype=dtype).reshape(patch_shape)
+                    # Skip 8-byte label header, read uint16 patch
+                    patch = np.frombuffer(data[label_header_size:], dtype=np.uint16).reshape(patch_shape)
                 return patch
 
             dataset = type("LMDBDataset", (), {
@@ -554,7 +548,7 @@ class CrossValidationStep(PipelineStep):
             # A.Normalize(mean=0.5, std=0.25, max_pixel_value=1.0)
             patch = (patch - 0.5) / 0.25
 
-            return torch.from_numpy(patch)
+            return torch.from_numpy(patch.astype(np.float32))
 
         logger.info(f"Running inference on {n_samples} samples...")
 
@@ -573,7 +567,12 @@ class CrossValidationStep(PipelineStep):
                 if batch.ndim == 3:
                     batch = batch.unsqueeze(1)
 
-                logits = model(batch)
+                output = model(batch)
+                # HierarchicalClassifier returns HierarchicalOutput; use coarse_logits
+                if hasattr(output, 'coarse_logits'):
+                    logits = output.coarse_logits
+                else:
+                    logits = output
                 probs = F.softmax(logits, dim=1)
                 preds = probs.argmax(dim=1)
 
@@ -659,45 +658,42 @@ class CrossValidationStep(PipelineStep):
         import lmdb
         from dapidl.validation import unsupervised_morphology_validation
 
-        # Load patches from LMDB
-        is_lmdb = (patches_path / "data.mdb").exists()
+        # Load patches from LMDB (may be at patches_path/ or patches_path/patches.lmdb/)
+        lmdb_dir = patches_path
+        if (patches_path / "patches.lmdb" / "data.mdb").exists():
+            lmdb_dir = patches_path / "patches.lmdb"
+        is_lmdb = (lmdb_dir / "data.mdb").exists()
         if not is_lmdb:
             logger.warning("Unsupervised check requires LMDB patches")
             return {"error": "LMDB patches not found"}
 
-        # Detect patch format
-        with lmdb.open(str(patches_path), readonly=True, lock=False).begin() as txn:
-            probe_data = txn.get(b"00000000")
-            if probe_data is None:
-                return {"error": "LMDB is empty"}
-            byte_size = len(probe_data)
+        import struct
 
-        # Determine dtype and shape
-        if byte_size == 128 * 128 * 4:  # float32
-            dtype = np.float32
-            patch_shape = (128, 128)
-        elif byte_size == 256 * 256 * 1:  # uint8 256x256
-            dtype = np.uint8
-            patch_shape = (256, 256)
-        elif byte_size == 128 * 128 * 2:  # uint16
-            dtype = np.uint16
-            patch_shape = (128, 128)
+        # Load metadata for patch size
+        metadata_json = patches_path / "metadata.json"
+        if metadata_json.exists():
+            import json as json_module
+            with open(metadata_json) as f:
+                lmdb_meta = json_module.load(f)
+            patch_size = lmdb_meta.get("patch_size", 128)
         else:
-            return {"error": f"Unknown patch format: {byte_size} bytes"}
+            patch_size = 128
+        patch_shape = (patch_size, patch_size)
+        label_header_size = 8  # int64 label prefix
 
-        # Load patches
+        # Load patches — format: key=big-endian uint64, value=int64 label + uint16 patch
         n_samples = len(celltypist_labels)
         logger.info(f"Loading {n_samples} patches from LMDB...")
 
-        env = lmdb.open(str(patches_path), readonly=True, lock=False)
+        env = lmdb.open(str(lmdb_dir), readonly=True, lock=False)
         patches = []
         with env.begin() as txn:
             for i in range(n_samples):
-                key = f"{i:08d}".encode()
+                key = struct.pack(">Q", i)
                 data = txn.get(key)
                 if data is None:
                     break
-                patch = np.frombuffer(data, dtype=dtype).reshape(patch_shape)
+                patch = np.frombuffer(data[label_header_size:], dtype=np.uint16).reshape(patch_shape)
                 patches.append(patch)
         env.close()
 
