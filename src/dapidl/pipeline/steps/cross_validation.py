@@ -517,10 +517,46 @@ class CrossValidationStep(PipelineStep):
             from dapidl.data.dataset import DAPIDLDataset
             dataset = DAPIDLDataset(patches_path, transform=None)
 
-        # Get class names
-        class_names = [None] * len(class_mapping)
-        for name, idx in class_mapping.items():
-            class_names[idx] = name
+        # Build label mapping — for hierarchical models, map raw annotation
+        # labels to coarse prediction space using the ontology (same as training);
+        # for standard models, use class_mapping directly
+        is_hierarchical = hasattr(model, 'hierarchy_config') and model.hierarchy_config is not None
+        if is_hierarchical:
+            hcfg = model.hierarchy_config
+            coarse_to_idx = {name: i for i, name in enumerate(hcfg.coarse_names)}
+
+            # Build mapping from annotation labels → coarse prediction index.
+            # Labels may come from 'broad_category' column (already coarse names like
+            # "Immune") or 'cell_type' column (fine-grained names like "T cells").
+            # Handle both by mapping coarse names directly + fine names via ontology.
+            raw_name_to_coarse = {}
+
+            # Direct coarse name mapping (e.g. "Immune" → 2)
+            for name, idx in coarse_to_idx.items():
+                raw_name_to_coarse[name] = idx
+
+            # Fine-grained → coarse via ontology (mirrors training's hierarchy mapping)
+            try:
+                from dapidl.ontology import map_label, get_broad_category
+                for raw_name in class_mapping.keys():
+                    if raw_name not in raw_name_to_coarse:
+                        cl_id = map_label(raw_name)
+                        if cl_id != "UNMAPPED":
+                            broad = get_broad_category(cl_id)
+                            if broad and broad in coarse_to_idx:
+                                raw_name_to_coarse[raw_name] = coarse_to_idx[broad]
+            except ImportError:
+                logger.warning("Ontology not available; only direct coarse name matching")
+
+            comparison_names = list(hcfg.coarse_names)
+            logger.info(
+                f"Hierarchical model: {len(raw_name_to_coarse)} label mappings "
+                f"→ {len(comparison_names)} coarse classes"
+            )
+        else:
+            comparison_names = [None] * len(class_mapping)
+            for name, idx in class_mapping.items():
+                comparison_names[idx] = name
 
         # Run inference
         all_probs = []
@@ -589,16 +625,24 @@ class CrossValidationStep(PipelineStep):
         # Confidence scores
         dapi_confidence = all_probs.max(axis=1)
 
-        # Convert labels to indices
-        label_to_idx = {name: i for i, name in enumerate(class_names)}
-        ct_indices = np.array([label_to_idx.get(str(l), -1) for l in celltypist_labels[:n_samples]])
+        # Convert annotation labels to prediction-space indices
+        if is_hierarchical:
+            # Map raw annotation labels → coarse indices via ontology
+            ct_indices = np.array([
+                raw_name_to_coarse.get(str(l), -1) for l in celltypist_labels[:n_samples]
+            ])
+            n_mapped = (ct_indices >= 0).sum()
+            logger.info(f"Mapped {n_mapped}/{n_samples} labels to coarse indices")
+        else:
+            label_to_idx = {name: i for i, name in enumerate(comparison_names) if name is not None}
+            ct_indices = np.array([label_to_idx.get(str(l), -1) for l in celltypist_labels[:n_samples]])
 
         # Agreement
         valid_mask = ct_indices >= 0
         agreement_mask = all_preds[valid_mask] == ct_indices[valid_mask]
-        agreement_rate = agreement_mask.mean()
+        agreement_rate = float(agreement_mask.mean()) if valid_mask.sum() > 0 else 0.0
 
-        logger.info(f"DAPI Agreement Rate: {agreement_rate:.1%}")
+        logger.info(f"DAPI Agreement Rate: {agreement_rate:.1%} ({valid_mask.sum()} valid samples)")
 
         # Cross-modal correlation
         valid_ct_conf = celltypist_confidence[:n_samples][valid_mask]
@@ -611,14 +655,16 @@ class CrossValidationStep(PipelineStep):
 
         logger.info(f"Confidence correlation: {correlation:.3f}")
 
-        # Per-class agreement
+        # Per-class agreement using comparison-space names
         per_class = {}
-        for name, idx in label_to_idx.items():
+        for idx, name in enumerate(comparison_names):
+            if name is None:
+                continue
             mask = ct_indices == idx
             if mask.sum() > 0:
                 class_agr = (all_preds[mask] == idx).mean()
                 per_class[name] = float(class_agr)
-                logger.info(f"  {name}: {class_agr:.1%}")
+                logger.info(f"  {name}: {class_agr:.1%} ({mask.sum()} samples)")
 
         return {
             "agreement_rate": float(agreement_rate),
