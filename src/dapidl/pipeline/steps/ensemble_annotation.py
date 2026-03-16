@@ -644,7 +644,12 @@ class EnsembleAnnotationStep(PipelineStep):
             ])
         )
 
-        consensus = consensus.filter(pl.col("n_agreement") >= cfg.min_agreement)
+        # When hierarchical filtering is enabled, defer ALL filtering to
+        # _add_hierarchical_confidence which evaluates agreement at each
+        # hierarchy level independently. This prevents cells with coarse-level
+        # agreement from being dropped before hierarchical evaluation.
+        if not cfg.hierarchical_filtering:
+            consensus = consensus.filter(pl.col("n_agreement") >= cfg.min_agreement)
 
         n_total = all_votes.select("cell_id").n_unique()
         n_unanimous = consensus.filter(pl.col("n_agreement") == pl.col("n_votes")).height
@@ -662,6 +667,9 @@ class EnsembleAnnotationStep(PipelineStep):
             consensus = self._add_hierarchical_confidence(
                 consensus, all_votes, cfg
             )
+            # Update stats to reflect hierarchical filtering
+            stats["annotated_cells"] = consensus.height
+            stats["insufficient_votes"] = n_total - consensus.height
 
         return consensus, stats
 
@@ -684,9 +692,34 @@ class EnsembleAnnotationStep(PipelineStep):
           0 = coarse agreement passes threshold (but medium doesn't)
           Cell is excluded if coarse agreement fails threshold.
         """
+        import math
+
         from dapidl.ontology.cl_mapper import get_mapper
 
         mapper = get_mapper()
+
+        # Auto-scale thresholds based on actual number of methods
+        # Default thresholds (4/3/2) are designed for 5 methods → ratios: 0.8/0.6/0.4
+        # For fewer methods, apply proportional scaling to maintain relative strictness
+        n_methods = all_votes.select("source").n_unique()
+        reference_n = cfg.fine_agreement_threshold + 1  # fine=4 implies 5+ methods
+        if n_methods < reference_n:
+            fine_thresh = max(2, math.ceil(n_methods * cfg.fine_agreement_threshold / reference_n))
+            medium_thresh = max(1, math.ceil(n_methods * cfg.medium_agreement_threshold / reference_n))
+            coarse_thresh = max(1, math.ceil(n_methods * cfg.coarse_agreement_threshold / reference_n))
+            logger.info(
+                f"Auto-scaled thresholds for {n_methods} methods "
+                f"(reference: {reference_n}): fine={fine_thresh}, "
+                f"medium={medium_thresh}, coarse={coarse_thresh}"
+            )
+        else:
+            fine_thresh = cfg.fine_agreement_threshold
+            medium_thresh = cfg.medium_agreement_threshold
+            coarse_thresh = cfg.coarse_agreement_threshold
+            logger.info(
+                f"Using configured thresholds for {n_methods} methods: "
+                f"fine={fine_thresh}, medium={medium_thresh}, coarse={coarse_thresh}"
+            )
 
         # Map each vote's predicted_type to medium (coarse_category) and coarse (broad_category)
         unique_types = all_votes["predicted_type"].unique().to_list()
@@ -752,11 +785,7 @@ class EnsembleAnnotationStep(PipelineStep):
             pl.col("predicted_type").replace_strict(type_to_medium, default="Unknown").alias("winner_medium"),
         )
 
-        # Determine confidence_level per cell
-        fine_thresh = cfg.fine_agreement_threshold
-        medium_thresh = cfg.medium_agreement_threshold
-        coarse_thresh = cfg.coarse_agreement_threshold
-
+        # Determine confidence_level per cell (thresholds set by auto-scaling above)
         consensus = consensus.with_columns(
             pl.when(
                 # Level 2: fine passes AND fine winner is consistent with medium winner

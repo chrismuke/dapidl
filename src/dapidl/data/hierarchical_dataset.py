@@ -161,6 +161,11 @@ class HierarchicalLabels:
         """
         name_lower = name.lower()
 
+        # Handle "Unknown" explicitly before keyword matching
+        # (prevents false positives like "nk" matching "unknown")
+        if "unknown" in name_lower:
+            return "Unknown"
+
         # Immune keywords
         immune_keywords = [
             "t_cell", "t cell", "b_cell", "b cell", "macrophage", "monocyte",

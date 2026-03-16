@@ -221,13 +221,17 @@ class LMDBCreationStep(PipelineStep):
             class_mapping = {}
             logger.warning("No class mapping provided, building from annotations")
 
-        # If class_mapping is empty or we're using CL annotations, build from unique labels
-        if not class_mapping or using_cl_annotations:
-            # Determine label column for building mapping
+        # If class_mapping is empty, uses CL annotations, or has coarse_consensus
+        # available (which changes the label column), rebuild from unique labels
+        has_hierarchical = "coarse_consensus" in annotations_df.columns
+        if not class_mapping or using_cl_annotations or has_hierarchical:
+            # Determine label column for building mapping (same priority as label_col)
             if "cl_name" in annotations_df.columns:
                 label_col_for_mapping = "cl_name"
             elif "cl_category" in annotations_df.columns:
                 label_col_for_mapping = "cl_category"
+            elif has_hierarchical:
+                label_col_for_mapping = "coarse_consensus"
             elif "predicted_type" in annotations_df.columns:
                 label_col_for_mapping = "predicted_type"
             else:
@@ -492,15 +496,20 @@ class LMDBCreationStep(PipelineStep):
 
         # Determine label column - prefer CL-standardized columns
         if cfg.output_format == "lmdb":
-            # Priority: cl_name (standardized) > cl_category > predicted_type > broad_category
+            # Priority: cl_name > cl_category > coarse_consensus > predicted_type > broad_category
+            # coarse_consensus reflects independent coarse-level agreement across methods,
+            # which is more accurate than broad_category (derived from fine-level winner)
             if "cl_name" in annotations_df.columns:
                 label_col = "cl_name"
                 logger.info("Using CL-standardized labels (cl_name)")
             elif "cl_category" in annotations_df.columns:
                 label_col = "cl_category"
                 logger.info("Using CL category labels (cl_category)")
+            elif "coarse_consensus" in annotations_df.columns:
+                label_col = "coarse_consensus"
+                logger.info("Using coarse_consensus labels (hierarchical agreement)")
             elif "predicted_type" in annotations_df.columns and any(
-                k not in ["Epithelial", "Immune", "Stromal", "Endothelial", "Other"]
+                k not in ["Epithelial", "Immune", "Stromal", "Endothelial", "Unknown", "Other"]
                 for k in class_mapping.keys()
             ):
                 label_col = "predicted_type"

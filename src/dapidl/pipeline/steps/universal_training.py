@@ -755,6 +755,9 @@ class UniversalDAPITrainingStep(PipelineStep):
             loss_fn.medium_weight = loss_weights["medium_weight"]
             loss_fn.fine_weight = loss_weights["fine_weight"]
 
+            # Activate only curriculum-selected heads (skip unused head forward passes)
+            model.set_active_heads(active_heads)
+
             # Train one epoch
             train_loss = self._train_epoch(
                 model, train_loader, loss_fn, optimizer, scaler, device, active_heads, cfg.use_amp
@@ -887,6 +890,8 @@ class UniversalDAPITrainingStep(PipelineStep):
             json.dump(history, f, indent=2)
 
         # Test assessment
+        # Enable all heads for final test assessment
+        model.set_active_heads({"coarse", "medium", "fine"})
         test_metrics, tissue_metrics = self._run_test_assessment(
             model, test_loader, device, hierarchy_config, train_dataset
         )
@@ -1041,20 +1046,35 @@ class UniversalDAPITrainingStep(PipelineStep):
                     all_preds["fine"].extend(fine_preds.cpu().numpy())
                     all_labels["fine"].extend(fine_targets.cpu().numpy())
 
-        # Compute F1 scores
+        # Compute F1 scores (filter out -100 masked targets from confidence filtering)
+        import numpy as np
         metrics = {}
-        # Coarse is always active
+        # Coarse is always active (never masked)
         metrics["f1_coarse"] = f1_score(
             all_labels["coarse"], all_preds["coarse"], average="macro", zero_division=0
         )
         if "medium" in active_heads and all_labels["medium"]:
-            metrics["f1_medium"] = f1_score(
-                all_labels["medium"], all_preds["medium"], average="macro", zero_division=0
-            )
+            medium_labels_arr = np.array(all_labels["medium"])
+            medium_preds_arr = np.array(all_preds["medium"])
+            valid = medium_labels_arr != -100
+            if valid.any():
+                metrics["f1_medium"] = f1_score(
+                    medium_labels_arr[valid], medium_preds_arr[valid], average="macro", zero_division=0
+                )
+                metrics["medium_valid_samples"] = int(valid.sum())
+            else:
+                metrics["f1_medium"] = 0.0
         if "fine" in active_heads and all_labels["fine"]:
-            metrics["f1_fine"] = f1_score(
-                all_labels["fine"], all_preds["fine"], average="macro", zero_division=0
-            )
+            fine_labels_arr = np.array(all_labels["fine"])
+            fine_preds_arr = np.array(all_preds["fine"])
+            valid = fine_labels_arr != -100
+            if valid.any():
+                metrics["f1_fine"] = f1_score(
+                    fine_labels_arr[valid], fine_preds_arr[valid], average="macro", zero_division=0
+                )
+                metrics["fine_valid_samples"] = int(valid.sum())
+            else:
+                metrics["f1_fine"] = 0.0
 
         return total_loss / len(loader), metrics
 
@@ -1094,25 +1114,33 @@ class UniversalDAPITrainingStep(PipelineStep):
 
         all_tissue_indices = np.array(all_tissue_indices)
 
-        # Overall metrics
+        # Overall metrics (filter out -100 masked targets from confidence filtering)
         test_metrics = {}
         for level in ["coarse", "medium", "fine"]:
-            if all_labels[level]:  # Only compute if we have predictions
-                test_metrics[f"f1_{level}"] = f1_score(
-                    all_labels[level], all_preds[level], average="macro", zero_division=0
-                )
-                test_metrics[f"accuracy_{level}"] = accuracy_score(
-                    all_labels[level], all_preds[level]
-                )
+            if all_labels[level]:
+                labels_arr = np.array(all_labels[level])
+                preds_arr = np.array(all_preds[level])
+                valid = labels_arr != -100
+                if valid.any():
+                    test_metrics[f"f1_{level}"] = f1_score(
+                        labels_arr[valid], preds_arr[valid], average="macro", zero_division=0
+                    )
+                    test_metrics[f"accuracy_{level}"] = accuracy_score(
+                        labels_arr[valid], preds_arr[valid]
+                    )
+                    test_metrics[f"{level}_valid_samples"] = int(valid.sum())
+                else:
+                    test_metrics[f"f1_{level}"] = 0.0
+                    test_metrics[f"accuracy_{level}"] = 0.0
             else:
                 test_metrics[f"f1_{level}"] = 0.0
                 test_metrics[f"accuracy_{level}"] = 0.0
 
         logger.info(f"Test F1 coarse: {test_metrics['f1_coarse']:.4f}")
         if all_labels["medium"]:
-            logger.info(f"Test F1 medium: {test_metrics['f1_medium']:.4f}")
+            logger.info(f"Test F1 medium: {test_metrics.get('f1_medium', 0):.4f}")
         if all_labels["fine"]:
-            logger.info(f"Test F1 fine: {test_metrics['f1_fine']:.4f}")
+            logger.info(f"Test F1 fine: {test_metrics.get('f1_fine', 0):.4f}")
 
         # Per-tissue metrics
         tissue_metrics = {}
@@ -1122,12 +1150,14 @@ class UniversalDAPITrainingStep(PipelineStep):
                 tissue_key = f"{ds_config.tissue}/{ds_config.platform}"
                 tissue_metrics[tissue_key] = {}
                 for level in ["coarse", "medium", "fine"]:
-                    if all_labels[level]:  # Only if we have predictions for this level
+                    if all_labels[level]:
                         preds_t = np.array(all_preds[level])[mask]
                         labels_t = np.array(all_labels[level])[mask]
-                        tissue_metrics[tissue_key][f"f1_{level}"] = f1_score(
-                            labels_t, preds_t, average="macro", zero_division=0
-                        )
+                        valid_t = labels_t != -100
+                        if valid_t.any():
+                            tissue_metrics[tissue_key][f"f1_{level}"] = f1_score(
+                                labels_t[valid_t], preds_t[valid_t], average="macro", zero_division=0
+                            )
                 tissue_metrics[tissue_key]["n_samples"] = int(mask.sum())
 
                 # Log the finest available level
