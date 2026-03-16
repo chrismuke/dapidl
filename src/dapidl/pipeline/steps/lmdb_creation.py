@@ -246,11 +246,28 @@ class LMDBCreationStep(PipelineStep):
 
         # 3. Determine output directory — NEVER write inside raw data
         # Raw datasets are immutable and backed up on S3
+        # Directory name encodes all config that affects content, so different
+        # configs (e.g. with/without confidence filtering) never collide.
         derived_root = Path(os.environ.get("DAPIDL_DERIVED_DATA", "/mnt/work/datasets/derived"))
         tissue = inputs.get("tissue", "unknown")
         dataset_id_str = inputs.get("dataset_id", "")
         id_suffix = dataset_id_str[:8] if dataset_id_str else "local"
-        dataset_dir_name = f"xenium-{tissue}-{id_suffix}-finegrained-p{cfg.patch_size}"
+
+        # Build suffix from config options that change dataset content
+        config_parts = []
+        # Confidence filtering changes which cells are included
+        if inputs.get("confidence_filtering_skipped") is False:
+            cf_min = inputs.get("confidence_stats", {}).get("min_confidence", "")
+            config_parts.append(f"cf{cf_min}" if cf_min else "cf")
+        # Normalization method changes pixel values
+        if cfg.normalization_method != "adaptive":
+            config_parts.append(cfg.normalization_method)
+        # Edge margin changes which cells are included
+        if cfg.edge_margin_px != 64:
+            config_parts.append(f"em{cfg.edge_margin_px}")
+
+        config_suffix = "-" + "-".join(config_parts) if config_parts else ""
+        dataset_dir_name = f"xenium-{tissue}-{id_suffix}-finegrained-p{cfg.patch_size}{config_suffix}"
         output_dir = derived_root / dataset_dir_name
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -504,6 +521,8 @@ class LMDBCreationStep(PipelineStep):
         n_patches = 0
         class_counts = {}
         all_labels = []
+        all_confidence_levels = []
+        has_confidence_level = "confidence_level" in annotations_df.columns
 
         with env.begin(write=True) as txn:
             for row in annotations_df.iter_rows(named=True):
@@ -547,6 +566,12 @@ class LMDBCreationStep(PipelineStep):
                 n_patches += 1
                 all_labels.append(label_idx)
 
+                # Track confidence level (default 2 = all levels supervised)
+                if has_confidence_level:
+                    all_confidence_levels.append(int(row["confidence_level"]))
+                else:
+                    all_confidence_levels.append(2)
+
                 # Count classes
                 class_counts[label_str] = class_counts.get(label_str, 0) + 1
 
@@ -569,11 +594,21 @@ class LMDBCreationStep(PipelineStep):
         np.save(dataset_dir / "labels.npy", labels_array)
         logger.info(f"Saved labels.npy: {len(labels_array)} labels")
 
+        # 1b. confidence_levels.npy - per-patch confidence level (0=coarse, 1=medium, 2=fine)
+        confidence_array = np.array(all_confidence_levels, dtype=np.int8)
+        np.save(dataset_dir / "confidence_levels.npy", confidence_array)
+        cl_counts = {int(k): int(v) for k, v in zip(*np.unique(confidence_array, return_counts=True))}
+        logger.info(
+            f"Saved confidence_levels.npy: {len(confidence_array)} values "
+            f"(fine={cl_counts.get(2, 0)}, medium={cl_counts.get(1, 0)}, coarse={cl_counts.get(0, 0)})"
+        )
+
         # 2. class_mapping.json - flat dict of class_name -> index
         with open(dataset_dir / "class_mapping.json", "w") as f:
             json.dump(class_mapping, f, indent=2)
 
         # 3. metadata.json
+        total_cl = max(len(confidence_array), 1)
         metadata_out = {
             "n_samples": n_patches,
             "n_classes": len(class_mapping),
@@ -581,6 +616,16 @@ class LMDBCreationStep(PipelineStep):
             "normalization": cfg.normalization_method,
             "platform": platform,
             "class_counts": class_counts,
+            "confidence_distribution": {
+                "coarse_only": cl_counts.get(0, 0),
+                "coarse_medium": cl_counts.get(1, 0),
+                "all_levels": cl_counts.get(2, 0),
+            },
+            "retention_by_level": {
+                "coarse": sum(v for k, v in cl_counts.items() if k >= 0) / total_cl,
+                "medium": sum(v for k, v in cl_counts.items() if k >= 1) / total_cl,
+                "fine": cl_counts.get(2, 0) / total_cl,
+            },
         }
         with open(dataset_dir / "metadata.json", "w") as f:
             json.dump(metadata_out, f, indent=2)

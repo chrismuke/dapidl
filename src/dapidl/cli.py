@@ -2352,6 +2352,11 @@ def clearml_pipeline_group() -> None:
     help="Use fine-grained cell types (~20 classes) instead of broad categories (3 classes)",
 )
 @click.option(
+    "--filter-confidence",
+    is_flag=True,
+    help="Filter low-confidence annotations before LMDB creation (GT-free quality gate)",
+)
+@click.option(
     "--validate",
     is_flag=True,
     help="Run cross-modal validation after training",
@@ -2401,6 +2406,7 @@ def run_pipeline(
     project: str,
     skip_training: bool,
     fine_grained: bool,
+    filter_confidence: bool,
     validate: bool,
     ground_truth_file: str | None,
     recipe: str,
@@ -2443,6 +2449,7 @@ def run_pipeline(
     from dapidl.pipeline.unified_config import (
         AnnotationConfig,
         BackboneType,
+        ConfidenceFilteringConfig,
         DAPIDLPipelineConfig,
         ExecutionConfig,
         LMDBConfig,
@@ -2477,6 +2484,7 @@ def run_pipeline(
         ),
         lmdb=LMDBConfig(patch_sizes=[int(patch_size)]),
         execution=ExecutionConfig(execute_remotely=not local, skip_training=skip_training, gpu_queue=gpu_queue, default_queue=default_queue, cache_data_steps=not no_cache),
+        confidence_filtering=ConfidenceFilteringConfig(enabled=filter_confidence),
         validation=ValidationConfig(enabled=validate),
     )
 

@@ -350,6 +350,8 @@ class HierarchicalTrainer:
         medium_correct = 0
         fine_correct = 0
         total = 0
+        medium_total = 0
+        fine_total = 0
 
         pbar = tqdm(self.train_loader, desc=f"Training ({self.curriculum.get_phase_name(epoch)})", leave=False)
         for images, labels in pbar:
@@ -385,12 +387,18 @@ class HierarchicalTrainer:
             total_loss += loss.item() * images.size(0)
             total += images.size(0)
 
-            # Accuracy at each level
+            # Accuracy at each level (filter out -100 masked targets)
             coarse_correct += (output.coarse_logits.argmax(1) == coarse_labels).sum().item()
             if output.medium_logits is not None and medium_labels is not None:
-                medium_correct += (output.medium_logits.argmax(1) == medium_labels).sum().item()
+                valid_medium = medium_labels != -100
+                if valid_medium.any():
+                    medium_correct += (output.medium_logits.argmax(1)[valid_medium] == medium_labels[valid_medium]).sum().item()
+                    medium_total += valid_medium.sum().item()
             if output.fine_logits is not None and fine_labels is not None:
-                fine_correct += (output.fine_logits.argmax(1) == fine_labels).sum().item()
+                valid_fine = fine_labels != -100
+                if valid_fine.any():
+                    fine_correct += (output.fine_logits.argmax(1)[valid_fine] == fine_labels[valid_fine]).sum().item()
+                    fine_total += valid_fine.sum().item()
 
             pbar.set_postfix({"loss": loss.item(), "coarse_acc": coarse_correct / total})
 
@@ -398,10 +406,12 @@ class HierarchicalTrainer:
             "train_loss": total_loss / total,
             "train_coarse_acc": coarse_correct / total,
         }
-        if "medium" in active_heads:
-            metrics["train_medium_acc"] = medium_correct / total
-        if "fine" in active_heads:
-            metrics["train_fine_acc"] = fine_correct / total
+        if "medium" in active_heads and medium_total > 0:
+            metrics["train_medium_acc"] = medium_correct / medium_total
+            metrics["train_medium_samples"] = medium_total
+        if "fine" in active_heads and fine_total > 0:
+            metrics["train_fine_acc"] = fine_correct / fine_total
+            metrics["train_fine_samples"] = fine_total
 
         return metrics
 
@@ -468,20 +478,30 @@ class HierarchicalTrainer:
         fine_preds = np.array(all_fine_preds) if all_fine_preds else None
         fine_labels_arr = np.array(all_fine_labels) if all_fine_labels else None
 
-        # Compute metrics
+        # Compute metrics (filter out -100 masked targets)
         result = {
             f"{prefix}_loss": total_loss / len(coarse_labels_arr),
             f"{prefix}_coarse_acc": (coarse_preds == coarse_labels_arr).mean(),
             f"{prefix}_coarse_f1": f1_score(coarse_labels_arr, coarse_preds, average="macro", zero_division=0),
         }
 
-        if medium_preds is not None:
-            result[f"{prefix}_medium_acc"] = (medium_preds == medium_labels_arr).mean()
-            result[f"{prefix}_medium_f1"] = f1_score(medium_labels_arr, medium_preds, average="macro", zero_division=0)
+        if medium_preds is not None and medium_labels_arr is not None:
+            valid = medium_labels_arr != -100
+            if valid.any():
+                result[f"{prefix}_medium_acc"] = (medium_preds[valid] == medium_labels_arr[valid]).mean()
+                result[f"{prefix}_medium_f1"] = f1_score(
+                    medium_labels_arr[valid], medium_preds[valid], average="macro", zero_division=0
+                )
+                result[f"{prefix}_medium_samples"] = int(valid.sum())
 
-        if fine_preds is not None:
-            result[f"{prefix}_fine_acc"] = (fine_preds == fine_labels_arr).mean()
-            result[f"{prefix}_fine_f1"] = f1_score(fine_labels_arr, fine_preds, average="macro", zero_division=0)
+        if fine_preds is not None and fine_labels_arr is not None:
+            valid = fine_labels_arr != -100
+            if valid.any():
+                result[f"{prefix}_fine_acc"] = (fine_preds[valid] == fine_labels_arr[valid]).mean()
+                result[f"{prefix}_fine_f1"] = f1_score(
+                    fine_labels_arr[valid], fine_preds[valid], average="macro", zero_division=0
+                )
+                result[f"{prefix}_fine_samples"] = int(valid.sum())
 
         if return_predictions:
             result["_coarse_preds"] = coarse_preds

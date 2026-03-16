@@ -126,19 +126,29 @@ class HierarchicalLoss(nn.Module):
     ) -> torch.Tensor:
         """Compute classification loss (CE or Focal).
 
+        Supports ignore_index=-100 for per-sample masking from hierarchical
+        confidence filtering. Samples with target=-100 are excluded from loss.
+
         Args:
             logits: Predictions of shape (B, num_classes)
             targets: Ground truth labels of shape (B,)
             class_weights: Optional class weights
 
         Returns:
-            Scalar loss value
+            Scalar loss value (0 if all samples masked)
         """
         if self.use_focal:
-            # Focal loss
+            # Focal loss — must explicitly filter masked samples
+            valid_mask = targets != -100
+            if not valid_mask.any():
+                return torch.tensor(0.0, device=logits.device, requires_grad=True)
+
+            valid_logits = logits[valid_mask]
+            valid_targets = targets[valid_mask]
+
             ce_loss = F.cross_entropy(
-                logits,
-                targets,
+                valid_logits,
+                valid_targets,
                 weight=class_weights,
                 reduction="none",
                 label_smoothing=self.label_smoothing,
@@ -147,92 +157,102 @@ class HierarchicalLoss(nn.Module):
             focal_weight = (1 - pt) ** self.focal_gamma
 
             if class_weights is not None:
-                alpha_t = class_weights[targets]
+                alpha_t = class_weights[valid_targets]
                 focal_loss = alpha_t * focal_weight * ce_loss
             else:
                 focal_loss = focal_weight * ce_loss
 
             return focal_loss.mean()
         else:
-            # Standard cross-entropy
+            # Standard cross-entropy with ignore_index for masked samples
+            # Guard: if all targets are -100, CE returns NaN (division by 0)
+            valid_mask = targets != -100
+            if not valid_mask.any():
+                return torch.tensor(0.0, device=logits.device, requires_grad=True)
             return F.cross_entropy(
                 logits,
                 targets,
                 weight=class_weights,
                 label_smoothing=self.label_smoothing,
+                ignore_index=-100,
             )
 
     def _compute_consistency_loss(
         self,
         output: HierarchicalOutput,
         coarse_targets: torch.Tensor,
+        medium_targets: torch.Tensor | None = None,
+        fine_targets: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Compute consistency loss between hierarchy levels.
 
         Penalizes when fine/medium predictions marginalized to coarse
         disagree with actual coarse predictions.
 
-        The consistency loss measures KL divergence between:
-        1. Predicted coarse distribution from fine probs (marginalized)
-        2. Actual coarse prediction distribution
+        Only computes for samples where ALL involved levels have valid targets
+        (no -100 masked values).
 
         Args:
             output: Model output with logits at each level
             coarse_targets: Ground truth coarse labels
+            medium_targets: Ground truth medium labels (may contain -100)
+            fine_targets: Ground truth fine labels (may contain -100)
 
         Returns:
             Scalar consistency loss
         """
-        batch_size = coarse_targets.shape[0]
         device = coarse_targets.device
         consistency_loss = torch.tensor(0.0, device=device)
 
-        # Fine → Coarse consistency
-        if output.fine_logits is not None:
-            fine_probs = output.fine_probs  # (B, num_fine)
+        # Fine → Coarse consistency (only for samples with valid fine targets)
+        if output.fine_logits is not None and fine_targets is not None:
+            valid_mask = fine_targets != -100
+            if valid_mask.any():
+                fine_probs = output.fine_probs[valid_mask]  # (N_valid, num_fine)
+                valid_coarse_logits = output.coarse_logits[valid_mask]
+                n_valid = valid_mask.sum().item()
 
-            # Marginalize fine probs to coarse level
-            # For each coarse class, sum probabilities of all fine classes that map to it
-            num_coarse = self.hierarchy_config.num_coarse
-            marginalized_coarse = torch.zeros(batch_size, num_coarse, device=device)
+                num_coarse = self.hierarchy_config.num_coarse
+                marginalized_coarse = torch.zeros(n_valid, num_coarse, device=device)
 
-            for coarse_idx in range(num_coarse):
-                # Find all fine classes that map to this coarse class
-                fine_mask = (self.fine_to_coarse_map == coarse_idx)
-                marginalized_coarse[:, coarse_idx] = fine_probs[:, fine_mask].sum(dim=1)
+                for coarse_idx in range(num_coarse):
+                    fine_mask = (self.fine_to_coarse_map == coarse_idx)
+                    marginalized_coarse[:, coarse_idx] = fine_probs[:, fine_mask].sum(dim=1)
 
-            # KL divergence: D_KL(coarse_pred || marginalized_fine)
-            coarse_log_probs = F.log_softmax(output.coarse_logits, dim=-1)
-            marginalized_log_probs = torch.log(marginalized_coarse + 1e-8)
+                coarse_log_probs = F.log_softmax(valid_coarse_logits, dim=-1)
+                marginalized_log_probs = torch.log(marginalized_coarse + 1e-8)
 
-            # KL divergence per sample
-            kl_div = F.kl_div(
-                marginalized_log_probs,
-                coarse_log_probs.exp(),
-                reduction="batchmean",
-            )
-            consistency_loss = consistency_loss + kl_div
+                kl_div = F.kl_div(
+                    marginalized_log_probs,
+                    coarse_log_probs.exp(),
+                    reduction="batchmean",
+                )
+                consistency_loss = consistency_loss + kl_div
 
-        # Medium → Coarse consistency
-        if output.medium_logits is not None:
-            medium_probs = output.medium_probs  # (B, num_medium)
+        # Medium → Coarse consistency (only for samples with valid medium targets)
+        if output.medium_logits is not None and medium_targets is not None:
+            valid_mask = medium_targets != -100
+            if valid_mask.any():
+                medium_probs = output.medium_probs[valid_mask]
+                valid_coarse_logits = output.coarse_logits[valid_mask]
+                n_valid = valid_mask.sum().item()
 
-            num_coarse = self.hierarchy_config.num_coarse
-            marginalized_coarse = torch.zeros(batch_size, num_coarse, device=device)
+                num_coarse = self.hierarchy_config.num_coarse
+                marginalized_coarse = torch.zeros(n_valid, num_coarse, device=device)
 
-            for coarse_idx in range(num_coarse):
-                medium_mask = (self.medium_to_coarse_map == coarse_idx)
-                marginalized_coarse[:, coarse_idx] = medium_probs[:, medium_mask].sum(dim=1)
+                for coarse_idx in range(num_coarse):
+                    medium_mask = (self.medium_to_coarse_map == coarse_idx)
+                    marginalized_coarse[:, coarse_idx] = medium_probs[:, medium_mask].sum(dim=1)
 
-            coarse_log_probs = F.log_softmax(output.coarse_logits, dim=-1)
-            marginalized_log_probs = torch.log(marginalized_coarse + 1e-8)
+                coarse_log_probs = F.log_softmax(valid_coarse_logits, dim=-1)
+                marginalized_log_probs = torch.log(marginalized_coarse + 1e-8)
 
-            kl_div = F.kl_div(
-                marginalized_log_probs,
-                coarse_log_probs.exp(),
-                reduction="batchmean",
-            )
-            consistency_loss = consistency_loss + 0.5 * kl_div  # Lower weight for medium
+                kl_div = F.kl_div(
+                    marginalized_log_probs,
+                    coarse_log_probs.exp(),
+                    reduction="batchmean",
+                )
+                consistency_loss = consistency_loss + 0.5 * kl_div
 
         return consistency_loss
 
@@ -287,11 +307,13 @@ class HierarchicalLoss(nn.Module):
             total_loss = total_loss + self.fine_weight * loss_fine
             loss_dict["loss_fine"] = loss_fine.item()
 
-        # Consistency loss
+        # Consistency loss (passes targets for masking)
         if self.consistency_weight > 0 and (
             output.medium_logits is not None or output.fine_logits is not None
         ):
-            loss_consistency = self._compute_consistency_loss(output, coarse_targets)
+            loss_consistency = self._compute_consistency_loss(
+                output, coarse_targets, medium_targets, fine_targets
+            )
             total_loss = total_loss + self.consistency_weight * loss_consistency
             loss_dict["loss_consistency"] = loss_consistency.item()
 

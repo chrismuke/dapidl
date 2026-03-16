@@ -61,6 +61,12 @@ class EnsembleAnnotationConfig:
     confidence_threshold: float = 0.5
     use_confidence_weighting: bool = True
 
+    # Hierarchical filtering: evaluate agreement at coarse/medium/fine independently
+    hierarchical_filtering: bool = False
+    fine_agreement_threshold: int = 4    # out of N methods
+    medium_agreement_threshold: int = 3
+    coarse_agreement_threshold: int = 2
+
     # Output settings
     fine_grained: bool = True
     create_derived_dataset: bool = True
@@ -76,6 +82,10 @@ class EnsembleAnnotationConfig:
             "min_agreement": self.min_agreement,
             "confidence_threshold": self.confidence_threshold,
             "use_confidence_weighting": self.use_confidence_weighting,
+            "hierarchical_filtering": self.hierarchical_filtering,
+            "fine_agreement_threshold": self.fine_agreement_threshold,
+            "medium_agreement_threshold": self.medium_agreement_threshold,
+            "coarse_agreement_threshold": self.coarse_agreement_threshold,
             "fine_grained": self.fine_grained,
             "create_derived_dataset": self.create_derived_dataset,
             "parent_dataset_id": self.parent_dataset_id,
@@ -108,6 +118,10 @@ class EnsembleAnnotationConfig:
             min_agreement=int(d.get("min_agreement", d.get("General/min_agreement", 2))),
             confidence_threshold=float(d.get("confidence_threshold", d.get("General/confidence_threshold", 0.5))),
             use_confidence_weighting=_pb(d.get("use_confidence_weighting", d.get("General/use_confidence_weighting", True))),
+            hierarchical_filtering=_pb(d.get("hierarchical_filtering", False), default=False),
+            fine_agreement_threshold=int(d.get("fine_agreement_threshold", 4)),
+            medium_agreement_threshold=int(d.get("medium_agreement_threshold", 3)),
+            coarse_agreement_threshold=int(d.get("coarse_agreement_threshold", 2)),
             fine_grained=_pb(d.get("fine_grained", d.get("General/fine_grained", True))),
             create_derived_dataset=_pb(d.get("create_derived_dataset", True)),
             parent_dataset_id=d.get("parent_dataset_id"),
@@ -364,6 +378,12 @@ class EnsembleAnnotationStep(PipelineStep):
                 saved_methods = sorted([json.dumps(m, sort_keys=True) for m in saved_config.get("methods", [])])
                 current_methods = sorted([json.dumps(m.to_dict(), sort_keys=True) for m in cfg.methods])
                 config_matches = saved_methods == current_methods
+                # Also check hierarchical_filtering flag
+                if config_matches and cfg.hierarchical_filtering:
+                    saved_hierarchical = saved_config.get("hierarchical_filtering", False)
+                    if not saved_hierarchical:
+                        config_matches = False
+                        logger.info("Hierarchical filtering enabled but cached output lacks it - re-running")
                 if not config_matches:
                     logger.info("Config mismatch - re-running annotation")
 
@@ -459,6 +479,10 @@ class EnsembleAnnotationStep(PipelineStep):
                     "confidence_threshold": cfg.confidence_threshold,
                     "fine_grained": cfg.fine_grained,
                     "use_confidence_weighting": cfg.use_confidence_weighting,
+                    "hierarchical_filtering": cfg.hierarchical_filtering,
+                    "fine_agreement_threshold": cfg.fine_agreement_threshold,
+                    "medium_agreement_threshold": cfg.medium_agreement_threshold,
+                    "coarse_agreement_threshold": cfg.coarse_agreement_threshold,
                 },
                 f,
                 indent=2,
@@ -633,7 +657,151 @@ class EnsembleAnnotationStep(PipelineStep):
             "methods_used": [r.stats["source"] for r in results],
         }
 
+        # Hierarchical filtering: compute per-level agreement
+        if cfg.hierarchical_filtering:
+            consensus = self._add_hierarchical_confidence(
+                consensus, all_votes, cfg
+            )
+
         return consensus, stats
+
+    def _add_hierarchical_confidence(
+        self,
+        consensus: pl.DataFrame,
+        all_votes: pl.DataFrame,
+        cfg: EnsembleAnnotationConfig,
+    ) -> pl.DataFrame:
+        """Compute multi-level agreement and assign confidence_level per cell.
+
+        Evaluates annotation agreement at three hierarchy levels independently:
+        - Fine: exact predicted_type agreement
+        - Medium (coarse_category): e.g. T_Cell, B_Cell, Macrophage
+        - Coarse (broad_category): e.g. Immune, Epithelial, Stromal
+
+        confidence_level:
+          2 = fine agreement passes threshold (and is consistent with medium winner)
+          1 = medium agreement passes threshold (but fine doesn't)
+          0 = coarse agreement passes threshold (but medium doesn't)
+          Cell is excluded if coarse agreement fails threshold.
+        """
+        from dapidl.ontology.cl_mapper import get_mapper
+
+        mapper = get_mapper()
+
+        # Map each vote's predicted_type to medium (coarse_category) and coarse (broad_category)
+        unique_types = all_votes["predicted_type"].unique().to_list()
+        type_to_medium = {}
+        type_to_coarse = {}
+        for cell_type in unique_types:
+            result = mapper.map_with_info(cell_type)
+            type_to_medium[cell_type] = result.coarse_category or "Unknown"
+            type_to_coarse[cell_type] = result.broad_category or "Unknown"
+
+        # Add medium_type and coarse_type columns to all_votes
+        votes_with_hierarchy = all_votes.with_columns(
+            pl.col("predicted_type").replace_strict(type_to_medium, default="Unknown").alias("medium_type"),
+            pl.col("predicted_type").replace_strict(type_to_coarse, default="Unknown").alias("coarse_type"),
+        )
+
+        # Compute per-cell agreement at each level
+        # Fine: max count of same predicted_type per cell
+        fine_agreement = (
+            votes_with_hierarchy
+            .group_by(["cell_id", "predicted_type"])
+            .agg(pl.len().alias("count"))
+            .group_by("cell_id")
+            .agg(pl.col("count").max().alias("n_agreement_fine"))
+        )
+
+        # Medium: max count of same medium_type per cell
+        medium_agreement = (
+            votes_with_hierarchy
+            .group_by(["cell_id", "medium_type"])
+            .agg(pl.len().alias("count"))
+            .group_by("cell_id")
+            .agg([
+                pl.col("count").max().alias("n_agreement_medium"),
+                # Keep the medium winner (type with most votes)
+                pl.col("medium_type").sort_by("count", descending=True).first().alias("medium_consensus"),
+            ])
+        )
+
+        # Coarse: max count of same coarse_type per cell
+        coarse_agreement = (
+            votes_with_hierarchy
+            .group_by(["cell_id", "coarse_type"])
+            .agg(pl.len().alias("count"))
+            .group_by("cell_id")
+            .agg([
+                pl.col("count").max().alias("n_agreement_coarse"),
+                pl.col("coarse_type").sort_by("count", descending=True).first().alias("coarse_consensus"),
+            ])
+        )
+
+        # Join agreement columns onto consensus
+        consensus = (
+            consensus
+            .join(fine_agreement, on="cell_id", how="left")
+            .join(medium_agreement, on="cell_id", how="left")
+            .join(coarse_agreement, on="cell_id", how="left")
+        )
+
+        # Map the consensus winner's predicted_type to its medium category
+        # for the consistency check
+        consensus = consensus.with_columns(
+            pl.col("predicted_type").replace_strict(type_to_medium, default="Unknown").alias("winner_medium"),
+        )
+
+        # Determine confidence_level per cell
+        fine_thresh = cfg.fine_agreement_threshold
+        medium_thresh = cfg.medium_agreement_threshold
+        coarse_thresh = cfg.coarse_agreement_threshold
+
+        consensus = consensus.with_columns(
+            pl.when(
+                # Level 2: fine passes AND fine winner is consistent with medium winner
+                (pl.col("n_agreement_fine") >= fine_thresh)
+                & (pl.col("winner_medium") == pl.col("medium_consensus"))
+            ).then(pl.lit(2))
+            .when(
+                # Level 1: medium passes
+                pl.col("n_agreement_medium") >= medium_thresh
+            ).then(pl.lit(1))
+            .when(
+                # Level 0: coarse passes
+                pl.col("n_agreement_coarse") >= coarse_thresh
+            ).then(pl.lit(0))
+            .otherwise(pl.lit(-1))  # Excluded
+            .alias("confidence_level")
+        )
+
+        # Filter out cells that don't pass even coarse threshold
+        n_before = consensus.height
+        consensus = consensus.filter(pl.col("confidence_level") >= 0)
+        n_excluded = n_before - consensus.height
+
+        # Drop temporary column
+        consensus = consensus.drop("winner_medium")
+
+        # Log distribution
+        level_counts = dict(
+            consensus.group_by("confidence_level")
+            .agg(pl.len().alias("count"))
+            .iter_rows()
+        )
+        logger.info(
+            f"Hierarchical confidence levels: "
+            f"fine(2)={level_counts.get(2, 0)}, "
+            f"medium(1)={level_counts.get(1, 0)}, "
+            f"coarse(0)={level_counts.get(0, 0)}, "
+            f"excluded={n_excluded}"
+        )
+        logger.info(
+            f"Retention: {consensus.height}/{n_before} "
+            f"({100 * consensus.height / max(n_before, 1):.1f}%)"
+        )
+
+        return consensus
 
     def _compute_class_mapping(
         self, annotations_df: pl.DataFrame, fine_grained: bool

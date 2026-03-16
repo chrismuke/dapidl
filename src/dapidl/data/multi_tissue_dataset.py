@@ -135,6 +135,9 @@ class MultiTissueDataset(Dataset):
         # Build unified class mapping
         self._build_unified_labels()
 
+        # Concatenate confidence levels (parallel to self.labels)
+        self.confidence_levels = np.concatenate(self._all_confidence_levels)
+
         # Build hierarchical labels if needed
         if config.use_hierarchical:
             if hierarchical_labels is None:
@@ -198,6 +201,7 @@ class MultiTissueDataset(Dataset):
 
         all_labels = []
         all_class_mappings = []
+        all_confidence_levels = []
 
         for i, ds_config in enumerate(self.config.datasets):
             # Handle different path formats:
@@ -241,6 +245,14 @@ class MultiTissueDataset(Dataset):
                 raise FileNotFoundError(
                     f"Neither labels.npy nor metadata.parquet found in {parent_dir}"
                 )
+
+            # Load confidence levels (hierarchical filtering support)
+            confidence_levels_npy = parent_dir / "confidence_levels.npy"
+            if confidence_levels_npy.exists():
+                ds_confidence_levels = np.load(confidence_levels_npy)
+            else:
+                # Default: all levels supervised (backward compat)
+                ds_confidence_levels = np.full(len(labels), 2, dtype=np.int8)
 
             n_samples = len(labels)
             self.dataset_sizes.append(n_samples)
@@ -293,13 +305,19 @@ class MultiTissueDataset(Dataset):
 
             all_class_mappings.append(class_mapping)
             all_labels.append(labels)
+            all_confidence_levels.append(ds_confidence_levels)
 
             # Load metadata for patch size
             metadata_path = parent_dir / "metadata.json"
             if metadata_path.exists():
                 with open(metadata_path) as f:
                     metadata = json.load(f)
-                ds_patch_size = metadata.get("patch_shape", [128, 128])[0]
+                if "patch_shape" in metadata:
+                    ds_patch_size = metadata["patch_shape"][0]
+                elif "patch_size" in metadata:
+                    ds_patch_size = metadata["patch_size"]
+                else:
+                    ds_patch_size = 128  # Default fallback
             else:
                 ds_patch_size = 128  # Default fallback
 
@@ -324,6 +342,7 @@ class MultiTissueDataset(Dataset):
         # Store for label remapping
         self._all_labels = all_labels
         self._all_class_mappings = all_class_mappings
+        self._all_confidence_levels = all_confidence_levels
 
     def _detect_key_format(self, lmdb_path: Path) -> str:
         """Detect whether LMDB uses ASCII or binary keys.
@@ -609,14 +628,20 @@ class MultiTissueDataset(Dataset):
         # Build labels dict
         labels_out = {"label": int(label)}
 
-        # Add hierarchical labels if enabled
+        # Add hierarchical labels if enabled, with confidence-based masking
         if self.hierarchical_labels is not None:
             coarse_labels, medium_labels, _ = self.hierarchical_labels.convert_labels(
                 np.array([label])
             )
+            confidence_level = int(self.confidence_levels[global_idx])
+
+            # Coarse: always supervised (level 0+)
             labels_out["coarse"] = int(coarse_labels[0])
-            labels_out["medium"] = int(medium_labels[0])
-            labels_out["fine"] = int(label)
+            # Medium: supervised when confidence_level >= 1, masked otherwise
+            labels_out["medium"] = int(medium_labels[0]) if confidence_level >= 1 else -100
+            # Fine: supervised when confidence_level >= 2, masked otherwise
+            labels_out["fine"] = int(label) if confidence_level >= 2 else -100
+            labels_out["confidence_level"] = confidence_level
 
         # Add metadata
         labels_out["tissue_idx"] = int(self.tissue_indices[global_idx])

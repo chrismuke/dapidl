@@ -8,6 +8,14 @@ GT-FREE Validation Methods:
 5. Cross-method consensus - popV-style agreement scoring
 """
 
+from dapidl.validation.annotation_confidence import (
+    AnnotationConfidenceConfig,
+    AnnotationConfidenceResult,
+    CellTypeConfidence,
+    FilterResult,
+    compute_annotation_confidence,
+    filter_predictions,
+)
 from dapidl.validation.cross_modal import (
     ValidationMetrics,
     cluster_morphology_embeddings,
@@ -19,21 +27,12 @@ from dapidl.validation.cross_modal import (
     quick_validate,
     unsupervised_morphology_validation,
 )
-
+from dapidl.validation.marker_database import get_marker_db
 from dapidl.validation.marker_validation import (
     BREAST_MARKERS,
     MarkerValidationResult,
     compute_marker_scores,
     validate_with_markers,
-)
-
-from dapidl.validation.annotation_confidence import (
-    AnnotationConfidenceConfig,
-    AnnotationConfidenceResult,
-    CellTypeConfidence,
-    FilterResult,
-    compute_annotation_confidence,
-    filter_predictions,
 )
 
 __all__ = [
@@ -59,4 +58,6 @@ __all__ = [
     "FilterResult",
     "compute_annotation_confidence",
     "filter_predictions",
+    # Unified marker database
+    "get_marker_db",
 ]

@@ -397,6 +397,85 @@ class OntologyConfig(BaseModel):
     )
 
 
+class ConfidenceFilteringConfig(BaseModel):
+    """Annotation confidence filtering configuration.
+
+    ClearML GUI Group: Confidence Filtering (optional)
+
+    Filters low-confidence cell type annotations before LMDB creation
+    using GT-free quality signals: marker enrichment, spatial coherence,
+    cross-method consensus, and proportion plausibility.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_default=True, populate_by_name=True)
+
+    enabled: bool = Field(
+        default=False,
+        alias="run_confidence_filtering",
+        description="Enable annotation confidence filtering before LMDB creation",
+    )
+    tissue_type: str = Field(
+        default="breast",
+        description="Tissue type for proportion plausibility (breast, lung, liver, etc.)",
+    )
+    min_confidence: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Minimum per-cell confidence to keep (0-1). Cells below are relabeled Unknown.",
+    )
+    high_confidence_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Above this = high confidence (for reporting)",
+    )
+    low_confidence_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Below this = low confidence (for reporting)",
+    )
+    use_panglao_markers: bool = Field(
+        default=True,
+        description="Use PanglaoDB marker enrichment for confidence scoring",
+    )
+    spatial_k: int = Field(
+        default=15,
+        ge=3,
+        le=100,
+        description="Number of spatial KNN neighbors for coherence scoring",
+    )
+    min_marker_score: float | None = Field(
+        default=None,
+        description="If set, drop ALL cells of types with marker score below this",
+    )
+
+    # Hierarchical filtering: evaluate confidence at coarse/medium/fine independently
+    hierarchical_filtering: bool = Field(
+        default=True,
+        description="Enable three-pass hierarchical confidence filtering (coarse/medium/fine)",
+    )
+    fine_agreement_threshold: int = Field(
+        default=4,
+        ge=1,
+        le=10,
+        description="Minimum annotator agreement for fine-level confidence (out of N methods)",
+    )
+    medium_agreement_threshold: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Minimum annotator agreement for medium-level confidence",
+    )
+    coarse_agreement_threshold: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Minimum annotator agreement for coarse-level confidence",
+    )
+
+
 class LMDBConfig(BaseModel):
     """LMDB dataset creation configuration.
 
@@ -1018,6 +1097,7 @@ class DAPIDLPipelineConfig(BaseModel):
     segmentation: SegmentationConfig = Field(default_factory=SegmentationConfig)
     annotation: AnnotationConfig = Field(default_factory=AnnotationConfig)
     ontology: OntologyConfig = Field(default_factory=OntologyConfig)
+    confidence_filtering: ConfidenceFilteringConfig = Field(default_factory=ConfidenceFilteringConfig)
     lmdb: LMDBConfig = Field(default_factory=LMDBConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)

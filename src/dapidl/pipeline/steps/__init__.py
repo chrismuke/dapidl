@@ -8,6 +8,7 @@ Each step is a standalone ClearML Task with UI-configurable parameters:
 - PopVAnnotationStep: Universal annotation with popV ensemble (8+ methods)
 - CLStandardizationStep: Standardize annotations to Cell Ontology
 - PatchExtractionStep: Create LMDB patches for training
+- ConfidenceFilteringStep: Filter low-confidence annotations (GT-free)
 - LMDBCreationStep: Create LMDB with skip logic and lineage
 - TrainingStep: Train classification model
 - HierarchicalTrainingStep: Train multi-head hierarchical classifier
@@ -38,6 +39,8 @@ __all__ = [
     "UniversalDAPITrainingStep",
     "UniversalTrainingConfig",
     "TissueDatasetSpec",
+    "ConfidenceFilteringStep",
+    "ConfidenceFilteringConfig",
     "CrossValidationStep",
     "CrossPlatformTransferStep",
     "DocumentationStep",
@@ -100,6 +103,12 @@ def __getattr__(name: str):
     elif name == "TissueDatasetSpec":
         from dapidl.pipeline.steps.universal_training import TissueDatasetSpec
         return TissueDatasetSpec
+    elif name == "ConfidenceFilteringStep":
+        from dapidl.pipeline.steps.confidence_filtering import ConfidenceFilteringStep
+        return ConfidenceFilteringStep
+    elif name == "ConfidenceFilteringConfig":
+        from dapidl.pipeline.steps.confidence_filtering import ConfidenceFilteringConfig
+        return ConfidenceFilteringConfig
     elif name == "CrossValidationStep":
         from dapidl.pipeline.steps.cross_validation import CrossValidationStep
         return CrossValidationStep

@@ -811,6 +811,10 @@ class UnifiedPipelineController:
                         confidence_threshold=cfg.annotation.confidence_threshold,
                         use_confidence_weighting=cfg.annotation.use_confidence_weighting,
                         fine_grained=cfg.annotation.fine_grained,
+                        hierarchical_filtering=cfg.confidence_filtering.hierarchical_filtering,
+                        fine_agreement_threshold=cfg.confidence_filtering.fine_agreement_threshold,
+                        medium_agreement_threshold=cfg.confidence_filtering.medium_agreement_threshold,
+                        coarse_agreement_threshold=cfg.confidence_filtering.coarse_agreement_threshold,
                     )
                     ensemble_step = EnsembleAnnotationStep(ensemble_config)
                     annot_artifacts = ensemble_step.execute(artifacts)
@@ -833,8 +837,32 @@ class UnifiedPipelineController:
                     **annot_artifacts.outputs,
                     "tissue": tissue_name,
                     "dataset_id": tissue_cfg.dataset_id or "",
+                    # Mark filtering status so LMDB paths are unique per config
+                    "confidence_filtering_skipped": not cfg.confidence_filtering.enabled,
                 }
                 artifacts = StepArtifacts(inputs={}, outputs=merged_outputs)
+
+                # Step 3.5: Confidence Filtering (optional)
+                if cfg.confidence_filtering.enabled:
+                    logger.info(f"  Step 3.5: Confidence Filtering ({tissue_name})")
+                    from dapidl.pipeline.steps.confidence_filtering import (
+                        ConfidenceFilteringConfig as CFStepConfig,
+                        ConfidenceFilteringStep,
+                    )
+                    cf_config = CFStepConfig(
+                        enabled=True,
+                        tissue_type=cfg.confidence_filtering.tissue_type,
+                        min_confidence=cfg.confidence_filtering.min_confidence,
+                        high_confidence_threshold=cfg.confidence_filtering.high_confidence_threshold,
+                        low_confidence_threshold=cfg.confidence_filtering.low_confidence_threshold,
+                        use_panglao_markers=cfg.confidence_filtering.use_panglao_markers,
+                        spatial_k=cfg.confidence_filtering.spatial_k,
+                        min_marker_score=cfg.confidence_filtering.min_marker_score,
+                    )
+                    cf_step = ConfidenceFilteringStep(cf_config)
+                    cf_artifacts = cf_step.execute(artifacts)
+                    results[f"confidence_filtering_{tissue_name}"] = cf_artifacts.outputs
+                    artifacts = StepArtifacts(inputs={}, outputs=cf_artifacts.outputs)
 
                 # Step 4: LMDB Creation
                 logger.info(f"  Step 4: LMDB Creation ({tissue_name})")

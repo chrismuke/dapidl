@@ -61,7 +61,9 @@ class AnnotationConfidenceConfig:
     """Configuration for annotation confidence estimation."""
 
     # Marker enrichment
-    use_panglao_markers: bool = True
+    use_panglao_markers: bool = True  # Legacy: try PanglaoDB via decoupler
+    use_unified_markers: bool = True  # Preferred: use Accordion + CellMarker 2.0
+    marker_min_evidence: int = 2  # Min evidence count for unified DB markers
     min_markers_per_type: int = 3
     enrichment_threshold: float = 2.0  # Fold-change for "enriched"
 
@@ -323,6 +325,37 @@ def compute_annotation_confidence(
 
 # ── Marker Enrichment ─────────────────────────────────────────────
 
+def _get_unified_markers(
+    adata: "ad.AnnData",
+    predictions: np.ndarray,
+    config: AnnotationConfidenceConfig,
+) -> dict[str, dict[str, list[str]]]:
+    """Get markers from the unified Accordion + CellMarker 2.0 database."""
+    try:
+        from dapidl.validation.marker_database import get_marker_db
+
+        db = get_marker_db()
+        unique_types = {t for t in np.unique(predictions) if t.lower() not in ("unknown", "unassigned")}
+        panel_genes = set(adata.var_names)
+
+        markers_db = db.build_markers_db(
+            unique_types,
+            panel_genes=panel_genes,
+            tissue=config.tissue_type,
+            min_evidence=config.marker_min_evidence,
+        )
+
+        if markers_db:
+            return markers_db
+
+        logger.warning("Unified marker DB returned empty, falling back to PanglaoDB/BREAST_MARKERS")
+    except Exception as e:
+        logger.warning(f"Failed to load unified marker DB: {e}, falling back")
+
+    # Fall back to legacy path
+    return _get_panglao_broad_markers(adata)
+
+
 def _get_panglao_broad_markers(adata: "ad.AnnData") -> dict[str, dict[str, list[str]]]:
     """Pull PanglaoDB markers and organize by broad category."""
     try:
@@ -400,7 +433,9 @@ def _compute_marker_enrichment(
     config: AnnotationConfidenceConfig,
 ) -> dict[str, dict]:
     """Compute marker enrichment score per cell type."""
-    if config.use_panglao_markers:
+    if config.use_unified_markers:
+        markers_db = _get_unified_markers(adata, predictions, config)
+    elif config.use_panglao_markers:
         markers_db = _get_panglao_broad_markers(adata)
     else:
         from dapidl.validation.marker_validation import BREAST_MARKERS

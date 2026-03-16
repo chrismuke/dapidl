@@ -393,8 +393,34 @@ class CrossValidationStep(PipelineStep):
                 # 10x HDF5 format (cell_feature_matrix.h5 etc.)
                 adata = sc.read_10x_h5(expression_path)
 
+            # Align expression data with annotations — annotations may have
+            # fewer cells than raw expression (e.g. ensemble consensus drops
+            # cells that no method could annotate).
+            if len(celltypist_labels) != adata.n_obs:
+                logger.info(
+                    f"Cell count mismatch: expression={adata.n_obs}, "
+                    f"annotations={len(celltypist_labels)} — subsetting expression data"
+                )
+                if "cell_id" in annotations_df.columns:
+                    # Use cell_id to align
+                    annotation_ids = set(
+                        annotations_df["cell_id"].cast(pl.Utf8).to_list()
+                    )
+                    mask = [
+                        obs_name in annotation_ids
+                        for obs_name in adata.obs_names
+                    ]
+                    adata = adata[mask].copy()
+                    logger.info(f"Subset expression to {adata.n_obs} cells by cell_id")
+                else:
+                    # Fallback: truncate to min length
+                    n = min(len(celltypist_labels), adata.n_obs)
+                    adata = adata[:n].copy()
+                    celltypist_labels = celltypist_labels[:n]
+                    logger.warning(f"No cell_id column — truncated both to {n}")
+
             # Add labels
-            adata.obs["celltypist_labels"] = celltypist_labels[: len(adata)]
+            adata.obs["celltypist_labels"] = celltypist_labels[: adata.n_obs]
 
             # Preprocess if needed
             if "neighbors" not in adata.uns:

@@ -346,10 +346,20 @@ def validate_with_markers(
     logger.info(f"Running marker gene validation for {tissue_type} tissue...")
 
     # Select marker database based on tissue
-    if tissue_type.lower() == "breast":
-        markers_db = BREAST_MARKERS
-    else:
-        logger.warning(f"No specific markers for {tissue_type}, using breast markers")
+    try:
+        from dapidl.validation.marker_database import get_marker_db
+
+        db = get_marker_db()
+        unique_types = set(np.unique(predictions)) - {"Unknown", "Unassigned", "unknown", ""}
+        panel_genes = set(adata.var_names)
+        markers_db = db.build_markers_db(
+            unique_types, panel_genes=panel_genes, tissue=tissue_type, min_evidence=2,
+        )
+        if not markers_db:
+            logger.warning("Unified marker DB returned empty, falling back to BREAST_MARKERS")
+            markers_db = BREAST_MARKERS
+    except Exception as e:
+        logger.warning(f"Failed to load unified marker DB ({e}), using BREAST_MARKERS")
         markers_db = BREAST_MARKERS
 
     # Compute scores

@@ -289,10 +289,53 @@ class HierarchicalDataset(Dataset):
         self.data_path = Path(data_path)
         self.split = split
 
-        # Load base data
-        self.patches = zarr.open(self.data_path / "patches.zarr", mode="r")
+        # Load base data — support both zarr and LMDB formats
+        zarr_path = self.data_path / "patches.zarr"
+        lmdb_path = self.data_path / "patches.lmdb"
+        if zarr_path.exists():
+            self.patches = zarr.open(zarr_path, mode="r")
+            self._backend = "zarr"
+        elif lmdb_path.exists():
+            self._backend = "lmdb"
+            self._lmdb_path = lmdb_path
+            self._lmdb_env = None  # Lazy init for fork-safety
+            self.patches = None  # Not used for LMDB
+            # Read patch_size from LMDB metadata (temporary env, closed immediately)
+            import lmdb as lmdb_lib
+            tmp_env = lmdb_lib.open(str(lmdb_path), readonly=True, lock=False)
+            with tmp_env.begin(write=False) as txn:
+                meta_bytes = txn.get(b"__metadata__")
+                if meta_bytes:
+                    lmdb_meta = json.loads(meta_bytes.decode())
+                    self._patch_size = lmdb_meta.get("patch_size", 64)
+                else:
+                    self._patch_size = 64
+            tmp_env.close()
+        else:
+            raise FileNotFoundError(
+                f"No patches.zarr or patches.lmdb found in {self.data_path}"
+            )
         self.fine_labels = np.load(self.data_path / "labels.npy")
-        self.metadata = pl.read_parquet(self.data_path / "metadata.parquet")
+        meta_parquet = self.data_path / "metadata.parquet"
+        if meta_parquet.exists():
+            self.metadata = pl.read_parquet(meta_parquet)
+        else:
+            # LMDB format may not have metadata.parquet; create minimal from metadata.json
+            meta_json = self.data_path / "metadata.json"
+            if meta_json.exists():
+                with open(meta_json) as f:
+                    meta = json.load(f)
+                cell_ids = meta.get("cell_ids", list(range(len(self.fine_labels))))
+                self.metadata = pl.DataFrame({"cell_id": cell_ids})
+            else:
+                self.metadata = pl.DataFrame({"cell_id": list(range(len(self.fine_labels)))})
+
+        # Load confidence levels (hierarchical filtering support)
+        confidence_levels_path = self.data_path / "confidence_levels.npy"
+        if confidence_levels_path.exists():
+            self._confidence_levels = np.load(confidence_levels_path)
+        else:
+            self._confidence_levels = np.full(len(self.fine_labels), 2, dtype=np.int8)
 
         # Load class mapping
         with open(self.data_path / "class_mapping.json") as f:
@@ -339,6 +382,56 @@ class HierarchicalDataset(Dataset):
     def __len__(self) -> int:
         return len(self.indices)
 
+    def _get_lmdb_env(self):
+        """Lazily open LMDB environment (fork-safe).
+
+        LMDB environments must be opened per-worker after fork to avoid
+        segmentation faults in DataLoader workers.
+        """
+        if self._lmdb_env is None:
+            import lmdb as lmdb_lib
+            self._lmdb_env = lmdb_lib.open(
+                str(self._lmdb_path), readonly=True, lock=False,
+                readahead=False, meminit=False,
+            )
+        return self._lmdb_env
+
+    def _read_lmdb_patch(self, idx: int) -> np.ndarray:
+        """Read a single patch from the LMDB backend.
+
+        Auto-detects value format (uint16+label, float32+label, etc.)
+        matching MultiTissueDataset's format detection logic.
+        """
+        import struct
+
+        ps = self._patch_size
+        env = self._get_lmdb_env()
+        with env.begin(write=False) as txn:
+            key = struct.pack(">Q", idx)
+            value = txn.get(key)
+            if value is None:
+                raise KeyError(f"Patch {idx} not found in LMDB")
+
+            val_len = len(value)
+            uint16_bytes = ps * ps * 2
+            float32_bytes = ps * ps * 4
+
+            if val_len == uint16_bytes + 8:
+                # Standard: 8-byte label prefix + uint16 patch
+                return np.frombuffer(value[8:], dtype=np.uint16).reshape(ps, ps).copy()
+            elif val_len == float32_bytes + 8:
+                # 8-byte label prefix + float32 patch
+                return np.frombuffer(value[8:], dtype=np.float32).reshape(ps, ps).copy()
+            elif val_len == uint16_bytes:
+                return np.frombuffer(value, dtype=np.uint16).reshape(ps, ps).copy()
+            elif val_len == float32_bytes:
+                return np.frombuffer(value, dtype=np.float32).reshape(ps, ps).copy()
+            else:
+                raise ValueError(
+                    f"Unknown LMDB value format: length={val_len}, "
+                    f"expected uint16({uint16_bytes}+8) or float32({float32_bytes}+8)"
+                )
+
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, dict[str, int]]:
         """Get a single sample with hierarchical labels.
 
@@ -351,13 +444,17 @@ class HierarchicalDataset(Dataset):
         """
         actual_idx = self.indices[idx]
 
-        # Load patch
-        patch = np.array(self.patches[actual_idx])
+        # Load patch from zarr or LMDB
+        if self._backend == "lmdb":
+            patch = self._read_lmdb_patch(actual_idx)
+        else:
+            patch = np.array(self.patches[actual_idx])
 
-        # Get labels at each level
+        # Get labels at each level with confidence-based masking
         coarse_label = self.coarse_labels[idx]
         medium_label = self.medium_labels[idx]
         fine_label = self.fine_labels[actual_idx]
+        confidence_level = int(self._confidence_levels[actual_idx])
 
         # Apply transform
         if self.transform is not None:
@@ -365,9 +462,10 @@ class HierarchicalDataset(Dataset):
             patch = transformed["image"]
 
         labels = {
-            "coarse": int(coarse_label),
-            "medium": int(medium_label),
-            "fine": int(fine_label),
+            "coarse": int(coarse_label),  # Always supervised
+            "medium": int(medium_label) if confidence_level >= 1 else -100,
+            "fine": int(fine_label) if confidence_level >= 2 else -100,
+            "confidence_level": confidence_level,
         }
 
         return patch, labels
