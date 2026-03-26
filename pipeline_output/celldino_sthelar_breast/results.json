@@ -1,0 +1,7 @@
+{
+  "test_f1": 0.4067942492269387,
+  "test_acc": 0.5586347139872977,
+  "best_val_f1": 0.40605304966138156,
+  "backbone": "cell_dino_channel_adaptive_vitl16",
+  "embed_dim": 1024
+}

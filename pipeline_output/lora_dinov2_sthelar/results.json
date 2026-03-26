@@ -1,0 +1,12 @@
+{
+  "test_f1": 0.45341903029038205,
+  "test_acc": 0.5874285231996287,
+  "best_val_f1": 0.4536389206827528,
+  "backbone": "lora_dinov2",
+  "lora_rank": 16,
+  "lora_alpha": 32,
+  "trainable_params": 394500,
+  "total_params": 22451076,
+  "frozen_f1": 0.388,
+  "epochs_trained": 15
+}

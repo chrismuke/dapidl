@@ -1,0 +1,9 @@
+{
+  "test_f1": 0.3118214355093558,
+  "test_acc": 0.5047976494419008,
+  "best_val_f1": 0.3111791726467239,
+  "backbone": "nuspire_v2",
+  "embed_dim": 3072,
+  "changes": "mean_pool + resize_112 + multi_layer_last4 + deeper_mlp",
+  "v1_f1": 0.305
+}

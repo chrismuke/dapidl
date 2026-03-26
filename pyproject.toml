@@ -63,6 +63,8 @@ dependencies = [
     "popv>=0.6.0",
     "cell2location>=0.1.5",
     "cuml-cu12>=25.12.0",
+    "spatialdata>=0.7.2",
+    "peft>=0.18.1",
 ]
 
 [project.optional-dependencies]

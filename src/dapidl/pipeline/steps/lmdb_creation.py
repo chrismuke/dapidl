@@ -225,17 +225,7 @@ class LMDBCreationStep(PipelineStep):
         # available (which changes the label column), rebuild from unique labels
         has_hierarchical = "coarse_consensus" in annotations_df.columns
         if not class_mapping or using_cl_annotations or has_hierarchical:
-            # Determine label column for building mapping (same priority as label_col)
-            if "cl_name" in annotations_df.columns:
-                label_col_for_mapping = "cl_name"
-            elif "cl_category" in annotations_df.columns:
-                label_col_for_mapping = "cl_category"
-            elif has_hierarchical:
-                label_col_for_mapping = "coarse_consensus"
-            elif "predicted_type" in annotations_df.columns:
-                label_col_for_mapping = "predicted_type"
-            else:
-                label_col_for_mapping = "broad_category"
+            label_col_for_mapping = self._determine_label_column(annotations_df, has_hierarchical)
 
             unique_labels = sorted(annotations_df[label_col_for_mapping].unique().to_list())
             # Remove None/Unknown if present
@@ -310,6 +300,28 @@ class LMDBCreationStep(PipelineStep):
                 "index_to_class": stats["index_to_class"],
             },
         )
+
+    @staticmethod
+    def _determine_label_column(annotations_df: pl.DataFrame, has_hierarchical: bool) -> str:
+        """Determine which column to use for cell type labels.
+
+        Priority: cl_name > cl_category > predicted_type (hierarchical) >
+                  coarse_consensus (hierarchical) > predicted_type > broad_category
+
+        When hierarchical filtering is active, prefer predicted_type (fine-grained)
+        so the hierarchy builder can reconstruct medium/coarse from CL ontology.
+        """
+        if "cl_name" in annotations_df.columns:
+            return "cl_name"
+        if "cl_category" in annotations_df.columns:
+            return "cl_category"
+        if has_hierarchical and "predicted_type" in annotations_df.columns:
+            return "predicted_type"
+        if has_hierarchical and "coarse_consensus" in annotations_df.columns:
+            return "coarse_consensus"
+        if "predicted_type" in annotations_df.columns:
+            return "predicted_type"
+        return "broad_category"
 
     def _resolve_platform(self, inputs: dict) -> str:
         """Resolve platform from inputs."""
@@ -494,27 +506,11 @@ class LMDBCreationStep(PipelineStep):
         # Note: _normalize_image frees original for large images internally
         logger.info(f"Normalized to float32 ({dapi_normalized.nbytes / 1024**3:.1f} GB)")
 
-        # Determine label column - prefer CL-standardized columns
+        # Determine label column - same priority as class mapping builder in execute()
         if cfg.output_format == "lmdb":
-            # Priority: cl_name > cl_category > coarse_consensus > predicted_type > broad_category
-            # coarse_consensus reflects independent coarse-level agreement across methods,
-            # which is more accurate than broad_category (derived from fine-level winner)
-            if "cl_name" in annotations_df.columns:
-                label_col = "cl_name"
-                logger.info("Using CL-standardized labels (cl_name)")
-            elif "cl_category" in annotations_df.columns:
-                label_col = "cl_category"
-                logger.info("Using CL category labels (cl_category)")
-            elif "coarse_consensus" in annotations_df.columns:
-                label_col = "coarse_consensus"
-                logger.info("Using coarse_consensus labels (hierarchical agreement)")
-            elif "predicted_type" in annotations_df.columns and any(
-                k not in ["Epithelial", "Immune", "Stromal", "Endothelial", "Unknown", "Other"]
-                for k in class_mapping.keys()
-            ):
-                label_col = "predicted_type"
-            else:
-                label_col = "broad_category"
+            has_hierarchical = "coarse_consensus" in annotations_df.columns
+            label_col = self._determine_label_column(annotations_df, has_hierarchical)
+            logger.info(f"Using labels from column: {label_col}")
 
         # Use provided output_dir or fall back to derived datasets directory
         dataset_dir = output_dir if output_dir is not None else (data_path / "pipeline_outputs" / f"lmdb_p{cfg.patch_size}")

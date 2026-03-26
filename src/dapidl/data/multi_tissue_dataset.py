@@ -824,8 +824,10 @@ def create_multi_tissue_splits(
     # Second split: val vs test
     val_size = val_ratio / (val_ratio + test_ratio)
     if stratify_labels is not None:
-        temp_strat = stratify_labels[np.isin(indices, temp_indices)]
-        temp_positions = np.array([np.where(indices == i)[0][0] for i in temp_indices])
+        # Build O(n) reverse lookup instead of O(n*m) linear scan
+        idx_to_pos = np.empty(indices.max() + 1, dtype=np.intp)
+        idx_to_pos[indices] = np.arange(len(indices))
+        temp_positions = idx_to_pos[temp_indices]
         temp_strat = stratify_labels[temp_positions]
     else:
         temp_strat = None

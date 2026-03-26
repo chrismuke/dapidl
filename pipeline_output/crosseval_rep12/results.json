@@ -1,0 +1,562 @@
+{
+  "celldino": {
+    "rep1": {
+      "macro_f1": 0.3278,
+      "accuracy": 0.5412,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0401,
+          "precision": 0.1362,
+          "recall": 0.0235,
+          "support": 962
+        },
+        "Epithelial": {
+          "f1": 0.6316,
+          "precision": 0.4935,
+          "recall": 0.8771,
+          "support": 116089
+        },
+        "Immune": {
+          "f1": 0.5478,
+          "precision": 0.7359,
+          "recall": 0.4362,
+          "support": 41579
+        },
+        "Stromal": {
+          "f1": 0.0916,
+          "precision": 0.2133,
+          "recall": 0.0583,
+          "support": 6624
+        }
+      }
+    },
+    "rep2": {
+      "macro_f1": 0.3261,
+      "accuracy": 0.5169,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0375,
+          "precision": 0.1193,
+          "recall": 0.0223,
+          "support": 704
+        },
+        "Epithelial": {
+          "f1": 0.5923,
+          "precision": 0.4488,
+          "recall": 0.8704,
+          "support": 78621
+        },
+        "Immune": {
+          "f1": 0.5581,
+          "precision": 0.7428,
+          "recall": 0.4469,
+          "support": 31611
+        },
+        "Stromal": {
+          "f1": 0.1166,
+          "precision": 0.2574,
+          "recall": 0.0754,
+          "support": 5828
+        }
+      }
+    },
+    "combined": {
+      "macro_f1": 0.3271,
+      "accuracy": 0.531,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0369,
+          "precision": 0.1212,
+          "recall": 0.0218,
+          "support": 1666
+        },
+        "Epithelial": {
+          "f1": 0.6158,
+          "precision": 0.4752,
+          "recall": 0.8748,
+          "support": 194710
+        },
+        "Immune": {
+          "f1": 0.5522,
+          "precision": 0.7393,
+          "recall": 0.4406,
+          "support": 73190
+        },
+        "Stromal": {
+          "f1": 0.1036,
+          "precision": 0.2355,
+          "recall": 0.0664,
+          "support": 12452
+        }
+      }
+    }
+  },
+  "phikon": {
+    "rep1": {
+      "macro_f1": 0.3292,
+      "accuracy": 0.5604,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0326,
+          "precision": 0.1933,
+          "recall": 0.0178,
+          "support": 962
+        },
+        "Epithelial": {
+          "f1": 0.67,
+          "precision": 0.5479,
+          "recall": 0.862,
+          "support": 116089
+        },
+        "Immune": {
+          "f1": 0.5289,
+          "precision": 0.6682,
+          "recall": 0.4377,
+          "support": 41579
+        },
+        "Stromal": {
+          "f1": 0.0853,
+          "precision": 0.1555,
+          "recall": 0.0587,
+          "support": 6624
+        }
+      }
+    },
+    "rep2": {
+      "macro_f1": 0.331,
+      "accuracy": 0.5296,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0314,
+          "precision": 0.2173,
+          "recall": 0.0169,
+          "support": 704
+        },
+        "Epithelial": {
+          "f1": 0.6265,
+          "precision": 0.4933,
+          "recall": 0.8582,
+          "support": 78621
+        },
+        "Immune": {
+          "f1": 0.5484,
+          "precision": 0.6853,
+          "recall": 0.4571,
+          "support": 31611
+        },
+        "Stromal": {
+          "f1": 0.1174,
+          "precision": 0.2114,
+          "recall": 0.0813,
+          "support": 5828
+        }
+      }
+    },
+    "combined": {
+      "macro_f1": 0.3309,
+      "accuracy": 0.5477,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0351,
+          "precision": 0.2203,
+          "recall": 0.0191,
+          "support": 1666
+        },
+        "Epithelial": {
+          "f1": 0.6532,
+          "precision": 0.5264,
+          "recall": 0.8604,
+          "support": 194710
+        },
+        "Immune": {
+          "f1": 0.5366,
+          "precision": 0.6747,
+          "recall": 0.4455,
+          "support": 73190
+        },
+        "Stromal": {
+          "f1": 0.0987,
+          "precision": 0.1793,
+          "recall": 0.0681,
+          "support": 12452
+        }
+      }
+    }
+  },
+  "dinov2": {
+    "rep1": {
+      "macro_f1": 0.3362,
+      "accuracy": 0.578,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0458,
+          "precision": 0.1351,
+          "recall": 0.0276,
+          "support": 962
+        },
+        "Epithelial": {
+          "f1": 0.6784,
+          "precision": 0.558,
+          "recall": 0.8652,
+          "support": 116089
+        },
+        "Immune": {
+          "f1": 0.5319,
+          "precision": 0.7123,
+          "recall": 0.4244,
+          "support": 41579
+        },
+        "Stromal": {
+          "f1": 0.0886,
+          "precision": 0.1507,
+          "recall": 0.0628,
+          "support": 6624
+        }
+      }
+    },
+    "rep2": {
+      "macro_f1": 0.3327,
+      "accuracy": 0.5416,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0389,
+          "precision": 0.1406,
+          "recall": 0.0226,
+          "support": 704
+        },
+        "Epithelial": {
+          "f1": 0.6257,
+          "precision": 0.4893,
+          "recall": 0.8675,
+          "support": 78621
+        },
+        "Immune": {
+          "f1": 0.5495,
+          "precision": 0.7437,
+          "recall": 0.4358,
+          "support": 31611
+        },
+        "Stromal": {
+          "f1": 0.1166,
+          "precision": 0.1992,
+          "recall": 0.0824,
+          "support": 5828
+        }
+      }
+    },
+    "combined": {
+      "macro_f1": 0.3358,
+      "accuracy": 0.5632,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0424,
+          "precision": 0.1369,
+          "recall": 0.0251,
+          "support": 1666
+        },
+        "Epithelial": {
+          "f1": 0.6581,
+          "precision": 0.5306,
+          "recall": 0.8663,
+          "support": 194710
+        },
+        "Immune": {
+          "f1": 0.5392,
+          "precision": 0.7255,
+          "recall": 0.4291,
+          "support": 73190
+        },
+        "Stromal": {
+          "f1": 0.1036,
+          "precision": 0.1763,
+          "recall": 0.0734,
+          "support": 12452
+        }
+      }
+    }
+  },
+  "openphenom": {
+    "rep1": {
+      "macro_f1": 0.2778,
+      "accuracy": 0.5118,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 962
+        },
+        "Epithelial": {
+          "f1": 0.6098,
+          "precision": 0.4934,
+          "recall": 0.798,
+          "support": 116089
+        },
+        "Immune": {
+          "f1": 0.4407,
+          "precision": 0.6418,
+          "recall": 0.3356,
+          "support": 41579
+        },
+        "Stromal": {
+          "f1": 0.0607,
+          "precision": 0.0938,
+          "recall": 0.0449,
+          "support": 6624
+        }
+      }
+    },
+    "rep2": {
+      "macro_f1": 0.2857,
+      "accuracy": 0.5042,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0052,
+          "precision": 0.0028,
+          "recall": 0.0317,
+          "support": 704
+        },
+        "Epithelial": {
+          "f1": 0.5918,
+          "precision": 0.4786,
+          "recall": 0.7751,
+          "support": 78621
+        },
+        "Immune": {
+          "f1": 0.4593,
+          "precision": 0.6497,
+          "recall": 0.3552,
+          "support": 31611
+        },
+        "Stromal": {
+          "f1": 0.0865,
+          "precision": 0.1199,
+          "recall": 0.0677,
+          "support": 5828
+        }
+      }
+    },
+    "combined": {
+      "macro_f1": 0.28,
+      "accuracy": 0.5073,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0011,
+          "precision": 0.0006,
+          "recall": 0.0063,
+          "support": 1666
+        },
+        "Epithelial": {
+          "f1": 0.6015,
+          "precision": 0.4863,
+          "recall": 0.7881,
+          "support": 194710
+        },
+        "Immune": {
+          "f1": 0.4471,
+          "precision": 0.6431,
+          "recall": 0.3427,
+          "support": 73190
+        },
+        "Stromal": {
+          "f1": 0.0703,
+          "precision": 0.1039,
+          "recall": 0.0531,
+          "support": 12452
+        }
+      }
+    }
+  },
+  "nuspire": {
+    "rep1": {
+      "macro_f1": 0.2886,
+      "accuracy": 0.5745,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0,
+          "support": 962
+        },
+        "Epithelial": {
+          "f1": 0.6843,
+          "precision": 0.608,
+          "recall": 0.7824,
+          "support": 116089
+        },
+        "Immune": {
+          "f1": 0.4306,
+          "precision": 0.5806,
+          "recall": 0.3422,
+          "support": 41579
+        },
+        "Stromal": {
+          "f1": 0.0397,
+          "precision": 0.0334,
+          "recall": 0.049,
+          "support": 6624
+        }
+      }
+    },
+    "rep2": {
+      "macro_f1": 0.2876,
+      "accuracy": 0.5594,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0,
+          "support": 704
+        },
+        "Epithelial": {
+          "f1": 0.6706,
+          "precision": 0.6088,
+          "recall": 0.7465,
+          "support": 78621
+        },
+        "Immune": {
+          "f1": 0.4262,
+          "precision": 0.5441,
+          "recall": 0.3503,
+          "support": 31611
+        },
+        "Stromal": {
+          "f1": 0.0538,
+          "precision": 0.0432,
+          "recall": 0.0711,
+          "support": 5828
+        }
+      }
+    },
+    "combined": {
+      "macro_f1": 0.288,
+      "accuracy": 0.5687,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0,
+          "support": 1666
+        },
+        "Epithelial": {
+          "f1": 0.6792,
+          "precision": 0.6087,
+          "recall": 0.7681,
+          "support": 194710
+        },
+        "Immune": {
+          "f1": 0.4295,
+          "precision": 0.5659,
+          "recall": 0.3461,
+          "support": 73190
+        },
+        "Stromal": {
+          "f1": 0.0431,
+          "precision": 0.0355,
+          "recall": 0.0549,
+          "support": 12452
+        }
+      }
+    }
+  },
+  "efficientnet_all4": {
+    "rep1": {
+      "macro_f1": 0.294,
+      "accuracy": 0.4942,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0369,
+          "support": 962
+        },
+        "Epithelial": {
+          "f1": 0.568,
+          "support": 116089
+        },
+        "Immune": {
+          "f1": 0.4752,
+          "support": 41579
+        },
+        "Stromal": {
+          "f1": 0.096,
+          "support": 6624
+        }
+      }
+    },
+    "rep2": {
+      "macro_f1": 0.2884,
+      "accuracy": 0.477,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0316,
+          "support": 704
+        },
+        "Epithelial": {
+          "f1": 0.535,
+          "support": 78621
+        },
+        "Immune": {
+          "f1": 0.4843,
+          "support": 31611
+        },
+        "Stromal": {
+          "f1": 0.103,
+          "support": 5828
+        }
+      }
+    },
+    "combined": {
+      "macro_f1": 0.2918,
+      "accuracy": 0.4869
+    }
+  },
+  "efficientnet_d25_all4": {
+    "rep1": {
+      "macro_f1": 0.2443,
+      "accuracy": 0.4109,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0157,
+          "support": 962
+        },
+        "Epithelial": {
+          "f1": 0.5555,
+          "support": 116089
+        },
+        "Immune": {
+          "f1": 0.3315,
+          "support": 41579
+        },
+        "Stromal": {
+          "f1": 0.0745,
+          "support": 6624
+        }
+      }
+    },
+    "rep2": {
+      "macro_f1": 0.2455,
+      "accuracy": 0.3987,
+      "per_class": {
+        "Endothelial": {
+          "f1": 0.0157,
+          "support": 704
+        },
+        "Epithelial": {
+          "f1": 0.5379,
+          "support": 78621
+        },
+        "Immune": {
+          "f1": 0.3371,
+          "support": 31611
+        },
+        "Stromal": {
+          "f1": 0.0915,
+          "support": 5828
+        }
+      }
+    },
+    "combined": {
+      "macro_f1": 0.2446,
+      "accuracy": 0.4059
+    }
+  }
+}

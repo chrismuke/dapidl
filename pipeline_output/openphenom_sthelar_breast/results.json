@@ -1,0 +1,7 @@
+{
+  "test_f1": 0.37364283125330106,
+  "test_acc": 0.5428808051821999,
+  "best_val_f1": 0.37265025783608835,
+  "backbone": "openphenom_vits16",
+  "embed_dim": 384
+}

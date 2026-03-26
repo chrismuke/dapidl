@@ -1,0 +1,13 @@
+{
+  "dilate": 50,
+  "name": "d50",
+  "val_f1": 0.3774,
+  "test_f1": 0.3788,
+  "test_acc": 0.4904,
+  "per_class": {
+    "Endothelial": 0.1456,
+    "Epithelial": 0.6379,
+    "Immune": 0.5046,
+    "Stromal": 0.2269
+  }
+}
