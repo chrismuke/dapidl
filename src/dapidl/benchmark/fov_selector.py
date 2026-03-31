@@ -16,7 +16,6 @@ assumed to be a uniform-scale + translation mapping with no rotation).
 
 from __future__ import annotations
 
-import csv
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,10 +84,11 @@ def load_transform(path: str | Path) -> tuple[float, float, float]:
     Returns:
         ``(scale, offset_x, offset_y)`` floats extracted from the matrix.
     """
-    with open(path, newline="") as fh:
-        rows = list(csv.reader(fh))
+    with open(path) as fh:
+        lines = fh.read().strip().splitlines()
 
-    matrix = [[float(v) for v in row] for row in rows if row]
+    # MERSCOPE uses space-delimited (not comma-delimited) 3x3 affine matrix
+    matrix = [[float(v) for v in line.split()] for line in lines if line.strip()]
     scale = matrix[0][0]
     offset_x = matrix[0][2]
     offset_y = matrix[1][2]

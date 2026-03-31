@@ -115,14 +115,14 @@ class _CellposeAdapterBase(SegmenterAdapter):
     # ------------------------------------------------------------------
 
     def _get_model(self):
-        """Return the Cellpose model, loading it on first call."""
+        """Return the Cellpose model, loading it on first call.
+
+        Note: Cellpose 4.x ignores model_type and always loads CPSAM.
+        """
         if self.__model is None:
             from cellpose import models
 
-            self.__model = models.CellposeModel(
-                model_type=self._model_type,
-                gpu=self._gpu,
-            )
+            self.__model = models.CellposeModel(gpu=self._gpu)
         return self.__model
 
     # ------------------------------------------------------------------
@@ -134,25 +134,18 @@ class _CellposeAdapterBase(SegmenterAdapter):
         image: np.ndarray,
         pixel_size_um: float,
     ) -> np.ndarray:
-        """Run Cellpose on *image* and return the integer mask array.
-
-        Args:
-            image: 2-D grayscale image of any unsigned integer dtype.
-            pixel_size_um: Physical pixel size in µm (unused here but
-                available to subclasses that need it).
-
-        Returns:
-            Integer label array (int32) of the same spatial shape as *image*.
-        """
+        """Run Cellpose on *image* and return the integer mask array."""
         model = self._get_model()
-        masks, _flows, _styles = model.eval_batch(
-            [image],
-            diameter=self._diameter,
+        # Cellpose 4.x: use model.eval() (not eval_batch)
+        result = model.eval(  # noqa: S307 — cellpose inference, not Python eval
+            image,
+            diameter=self._diameter if self._diameter > 0 else None,
             channels=[0, 0],
             flow_threshold=0.4,
             cellprob_threshold=0.0,
         )
-        return masks[0].astype(np.int32)
+        masks = result[0]  # (masks, flows, styles)
+        return masks.astype(np.int32)
 
     # ------------------------------------------------------------------
     # Public interface

@@ -65,6 +65,12 @@ dependencies = [
     "cuml-cu12>=25.12.0",
     "spatialdata>=0.7.2",
     "peft>=0.18.1",
+    "gseapy>=1.1.12",
+    "ipython>=9.8.0",
+    "mllmcelltype[anthropic]>=2.0.4",
+    "sopa>=2.2.2",
+    "tangram-sc>=1.0.4",
+    "wavemix>=0.2.4",
 ]
 
 [project.optional-dependencies]
