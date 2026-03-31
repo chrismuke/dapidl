@@ -1,0 +1,1298 @@
+{
+  "cellpose3_cyto3": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 48,
+        "mean_area_um2": 18.368613,
+        "median_area_um2": 13.390272,
+        "std_area_um2": 18.418259106916018,
+        "mean_eccentricity": 0.5915175668006879,
+        "mean_solidity": 0.9668644466867112,
+        "size_outlier_rate": 0.75,
+        "detection_density_per_1000um2": 0.897468370602987,
+        "small_debris_count": 36,
+        "large_merged_count": 0,
+        "area_p10_um2": 6.4770192,
+        "area_p90_um2": 33.7999392,
+        "eccentricity_p90": 0.7761459332191524,
+        "solidity_p10": 0.9523636872097673
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 23,
+        "native_recovery_rate": 0.04291044776119403,
+        "underseg_rate": 0.09523809523809523,
+        "split_cell_rate": 0.0,
+        "n_segments": 48,
+        "segments_per_native": 0.08955223880597014
+      },
+      "practical": {
+        "n_detected": 48,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 186,
+        "mean_area_um2": 62.024574193548375,
+        "median_area_um2": 52.66296,
+        "std_area_um2": 41.569951547896174,
+        "mean_eccentricity": 0.7166635520241385,
+        "mean_solidity": 0.9669756473881761,
+        "size_outlier_rate": 0.15591397849462366,
+        "detection_density_per_1000um2": 3.375862739619892,
+        "small_debris_count": 29,
+        "large_merged_count": 0,
+        "area_p10_um2": 17.198567999999998,
+        "area_p90_um2": 118.500408,
+        "eccentricity_p90": 0.9133700325036711,
+        "solidity_p10": 0.9395629338452209
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 155,
+        "native_recovery_rate": 0.5272108843537415,
+        "underseg_rate": 0.040268456375838924,
+        "split_cell_rate": 0.0,
+        "n_segments": 186,
+        "segments_per_native": 0.6326530612244898
+      },
+      "practical": {
+        "n_detected": 186,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 322,
+        "mean_area_um2": 26.32630002484472,
+        "median_area_um2": 21.094344,
+        "std_area_um2": 18.817760988370914,
+        "mean_eccentricity": 0.6227897972495351,
+        "mean_solidity": 0.9696192789064615,
+        "size_outlier_rate": 0.4440993788819876,
+        "detection_density_per_1000um2": 6.028401258625341,
+        "small_debris_count": 143,
+        "large_merged_count": 0,
+        "area_p10_um2": 11.5286976,
+        "area_p90_um2": 41.71163040000001,
+        "eccentricity_p90": 0.8434369600417644,
+        "solidity_p10": 0.9539021150074858
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 177,
+        "native_recovery_rate": 0.8676470588235294,
+        "underseg_rate": 0.023121387283236993,
+        "split_cell_rate": 0.5784313725490197,
+        "n_segments": 322,
+        "segments_per_native": 1.5784313725490196
+      },
+      "practical": {
+        "n_detected": 322,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 256,
+        "mean_area_um2": 57.765641062499995,
+        "median_area_um2": 50.907528,
+        "std_area_um2": 35.201940630573716,
+        "mean_eccentricity": 0.709439838391857,
+        "mean_solidity": 0.9690284076662539,
+        "size_outlier_rate": 0.1015625,
+        "detection_density_per_1000um2": 4.465421734270407,
+        "small_debris_count": 26,
+        "large_merged_count": 0,
+        "area_p10_um2": 19.56636,
+        "area_p90_um2": 105.10430399999998,
+        "eccentricity_p90": 0.9090514003061672,
+        "solidity_p10": 0.9414865430916
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 173,
+        "native_recovery_rate": 0.574750830564784,
+        "underseg_rate": 0.06134969325153374,
+        "split_cell_rate": 0.0,
+        "n_segments": 256,
+        "segments_per_native": 0.8504983388704319
+      },
+      "practical": {
+        "n_detected": 256,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 46,
+        "mean_area_um2": 56.24127234782609,
+        "median_area_um2": 42.655248,
+        "std_area_um2": 41.82513864046827,
+        "mean_eccentricity": 0.7864885472342442,
+        "mean_solidity": 0.9357767486808222,
+        "size_outlier_rate": 0.10869565217391304,
+        "detection_density_per_1000um2": 1.0801361573579202,
+        "small_debris_count": 5,
+        "large_merged_count": 0,
+        "area_p10_um2": 20.791079999999997,
+        "area_p90_um2": 93.38198399999999,
+        "eccentricity_p90": 0.950056804720254,
+        "solidity_p10": 0.9360193227831441
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 12,
+        "native_recovery_rate": 0.8571428571428571,
+        "underseg_rate": 0.2,
+        "split_cell_rate": 2.2857142857142856,
+        "n_segments": 46,
+        "segments_per_native": 3.2857142857142856
+      },
+      "practical": {
+        "n_detected": 46,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  },
+  "cellpose3_nuclei": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 48,
+        "mean_area_um2": 18.368613,
+        "median_area_um2": 13.390272,
+        "std_area_um2": 18.418259106916018,
+        "mean_eccentricity": 0.5915175668006879,
+        "mean_solidity": 0.9668644466867112,
+        "size_outlier_rate": 0.75,
+        "detection_density_per_1000um2": 0.897468370602987,
+        "small_debris_count": 36,
+        "large_merged_count": 0,
+        "area_p10_um2": 6.4770192,
+        "area_p90_um2": 33.7999392,
+        "eccentricity_p90": 0.7761459332191524,
+        "solidity_p10": 0.9523636872097673
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 23,
+        "native_recovery_rate": 0.04291044776119403,
+        "underseg_rate": 0.09523809523809523,
+        "split_cell_rate": 0.0,
+        "n_segments": 48,
+        "segments_per_native": 0.08955223880597014
+      },
+      "practical": {
+        "n_detected": 48,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 186,
+        "mean_area_um2": 62.024574193548375,
+        "median_area_um2": 52.66296,
+        "std_area_um2": 41.569951547896174,
+        "mean_eccentricity": 0.7166635520241385,
+        "mean_solidity": 0.9669756473881761,
+        "size_outlier_rate": 0.15591397849462366,
+        "detection_density_per_1000um2": 3.375862739619892,
+        "small_debris_count": 29,
+        "large_merged_count": 0,
+        "area_p10_um2": 17.198567999999998,
+        "area_p90_um2": 118.500408,
+        "eccentricity_p90": 0.9133700325036711,
+        "solidity_p10": 0.9395629338452209
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 155,
+        "native_recovery_rate": 0.5272108843537415,
+        "underseg_rate": 0.040268456375838924,
+        "split_cell_rate": 0.0,
+        "n_segments": 186,
+        "segments_per_native": 0.6326530612244898
+      },
+      "practical": {
+        "n_detected": 186,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 322,
+        "mean_area_um2": 26.32630002484472,
+        "median_area_um2": 21.094344,
+        "std_area_um2": 18.817760988370914,
+        "mean_eccentricity": 0.6227897972495351,
+        "mean_solidity": 0.9696192789064615,
+        "size_outlier_rate": 0.4440993788819876,
+        "detection_density_per_1000um2": 6.028401258625341,
+        "small_debris_count": 143,
+        "large_merged_count": 0,
+        "area_p10_um2": 11.5286976,
+        "area_p90_um2": 41.71163040000001,
+        "eccentricity_p90": 0.8434369600417644,
+        "solidity_p10": 0.9539021150074858
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 177,
+        "native_recovery_rate": 0.8676470588235294,
+        "underseg_rate": 0.023121387283236993,
+        "split_cell_rate": 0.5784313725490197,
+        "n_segments": 322,
+        "segments_per_native": 1.5784313725490196
+      },
+      "practical": {
+        "n_detected": 322,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 256,
+        "mean_area_um2": 57.765641062499995,
+        "median_area_um2": 50.907528,
+        "std_area_um2": 35.201940630573716,
+        "mean_eccentricity": 0.709439838391857,
+        "mean_solidity": 0.9690284076662539,
+        "size_outlier_rate": 0.1015625,
+        "detection_density_per_1000um2": 4.465421734270407,
+        "small_debris_count": 26,
+        "large_merged_count": 0,
+        "area_p10_um2": 19.56636,
+        "area_p90_um2": 105.10430399999998,
+        "eccentricity_p90": 0.9090514003061672,
+        "solidity_p10": 0.9414865430916
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 173,
+        "native_recovery_rate": 0.574750830564784,
+        "underseg_rate": 0.06134969325153374,
+        "split_cell_rate": 0.0,
+        "n_segments": 256,
+        "segments_per_native": 0.8504983388704319
+      },
+      "practical": {
+        "n_detected": 256,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 46,
+        "mean_area_um2": 56.24127234782609,
+        "median_area_um2": 42.655248,
+        "std_area_um2": 41.82513864046827,
+        "mean_eccentricity": 0.7864885472342442,
+        "mean_solidity": 0.9357767486808222,
+        "size_outlier_rate": 0.10869565217391304,
+        "detection_density_per_1000um2": 1.0801361573579202,
+        "small_debris_count": 5,
+        "large_merged_count": 0,
+        "area_p10_um2": 20.791079999999997,
+        "area_p90_um2": 93.38198399999999,
+        "eccentricity_p90": 0.950056804720254,
+        "solidity_p10": 0.9360193227831441
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 12,
+        "native_recovery_rate": 0.8571428571428571,
+        "underseg_rate": 0.2,
+        "split_cell_rate": 2.2857142857142856,
+        "n_segments": 46,
+        "segments_per_native": 3.2857142857142856
+      },
+      "practical": {
+        "n_detected": 46,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  },
+  "cellpose_sam": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 48,
+        "mean_area_um2": 18.368613,
+        "median_area_um2": 13.390272,
+        "std_area_um2": 18.418259106916018,
+        "mean_eccentricity": 0.5915175668006879,
+        "mean_solidity": 0.9668644466867112,
+        "size_outlier_rate": 0.75,
+        "detection_density_per_1000um2": 0.897468370602987,
+        "small_debris_count": 36,
+        "large_merged_count": 0,
+        "area_p10_um2": 6.4770192,
+        "area_p90_um2": 33.7999392,
+        "eccentricity_p90": 0.7761459332191524,
+        "solidity_p10": 0.9523636872097673
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 23,
+        "native_recovery_rate": 0.04291044776119403,
+        "underseg_rate": 0.09523809523809523,
+        "split_cell_rate": 0.0,
+        "n_segments": 48,
+        "segments_per_native": 0.08955223880597014
+      },
+      "practical": {
+        "n_detected": 48,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 186,
+        "mean_area_um2": 62.024574193548375,
+        "median_area_um2": 52.66296,
+        "std_area_um2": 41.569951547896174,
+        "mean_eccentricity": 0.7166635520241385,
+        "mean_solidity": 0.9669756473881761,
+        "size_outlier_rate": 0.15591397849462366,
+        "detection_density_per_1000um2": 3.375862739619892,
+        "small_debris_count": 29,
+        "large_merged_count": 0,
+        "area_p10_um2": 17.198567999999998,
+        "area_p90_um2": 118.500408,
+        "eccentricity_p90": 0.9133700325036711,
+        "solidity_p10": 0.9395629338452209
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 155,
+        "native_recovery_rate": 0.5272108843537415,
+        "underseg_rate": 0.040268456375838924,
+        "split_cell_rate": 0.0,
+        "n_segments": 186,
+        "segments_per_native": 0.6326530612244898
+      },
+      "practical": {
+        "n_detected": 186,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 322,
+        "mean_area_um2": 26.32630002484472,
+        "median_area_um2": 21.094344,
+        "std_area_um2": 18.817760988370914,
+        "mean_eccentricity": 0.6227897972495351,
+        "mean_solidity": 0.9696192789064615,
+        "size_outlier_rate": 0.4440993788819876,
+        "detection_density_per_1000um2": 6.028401258625341,
+        "small_debris_count": 143,
+        "large_merged_count": 0,
+        "area_p10_um2": 11.5286976,
+        "area_p90_um2": 41.71163040000001,
+        "eccentricity_p90": 0.8434369600417644,
+        "solidity_p10": 0.9539021150074858
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 177,
+        "native_recovery_rate": 0.8676470588235294,
+        "underseg_rate": 0.023121387283236993,
+        "split_cell_rate": 0.5784313725490197,
+        "n_segments": 322,
+        "segments_per_native": 1.5784313725490196
+      },
+      "practical": {
+        "n_detected": 322,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 256,
+        "mean_area_um2": 57.765641062499995,
+        "median_area_um2": 50.907528,
+        "std_area_um2": 35.201940630573716,
+        "mean_eccentricity": 0.709439838391857,
+        "mean_solidity": 0.9690284076662539,
+        "size_outlier_rate": 0.1015625,
+        "detection_density_per_1000um2": 4.465421734270407,
+        "small_debris_count": 26,
+        "large_merged_count": 0,
+        "area_p10_um2": 19.56636,
+        "area_p90_um2": 105.10430399999998,
+        "eccentricity_p90": 0.9090514003061672,
+        "solidity_p10": 0.9414865430916
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 173,
+        "native_recovery_rate": 0.574750830564784,
+        "underseg_rate": 0.06134969325153374,
+        "split_cell_rate": 0.0,
+        "n_segments": 256,
+        "segments_per_native": 0.8504983388704319
+      },
+      "practical": {
+        "n_detected": 256,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 46,
+        "mean_area_um2": 56.24127234782609,
+        "median_area_um2": 42.655248,
+        "std_area_um2": 41.82513864046827,
+        "mean_eccentricity": 0.7864885472342442,
+        "mean_solidity": 0.9357767486808222,
+        "size_outlier_rate": 0.10869565217391304,
+        "detection_density_per_1000um2": 1.0801361573579202,
+        "small_debris_count": 5,
+        "large_merged_count": 0,
+        "area_p10_um2": 20.791079999999997,
+        "area_p90_um2": 93.38198399999999,
+        "eccentricity_p90": 0.950056804720254,
+        "solidity_p10": 0.9360193227831441
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 12,
+        "native_recovery_rate": 0.8571428571428571,
+        "underseg_rate": 0.2,
+        "split_cell_rate": 2.2857142857142856,
+        "n_segments": 46,
+        "segments_per_native": 3.2857142857142856
+      },
+      "practical": {
+        "n_detected": 46,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  },
+  "consensus_iou_weighted": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 43,
+        "mean_area_um2": 20.504498232558138,
+        "median_area_um2": 14.241743999999999,
+        "std_area_um2": 21.248403987296395,
+        "mean_eccentricity": 0.5964399572233433,
+        "mean_solidity": 0.9608073454607072,
+        "size_outlier_rate": 0.6976744186046512,
+        "detection_density_per_1000um2": 0.8039820819985092,
+        "small_debris_count": 30,
+        "large_merged_count": 0,
+        "area_p10_um2": 6.4758528,
+        "area_p90_um2": 34.105535999999994,
+        "eccentricity_p90": 0.7886351303708955,
+        "solidity_p10": 0.9475553981883096
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 23,
+        "native_recovery_rate": 0.04291044776119403,
+        "underseg_rate": 0.15789473684210525,
+        "split_cell_rate": 0.0,
+        "n_segments": 43,
+        "segments_per_native": 0.08022388059701492
+      },
+      "practical": {
+        "n_detected": 43,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 163,
+        "mean_area_um2": 70.7765079754601,
+        "median_area_um2": 52.46467199999999,
+        "std_area_um2": 62.00792539330617,
+        "mean_eccentricity": 0.7235590874933826,
+        "mean_solidity": 0.9555731694254144,
+        "size_outlier_rate": 0.147239263803681,
+        "detection_density_per_1000um2": 2.9584173470862494,
+        "small_debris_count": 24,
+        "large_merged_count": 0,
+        "area_p10_um2": 17.146079999999998,
+        "area_p90_um2": 131.0263776,
+        "eccentricity_p90": 0.9265181745018058,
+        "solidity_p10": 0.8898563409573655
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 155,
+        "native_recovery_rate": 0.5272108843537415,
+        "underseg_rate": 0.13533834586466165,
+        "split_cell_rate": 0.0,
+        "n_segments": 163,
+        "segments_per_native": 0.5544217687074829
+      },
+      "practical": {
+        "n_detected": 163,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 208,
+        "mean_area_um2": 40.755137538461526,
+        "median_area_um2": 24.296111999999997,
+        "std_area_um2": 53.727398896634384,
+        "mean_eccentricity": 0.664706070701367,
+        "mean_solidity": 0.9427411684459787,
+        "size_outlier_rate": 0.34615384615384615,
+        "detection_density_per_1000um2": 3.8941225521555,
+        "small_debris_count": 72,
+        "large_merged_count": 0,
+        "area_p10_um2": 11.497204799999999,
+        "area_p90_um2": 85.5507744,
+        "eccentricity_p90": 0.8960167633294978,
+        "solidity_p10": 0.8429773631867415
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 177,
+        "native_recovery_rate": 0.8676470588235294,
+        "underseg_rate": 0.22764227642276422,
+        "split_cell_rate": 0.0196078431372549,
+        "n_segments": 208,
+        "segments_per_native": 1.0196078431372548
+      },
+      "practical": {
+        "n_detected": 208,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 188,
+        "mean_area_um2": 78.65959634042552,
+        "median_area_um2": 54.330912,
+        "std_area_um2": 70.84123276829735,
+        "mean_eccentricity": 0.7412629750068025,
+        "mean_solidity": 0.94274331455453,
+        "size_outlier_rate": 0.11702127659574468,
+        "detection_density_per_1000um2": 3.2792940861048305,
+        "small_debris_count": 22,
+        "large_merged_count": 0,
+        "area_p10_um2": 17.433014399999998,
+        "area_p90_um2": 168.6602736,
+        "eccentricity_p90": 0.920395221868127,
+        "solidity_p10": 0.8381231949997141
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 173,
+        "native_recovery_rate": 0.574750830564784,
+        "underseg_rate": 0.2764227642276423,
+        "split_cell_rate": 0.0,
+        "n_segments": 188,
+        "segments_per_native": 0.6245847176079734
+      },
+      "practical": {
+        "n_detected": 188,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 38,
+        "mean_area_um2": 68.08154021052631,
+        "median_area_um2": 43.763328,
+        "std_area_um2": 57.21602116981731,
+        "mean_eccentricity": 0.7845090459272794,
+        "mean_solidity": 0.9336392076130319,
+        "size_outlier_rate": 0.10526315789473684,
+        "detection_density_per_1000um2": 0.8922863908608907,
+        "small_debris_count": 4,
+        "large_merged_count": 0,
+        "area_p10_um2": 21.269303999999998,
+        "area_p90_um2": 155.1067056,
+        "eccentricity_p90": 0.9237359272771246,
+        "solidity_p10": 0.8330309893049404
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 12,
+        "native_recovery_rate": 0.8571428571428571,
+        "underseg_rate": 0.2222222222222222,
+        "split_cell_rate": 1.7142857142857142,
+        "n_segments": 38,
+        "segments_per_native": 2.7142857142857144
+      },
+      "practical": {
+        "n_detected": 38,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  },
+  "consensus_majority": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 43,
+        "mean_area_um2": 20.504498232558138,
+        "median_area_um2": 14.241743999999999,
+        "std_area_um2": 21.248403987296395,
+        "mean_eccentricity": 0.5964399572233433,
+        "mean_solidity": 0.9608073454607072,
+        "size_outlier_rate": 0.6976744186046512,
+        "detection_density_per_1000um2": 0.8039820819985092,
+        "small_debris_count": 30,
+        "large_merged_count": 0,
+        "area_p10_um2": 6.4758528,
+        "area_p90_um2": 34.105535999999994,
+        "eccentricity_p90": 0.7886351303708955,
+        "solidity_p10": 0.9475553981883096
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 23,
+        "native_recovery_rate": 0.04291044776119403,
+        "underseg_rate": 0.15789473684210525,
+        "split_cell_rate": 0.0,
+        "n_segments": 43,
+        "segments_per_native": 0.08022388059701492
+      },
+      "practical": {
+        "n_detected": 43,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 163,
+        "mean_area_um2": 70.7765079754601,
+        "median_area_um2": 52.46467199999999,
+        "std_area_um2": 62.00792539330617,
+        "mean_eccentricity": 0.7235590874933826,
+        "mean_solidity": 0.9555731694254144,
+        "size_outlier_rate": 0.147239263803681,
+        "detection_density_per_1000um2": 2.9584173470862494,
+        "small_debris_count": 24,
+        "large_merged_count": 0,
+        "area_p10_um2": 17.146079999999998,
+        "area_p90_um2": 131.0263776,
+        "eccentricity_p90": 0.9265181745018058,
+        "solidity_p10": 0.8898563409573655
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 155,
+        "native_recovery_rate": 0.5272108843537415,
+        "underseg_rate": 0.13533834586466165,
+        "split_cell_rate": 0.0,
+        "n_segments": 163,
+        "segments_per_native": 0.5544217687074829
+      },
+      "practical": {
+        "n_detected": 163,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 208,
+        "mean_area_um2": 40.755137538461526,
+        "median_area_um2": 24.296111999999997,
+        "std_area_um2": 53.727398896634384,
+        "mean_eccentricity": 0.664706070701367,
+        "mean_solidity": 0.9427411684459787,
+        "size_outlier_rate": 0.34615384615384615,
+        "detection_density_per_1000um2": 3.8941225521555,
+        "small_debris_count": 72,
+        "large_merged_count": 0,
+        "area_p10_um2": 11.497204799999999,
+        "area_p90_um2": 85.5507744,
+        "eccentricity_p90": 0.8960167633294978,
+        "solidity_p10": 0.8429773631867415
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 177,
+        "native_recovery_rate": 0.8676470588235294,
+        "underseg_rate": 0.22764227642276422,
+        "split_cell_rate": 0.0196078431372549,
+        "n_segments": 208,
+        "segments_per_native": 1.0196078431372548
+      },
+      "practical": {
+        "n_detected": 208,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 188,
+        "mean_area_um2": 78.65959634042552,
+        "median_area_um2": 54.330912,
+        "std_area_um2": 70.84123276829735,
+        "mean_eccentricity": 0.7412629750068025,
+        "mean_solidity": 0.94274331455453,
+        "size_outlier_rate": 0.11702127659574468,
+        "detection_density_per_1000um2": 3.2792940861048305,
+        "small_debris_count": 22,
+        "large_merged_count": 0,
+        "area_p10_um2": 17.433014399999998,
+        "area_p90_um2": 168.6602736,
+        "eccentricity_p90": 0.920395221868127,
+        "solidity_p10": 0.8381231949997141
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 173,
+        "native_recovery_rate": 0.574750830564784,
+        "underseg_rate": 0.2764227642276423,
+        "split_cell_rate": 0.0,
+        "n_segments": 188,
+        "segments_per_native": 0.6245847176079734
+      },
+      "practical": {
+        "n_detected": 188,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 38,
+        "mean_area_um2": 68.08154021052631,
+        "median_area_um2": 43.763328,
+        "std_area_um2": 57.21602116981731,
+        "mean_eccentricity": 0.7845090459272794,
+        "mean_solidity": 0.9336392076130319,
+        "size_outlier_rate": 0.10526315789473684,
+        "detection_density_per_1000um2": 0.8922863908608907,
+        "small_debris_count": 4,
+        "large_merged_count": 0,
+        "area_p10_um2": 21.269303999999998,
+        "area_p90_um2": 155.1067056,
+        "eccentricity_p90": 0.9237359272771246,
+        "solidity_p10": 0.8330309893049404
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 12,
+        "native_recovery_rate": 0.8571428571428571,
+        "underseg_rate": 0.2222222222222222,
+        "split_cell_rate": 1.7142857142857142,
+        "n_segments": 38,
+        "segments_per_native": 2.7142857142857144
+      },
+      "practical": {
+        "n_detected": 38,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  },
+  "consensus_topological": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 197,
+        "mean_area_um2": 18.28062603045685,
+        "median_area_um2": 11.512367999999999,
+        "std_area_um2": 18.913347534646938,
+        "mean_eccentricity": 0.7072239554990414,
+        "mean_solidity": 0.9514319062509728,
+        "size_outlier_rate": 0.6700507614213198,
+        "detection_density_per_1000um2": 3.6833597710164256,
+        "small_debris_count": 132,
+        "large_merged_count": 0,
+        "area_p10_um2": 1.4836608,
+        "area_p90_um2": 43.693343999999996,
+        "eccentricity_p90": 0.9040036095370308,
+        "solidity_p10": 0.9025041981087584
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 99,
+        "native_recovery_rate": 0.18470149253731344,
+        "underseg_rate": 0.18292682926829268,
+        "split_cell_rate": 0.0,
+        "n_segments": 197,
+        "segments_per_native": 0.3675373134328358
+      },
+      "practical": {
+        "n_detected": 197,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 166,
+        "mean_area_um2": 64.77251074698796,
+        "median_area_um2": 48.66803999999999,
+        "std_area_um2": 58.7618803683769,
+        "mean_eccentricity": 0.7322330326410258,
+        "mean_solidity": 0.938061213238723,
+        "size_outlier_rate": 0.19879518072289157,
+        "detection_density_per_1000um2": 3.0128667461123766,
+        "small_debris_count": 33,
+        "large_merged_count": 0,
+        "area_p10_um2": 12.200543999999999,
+        "area_p90_um2": 130.910904,
+        "eccentricity_p90": 0.940453761493105,
+        "solidity_p10": 0.8243297617575263
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 156,
+        "native_recovery_rate": 0.5306122448979592,
+        "underseg_rate": 0.1640625,
+        "split_cell_rate": 0.0,
+        "n_segments": 166,
+        "segments_per_native": 0.564625850340136
+      },
+      "practical": {
+        "n_detected": 166,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 235,
+        "mean_area_um2": 34.64431353191489,
+        "median_area_um2": 23.09472,
+        "std_area_um2": 41.54239261842075,
+        "mean_eccentricity": 0.6818743992649021,
+        "mean_solidity": 0.9403160465636607,
+        "size_outlier_rate": 0.39574468085106385,
+        "detection_density_per_1000um2": 4.399609614214147,
+        "small_debris_count": 93,
+        "large_merged_count": 0,
+        "area_p10_um2": 6.9774047999999995,
+        "area_p90_um2": 69.21650879999999,
+        "eccentricity_p90": 0.9180938064637058,
+        "solidity_p10": 0.8369718569891058
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 175,
+        "native_recovery_rate": 0.8578431372549019,
+        "underseg_rate": 0.2076923076923077,
+        "split_cell_rate": 0.15196078431372548,
+        "n_segments": 235,
+        "segments_per_native": 1.1519607843137254
+      },
+      "practical": {
+        "n_detected": 235,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 213,
+        "mean_area_um2": 68.08096090140843,
+        "median_area_um2": 50.190191999999996,
+        "std_area_um2": 63.649218022347654,
+        "mean_eccentricity": 0.7365426083878125,
+        "mean_solidity": 0.9322304586672884,
+        "size_outlier_rate": 0.20187793427230047,
+        "detection_density_per_1000um2": 3.715370427342175,
+        "small_debris_count": 43,
+        "large_merged_count": 0,
+        "area_p10_um2": 8.941622400000002,
+        "area_p90_um2": 155.749392,
+        "eccentricity_p90": 0.9344655352461042,
+        "solidity_p10": 0.8114046085998449
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 178,
+        "native_recovery_rate": 0.5913621262458472,
+        "underseg_rate": 0.2734375,
+        "split_cell_rate": 0.0,
+        "n_segments": 213,
+        "segments_per_native": 0.707641196013289
+      },
+      "practical": {
+        "n_detected": 213,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 50,
+        "mean_area_um2": 56.413169280000005,
+        "median_area_um2": 39.22019999999999,
+        "std_area_um2": 53.45067355781945,
+        "mean_eccentricity": 0.7779160346117753,
+        "mean_solidity": 0.9328174125959215,
+        "size_outlier_rate": 0.2,
+        "detection_density_per_1000um2": 1.1740610406064351,
+        "small_debris_count": 10,
+        "large_merged_count": 0,
+        "area_p10_um2": 10.781035200000002,
+        "area_p90_um2": 139.47577920000003,
+        "eccentricity_p90": 0.9570494660460417,
+        "solidity_p10": 0.8387420110096057
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 12,
+        "native_recovery_rate": 0.8571428571428571,
+        "underseg_rate": 0.2222222222222222,
+        "split_cell_rate": 2.5714285714285716,
+        "n_segments": 50,
+        "segments_per_native": 3.5714285714285716
+      },
+      "practical": {
+        "n_detected": 50,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  },
+  "instanseg": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 2,
+        "mean_area_um2": 41.599655999999996,
+        "median_area_um2": 41.599655999999996,
+        "std_area_um2": 10.631735999999998,
+        "mean_eccentricity": 0.4683521462925773,
+        "mean_solidity": 0.9281043014752067,
+        "size_outlier_rate": 0.0,
+        "detection_density_per_1000um2": 0.03739451544179113,
+        "small_debris_count": 0,
+        "large_merged_count": 0,
+        "area_p10_um2": 33.0942672,
+        "area_p90_um2": 50.105044799999995,
+        "eccentricity_p90": 0.5754346935311997,
+        "solidity_p10": 0.9224369853464605
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 1,
+        "native_recovery_rate": 0.0018656716417910447,
+        "underseg_rate": 0.0,
+        "split_cell_rate": 0.0,
+        "n_segments": 2,
+        "segments_per_native": 0.0037313432835820895
+      },
+      "practical": {
+        "n_detected": 2,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 103,
+        "mean_area_um2": 76.20680062135922,
+        "median_area_um2": 72.923328,
+        "std_area_um2": 33.437340175974846,
+        "mean_eccentricity": 0.6447459257819541,
+        "mean_solidity": 0.9390822196413396,
+        "size_outlier_rate": 0.019417475728155338,
+        "detection_density_per_1000um2": 1.8694293665637036,
+        "small_debris_count": 2,
+        "large_merged_count": 0,
+        "area_p10_um2": 35.35824959999999,
+        "area_p90_um2": 123.2021664,
+        "eccentricity_p90": 0.8384220255977067,
+        "solidity_p10": 0.922821219498025
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 93,
+        "native_recovery_rate": 0.3163265306122449,
+        "underseg_rate": 0.06896551724137931,
+        "split_cell_rate": 0.0,
+        "n_segments": 103,
+        "segments_per_native": 0.35034013605442177
+      },
+      "practical": {
+        "n_detected": 103,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 17,
+        "mean_area_um2": 60.020199529411755,
+        "median_area_um2": 63.568799999999996,
+        "std_area_um2": 22.9378133323372,
+        "mean_eccentricity": 0.6878844239271962,
+        "mean_solidity": 0.935490808972269,
+        "size_outlier_rate": 0.0,
+        "detection_density_per_1000um2": 0.3182696316665553,
+        "small_debris_count": 0,
+        "large_merged_count": 0,
+        "area_p10_um2": 33.26106239999999,
+        "area_p90_um2": 91.69536959999999,
+        "eccentricity_p90": 0.8854986940397508,
+        "solidity_p10": 0.9197399425287356
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 10,
+        "native_recovery_rate": 0.049019607843137254,
+        "underseg_rate": 0.0,
+        "split_cell_rate": 0.0,
+        "n_segments": 17,
+        "segments_per_native": 0.08333333333333333
+      },
+      "practical": {
+        "n_detected": 17,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 189,
+        "mean_area_um2": 63.209807999999995,
+        "median_area_um2": 56.44209599999999,
+        "std_area_um2": 30.4143222499554,
+        "mean_eccentricity": 0.6638813295900937,
+        "mean_solidity": 0.9377277938791277,
+        "size_outlier_rate": 0.026455026455026454,
+        "detection_density_per_1000um2": 3.296737139754324,
+        "small_debris_count": 5,
+        "large_merged_count": 0,
+        "area_p10_um2": 32.050339199999996,
+        "area_p90_um2": 108.3632256,
+        "eccentricity_p90": 0.8601208007946751,
+        "solidity_p10": 0.9186431167696189
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 131,
+        "native_recovery_rate": 0.43521594684385384,
+        "underseg_rate": 0.04838709677419355,
+        "split_cell_rate": 0.0,
+        "n_segments": 189,
+        "segments_per_native": 0.627906976744186
+      },
+      "practical": {
+        "n_detected": 189,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 16,
+        "mean_area_um2": 42.95632499999999,
+        "median_area_um2": 38.800296,
+        "std_area_um2": 10.561311788141044,
+        "mean_eccentricity": 0.7465683498866731,
+        "mean_solidity": 0.9257114795766341,
+        "size_outlier_rate": 0.0,
+        "detection_density_per_1000um2": 0.3756995329940593,
+        "small_debris_count": 0,
+        "large_merged_count": 0,
+        "area_p10_um2": 32.239295999999996,
+        "area_p90_um2": 59.515559999999994,
+        "eccentricity_p90": 0.869193418614739,
+        "solidity_p10": 0.9073851315017611
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 7,
+        "native_recovery_rate": 0.5,
+        "underseg_rate": 0.16666666666666666,
+        "split_cell_rate": 0.14285714285714285,
+        "n_segments": 16,
+        "segments_per_native": 1.1428571428571428
+      },
+      "practical": {
+        "n_detected": 16,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  },
+  "stardist": {
+    "dense": {
+      "morphometric": {
+        "n_detected": 409,
+        "mean_area_um2": 12.691886435207822,
+        "median_area_um2": 8.514719999999999,
+        "std_area_um2": 13.992127282307415,
+        "mean_eccentricity": 0.6113339498021092,
+        "mean_solidity": 0.9612171648955711,
+        "size_outlier_rate": 0.7775061124694377,
+        "detection_density_per_1000um2": 7.647178407846286,
+        "small_debris_count": 318,
+        "large_merged_count": 0,
+        "area_p10_um2": 0.956448,
+        "area_p90_um2": 29.542579199999995,
+        "eccentricity_p90": 0.8303604034843884,
+        "solidity_p10": 0.9332487156240556
+      },
+      "biological": {
+        "n_native": 536,
+        "n_recovered": 146,
+        "native_recovery_rate": 0.27238805970149255,
+        "underseg_rate": 0.15079365079365079,
+        "split_cell_rate": 0.0,
+        "n_segments": 409,
+        "segments_per_native": 0.7630597014925373
+      },
+      "practical": {
+        "n_detected": 409,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "edge": {
+      "morphometric": {
+        "n_detected": 98,
+        "mean_area_um2": 61.709939265306105,
+        "median_area_um2": 49.90442399999999,
+        "std_area_um2": 38.17269672526492,
+        "mean_eccentricity": 0.65163923177347,
+        "mean_solidity": 0.9701639317302178,
+        "size_outlier_rate": 0.12244897959183673,
+        "detection_density_per_1000um2": 1.7786803681868246,
+        "small_debris_count": 12,
+        "large_merged_count": 0,
+        "area_p10_um2": 18.8396928,
+        "area_p90_um2": 118.81533599999997,
+        "eccentricity_p90": 0.8796214202935032,
+        "solidity_p10": 0.9500091050250908
+      },
+      "biological": {
+        "n_native": 294,
+        "n_recovered": 81,
+        "native_recovery_rate": 0.2755102040816326,
+        "underseg_rate": 0.1111111111111111,
+        "split_cell_rate": 0.0,
+        "n_segments": 98,
+        "segments_per_native": 0.3333333333333333
+      },
+      "practical": {
+        "n_detected": 98,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "immune": {
+      "morphometric": {
+        "n_detected": 225,
+        "mean_area_um2": 20.96290368,
+        "median_area_um2": 17.216064,
+        "std_area_um2": 16.896476859103554,
+        "mean_eccentricity": 0.5964977017348934,
+        "mean_solidity": 0.971843966720792,
+        "size_outlier_rate": 0.6355555555555555,
+        "detection_density_per_1000um2": 4.212392183822056,
+        "small_debris_count": 143,
+        "large_merged_count": 0,
+        "area_p10_um2": 7.331990400000002,
+        "area_p90_um2": 38.640499199999994,
+        "eccentricity_p90": 0.8378283052335411,
+        "solidity_p10": 0.9618669015629554
+      },
+      "biological": {
+        "n_native": 204,
+        "n_recovered": 126,
+        "native_recovery_rate": 0.6176470588235294,
+        "underseg_rate": 0.016129032258064516,
+        "split_cell_rate": 0.10294117647058823,
+        "n_segments": 225,
+        "segments_per_native": 1.1029411764705883
+      },
+      "practical": {
+        "n_detected": 225,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "mixed": {
+      "morphometric": {
+        "n_detected": 414,
+        "mean_area_um2": 30.988458782608696,
+        "median_area_um2": 18.598247999999998,
+        "std_area_um2": 29.620753094276193,
+        "mean_eccentricity": 0.7009066941682351,
+        "mean_solidity": 0.9604594909377301,
+        "size_outlier_rate": 0.5096618357487923,
+        "detection_density_per_1000um2": 7.221424210890425,
+        "small_debris_count": 211,
+        "large_merged_count": 0,
+        "area_p10_um2": 1.8499104,
+        "area_p90_um2": 77.49911519999998,
+        "eccentricity_p90": 0.889187119109567,
+        "solidity_p10": 0.932638700947226
+      },
+      "biological": {
+        "n_native": 301,
+        "n_recovered": 167,
+        "native_recovery_rate": 0.5548172757475083,
+        "underseg_rate": 0.050314465408805034,
+        "split_cell_rate": 0.3754152823920266,
+        "n_segments": 414,
+        "segments_per_native": 1.3754152823920265
+      },
+      "practical": {
+        "n_detected": 414,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    },
+    "sparse": {
+      "morphometric": {
+        "n_detected": 71,
+        "mean_area_um2": 26.13278129577464,
+        "median_area_um2": 19.875456,
+        "std_area_um2": 18.405860485034943,
+        "mean_eccentricity": 0.7395233334327536,
+        "mean_solidity": 0.9616213497297929,
+        "size_outlier_rate": 0.5070422535211268,
+        "detection_density_per_1000um2": 1.667166677661138,
+        "small_debris_count": 36,
+        "large_merged_count": 0,
+        "area_p10_um2": 7.045056,
+        "area_p90_um2": 50.41180799999999,
+        "eccentricity_p90": 0.9120569879285179,
+        "solidity_p10": 0.9424920127795527
+      },
+      "biological": {
+        "n_native": 14,
+        "n_recovered": 10,
+        "native_recovery_rate": 0.7142857142857143,
+        "underseg_rate": 0.1111111111111111,
+        "split_cell_rate": 4.071428571428571,
+        "n_segments": 71,
+        "segments_per_native": 5.071428571428571
+      },
+      "practical": {
+        "n_detected": 71,
+        "runtime_seconds": 0.0,
+        "peak_memory_mb": 0.0
+      }
+    }
+  }
+}
