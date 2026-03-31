@@ -142,3 +142,73 @@ def test_cellpose_adapter_segment_returns_output():
     assert result.masks.shape == (256, 256)
     assert result.method_name == "cellpose_sam"
     assert result.runtime_seconds >= 0
+
+
+# ---------------------------------------------------------------------------
+# Morphometric evaluation tests
+# ---------------------------------------------------------------------------
+
+from dapidl.benchmark.evaluation.morphometric import compute_morphometric_metrics
+
+
+def _make_two_cell_mask():
+    masks = np.zeros((200, 200), dtype=np.int32)
+    yy, xx = np.ogrid[:200, :200]
+    masks[((yy - 50) ** 2 + (xx - 50) ** 2) <= 20**2] = 1
+    masks[((yy - 150) ** 2 + (xx - 150) ** 2) <= 15**2] = 2
+    return masks
+
+
+def test_morphometric_metrics_structure():
+    masks = _make_two_cell_mask()
+    metrics = compute_morphometric_metrics(masks, pixel_size_um=0.108)
+    assert "mean_area_um2" in metrics
+    assert "mean_solidity" in metrics
+    assert "n_detected" in metrics
+
+
+def test_morphometric_area_values():
+    masks = _make_two_cell_mask()
+    metrics = compute_morphometric_metrics(masks, pixel_size_um=0.108)
+    assert metrics["n_detected"] == 2
+    assert metrics["mean_area_um2"] > 5.0
+
+
+def test_morphometric_empty_mask():
+    masks = np.zeros((100, 100), dtype=np.int32)
+    metrics = compute_morphometric_metrics(masks, pixel_size_um=0.108)
+    assert metrics["n_detected"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Biological evaluation tests
+# ---------------------------------------------------------------------------
+
+from dapidl.benchmark.evaluation.biological import compute_biological_metrics
+
+
+def test_biological_metrics_perfect_match():
+    masks = np.zeros((100, 100), dtype=np.int32)
+    masks[10:30, 10:30] = 1
+    masks[60:80, 60:80] = 2
+    native_centroids = np.array([[20.0, 20.0], [70.0, 70.0]])
+    metrics = compute_biological_metrics(masks=masks, native_centroids=native_centroids)
+    assert metrics["native_recovery_rate"] == 1.0
+    assert metrics["n_recovered"] == 2
+
+
+def test_biological_metrics_partial_recovery():
+    masks = np.zeros((100, 100), dtype=np.int32)
+    masks[10:30, 10:30] = 1
+    native_centroids = np.array([[20.0, 20.0], [70.0, 70.0]])
+    metrics = compute_biological_metrics(masks=masks, native_centroids=native_centroids)
+    assert metrics["native_recovery_rate"] == 0.5
+
+
+def test_biological_metrics_oversegmentation():
+    masks = np.zeros((100, 100), dtype=np.int32)
+    masks[10:20, 10:30] = 1
+    masks[20:30, 10:30] = 2
+    native_centroids = np.array([[20.0, 20.0]])
+    metrics = compute_biological_metrics(masks=masks, native_centroids=native_centroids)
+    assert "split_cell_rate" in metrics
