@@ -17,11 +17,14 @@ assumed to be a uniform-scale + translation mapping with no rotation).
 from __future__ import annotations
 
 import csv
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Default affine transform constants (MERSCOPE breast dataset)
@@ -200,11 +203,6 @@ def select_fovs(
     # Step 2 — rank by density for percentile-based selection
     # ------------------------------------------------------------------
     records_by_density = sorted(records, key=lambda r: r["density"])
-    n = len(records_by_density)
-
-    def _pick_by_density_percentile(p: float) -> dict:
-        idx = max(0, min(n - 1, int(round(p * (n - 1)))))
-        return records_by_density[idx]
 
     # ------------------------------------------------------------------
     # Step 3 — build ordered candidate lists per label
@@ -282,30 +280,43 @@ def select_fovs(
 # ---------------------------------------------------------------------------
 
 
-def extract_fov_tile(dapi_path: str | Path, fov: FOVTile) -> np.ndarray:
-    """Extract the DAPI region corresponding to *fov* from a TIFF mosaic.
+def load_dapi_mosaic(dapi_path: str | Path) -> np.ndarray:
+    """Load the full DAPI mosaic image once into memory.
 
     Args:
-        dapi_path: Path to the DAPI TIFF mosaic (may be a multi-page TIFF or
-            a OME-TIFF; only the first page is used).
+        dapi_path: Path to the DAPI TIFF mosaic.
+
+    Returns:
+        2-D NumPy array (H, W), typically uint16.
+    """
+    import tifffile
+
+    logger.info("Loading DAPI mosaic from %s (this may take a moment)...", dapi_path)
+    with tifffile.TiffFile(dapi_path) as tif:
+        image = tif.pages[0].asarray()
+    logger.info("DAPI mosaic loaded: shape=%s, dtype=%s", image.shape, image.dtype)
+    return image
+
+
+def extract_fov_tile(
+    dapi_image: np.ndarray,
+    fov: FOVTile,
+) -> np.ndarray:
+    """Extract a FOV tile from a pre-loaded DAPI mosaic array.
+
+    Args:
+        dapi_image: Full mosaic array (H, W), already loaded into memory.
         fov: :class:`FOVTile` whose ``pixel_bbox`` defines the region to extract.
 
     Returns:
-        2-D NumPy array (H, W) cropped to the FOV bounding box.  Dtype matches
-        the source TIFF (typically uint16 for MERSCOPE / Xenium data).
+        2-D NumPy array (H, W) cropped to the FOV bounding box.
     """
-    import tifffile  # local import — optional heavy dependency
-
     y_min, y_max, x_min, x_max = fov.pixel_bbox
-    with tifffile.TiffFile(dapi_path) as tif:
-        page = tif.pages[0]
-        image = page.asarray()
+    h, w = dapi_image.shape[:2]
 
-    # Clamp to image bounds
-    h, w = image.shape[:2]
     y_min = max(0, y_min)
     y_max = min(h, y_max)
     x_min = max(0, x_min)
     x_max = min(w, x_max)
 
-    return image[y_min:y_max, x_min:x_max]
+    return dapi_image[y_min:y_max, x_min:x_max].copy()

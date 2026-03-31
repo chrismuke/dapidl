@@ -14,6 +14,7 @@ from dapidl.benchmark.segmenters.base import SegmentationOutput, SegmenterAdapte
 from dapidl.benchmark.fov_selector import (
     FOVTile,
     extract_fov_tile,
+    load_dapi_mosaic,
     select_fovs,
 )
 from dapidl.benchmark.evaluation.morphometric import compute_morphometric_metrics
@@ -197,12 +198,14 @@ class BenchmarkRunner:
         logger.info("Selected FOVs: %s", [f.label for f in fovs])
 
         # ------------------------------------------------------------------
-        # Step 3: Extract tiles
+        # Step 3: Load mosaic once, extract tiles
         # ------------------------------------------------------------------
+        dapi_image = load_dapi_mosaic(self.dapi_path)
+
         tiles: dict[str, np.ndarray] = {}  # fov_label -> tile array
         for fov in fovs:
             logger.info("Extracting tile for FOV %d (%s)", fov.fov_id, fov.label)
-            tile = extract_fov_tile(self.dapi_path, fov)
+            tile = extract_fov_tile(dapi_image, fov)
             tiles[fov.label] = tile
             self._save_tile(tile, fov)
             logger.info(
@@ -211,6 +214,9 @@ class BenchmarkRunner:
                 tile.shape,
                 fov.n_cells,
             )
+
+        # Free the full mosaic — only keep FOV tiles
+        del dapi_image
 
         # ------------------------------------------------------------------
         # Step 4: Segment each FOV with each method
