@@ -1,0 +1,192 @@
+{
+  "dense": {
+    "cellpose_default": {
+      "n_detected": 1715,
+      "n_native": 1771,
+      "recovery": 0.824,
+      "n_recovered": 1460,
+      "mean_area_um2": 38.2,
+      "solidity": 0.956,
+      "runtime": 4.0
+    },
+    "cellpose_aggressive": {
+      "n_detected": 1824,
+      "n_native": 1771,
+      "recovery": 0.932,
+      "n_recovered": 1650,
+      "mean_area_um2": 54.3,
+      "solidity": 0.95,
+      "runtime": 4.15
+    },
+    "stardist": {
+      "n_detected": 1932,
+      "n_native": 1771,
+      "recovery": 0.814,
+      "n_recovered": 1441,
+      "mean_area_um2": 28.8,
+      "solidity": 0.957,
+      "runtime": 6.21
+    },
+    "adaptive_consensus": {
+      "n_detected": 1715,
+      "n_native": 1771,
+      "recovery": 0.824,
+      "n_recovered": 1460,
+      "mean_area_um2": 38.2,
+      "solidity": 0.956,
+      "runtime": 0
+    }
+  },
+  "sparse": {
+    "cellpose_default": {
+      "n_detected": 49,
+      "n_native": 45,
+      "recovery": 0.422,
+      "n_recovered": 19,
+      "mean_area_um2": 55.2,
+      "solidity": 0.962,
+      "runtime": 3.09
+    },
+    "cellpose_aggressive": {
+      "n_detected": 115,
+      "n_native": 45,
+      "recovery": 0.556,
+      "n_recovered": 25,
+      "mean_area_um2": 113.1,
+      "solidity": 0.945,
+      "runtime": 3.31
+    },
+    "stardist": {
+      "n_detected": 104,
+      "n_native": 45,
+      "recovery": 0.467,
+      "n_recovered": 21,
+      "mean_area_um2": 75.4,
+      "solidity": 0.969,
+      "runtime": 0.2
+    },
+    "adaptive_consensus": {
+      "n_detected": 143,
+      "n_native": 45,
+      "recovery": 0.467,
+      "n_recovered": 21,
+      "mean_area_um2": 93.0,
+      "solidity": 0.97,
+      "runtime": 0
+    }
+  },
+  "mixed": {
+    "cellpose_default": {
+      "n_detected": 695,
+      "n_native": 732,
+      "recovery": 0.725,
+      "n_recovered": 531,
+      "mean_area_um2": 64.4,
+      "solidity": 0.954,
+      "runtime": 2.46
+    },
+    "cellpose_aggressive": {
+      "n_detected": 754,
+      "n_native": 732,
+      "recovery": 0.824,
+      "n_recovered": 603,
+      "mean_area_um2": 83.0,
+      "solidity": 0.945,
+      "runtime": 2.76
+    },
+    "stardist": {
+      "n_detected": 782,
+      "n_native": 732,
+      "recovery": 0.724,
+      "n_recovered": 530,
+      "mean_area_um2": 53.4,
+      "solidity": 0.958,
+      "runtime": 4.92
+    },
+    "adaptive_consensus": {
+      "n_detected": 695,
+      "n_native": 732,
+      "recovery": 0.725,
+      "n_recovered": 531,
+      "mean_area_um2": 64.4,
+      "solidity": 0.954,
+      "runtime": 0
+    }
+  },
+  "edge": {
+    "cellpose_default": {
+      "n_detected": 1675,
+      "n_native": 1732,
+      "recovery": 0.825,
+      "n_recovered": 1429,
+      "mean_area_um2": 39.3,
+      "solidity": 0.96,
+      "runtime": 3.96
+    },
+    "cellpose_aggressive": {
+      "n_detected": 1743,
+      "n_native": 1732,
+      "recovery": 0.909,
+      "n_recovered": 1574,
+      "mean_area_um2": 55.5,
+      "solidity": 0.954,
+      "runtime": 4.02
+    },
+    "stardist": {
+      "n_detected": 1765,
+      "n_native": 1732,
+      "recovery": 0.793,
+      "n_recovered": 1374,
+      "mean_area_um2": 28.8,
+      "solidity": 0.96,
+      "runtime": 0.62
+    },
+    "adaptive_consensus": {
+      "n_detected": 1675,
+      "n_native": 1732,
+      "recovery": 0.825,
+      "n_recovered": 1429,
+      "mean_area_um2": 39.3,
+      "solidity": 0.96,
+      "runtime": 0
+    }
+  },
+  "immune": {
+    "cellpose_default": {
+      "n_detected": 525,
+      "n_native": 531,
+      "recovery": 0.418,
+      "n_recovered": 222,
+      "mean_area_um2": 26.8,
+      "solidity": 0.957,
+      "runtime": 3.13
+    },
+    "cellpose_aggressive": {
+      "n_detected": 756,
+      "n_native": 531,
+      "recovery": 0.565,
+      "n_recovered": 300,
+      "mean_area_um2": 45.1,
+      "solidity": 0.954,
+      "runtime": 3.45
+    },
+    "stardist": {
+      "n_detected": 562,
+      "n_native": 531,
+      "recovery": 0.394,
+      "n_recovered": 209,
+      "mean_area_um2": 23.0,
+      "solidity": 0.956,
+      "runtime": 0.26
+    },
+    "adaptive_consensus": {
+      "n_detected": 525,
+      "n_native": 531,
+      "recovery": 0.418,
+      "n_recovered": 222,
+      "mean_area_um2": 26.8,
+      "solidity": 0.957,
+      "runtime": 0
+    }
+  }
+}
