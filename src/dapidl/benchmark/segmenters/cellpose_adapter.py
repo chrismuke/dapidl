@@ -224,3 +224,83 @@ class CellposeNucleiAdapter(_CellposeAdapterBase):
     @property
     def name(self) -> str:
         return "cellpose_nuclei"
+
+
+# ---------------------------------------------------------------------------
+# Cellpose 3 adapters (force old models via pretrained_model path)
+# ---------------------------------------------------------------------------
+
+
+class _CellposeCP3AdapterBase(SegmenterAdapter):
+    """Load a specific Cellpose 3 model by path, bypassing CP4's default CPSAM."""
+
+    _pretrained_model: str  # e.g. "cyto3" or "nucleitorch_0"
+
+    def __init__(self, gpu: bool = True, diameter: float = 0) -> None:
+        self._gpu = gpu
+        self._diameter = diameter
+        self.__model = None
+
+    def _get_model(self):
+        if self.__model is None:
+            from cellpose import models
+
+            self.__model = models.CellposeModel(
+                pretrained_model=self._pretrained_model,
+                gpu=self._gpu,
+            )
+        return self.__model
+
+    def _run_cellpose(self, image: np.ndarray, pixel_size_um: float) -> np.ndarray:
+        model = self._get_model()
+        result = model.eval(  # noqa: S307
+            image,
+            diameter=self._diameter if self._diameter > 0 else None,
+            channels=[0, 0],
+            flow_threshold=0.4,
+            cellprob_threshold=0.0,
+        )
+        masks = result[0]
+        return masks.astype(np.int32)
+
+    def segment(
+        self, image: np.ndarray, pixel_size_um: float = 0.108
+    ) -> SegmentationOutput:
+        _reset_gpu_memory()
+        t0 = time.perf_counter()
+        masks = self._run_cellpose(image, pixel_size_um)
+        runtime = time.perf_counter() - t0
+        peak_mem = _measure_gpu_memory()
+        centroids = _centroids_from_masks(masks)
+        return SegmentationOutput(
+            masks=masks,
+            centroids=centroids,
+            n_cells=len(centroids),
+            runtime_seconds=runtime,
+            peak_memory_mb=peak_mem,
+            method_name=self.name,
+        )
+
+
+class CellposeCyto3CP3Adapter(_CellposeCP3AdapterBase):
+    """Cellpose 3 cyto3 model (non-SAM CNN backbone)."""
+
+    _pretrained_model = "cyto3"
+
+    @property
+    def name(self) -> str:
+        return "cellpose3_cyto3"
+
+    @property
+    def supports_cell_boundaries(self) -> bool:
+        return True
+
+
+class CellposeNucleiCP3Adapter(_CellposeCP3AdapterBase):
+    """Cellpose 3 nuclei model (non-SAM CNN backbone)."""
+
+    _pretrained_model = "nuclei"
+
+    @property
+    def name(self) -> str:
+        return "cellpose3_nuclei"

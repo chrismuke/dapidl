@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 
 ALL_METHOD_NAMES = [
     "cellpose_sam",
-    "cellpose_cyto3",
-    "cellpose_nuclei",
+    "cellpose3_cyto3",
+    "cellpose3_nuclei",
     "stardist",
     "mesmer",
     "instanseg",
@@ -109,6 +109,22 @@ def get_adapter(name: str):
             return InstanSegAdapter()
         except ImportError:
             logger.warning("instanseg not installed — skipping instanseg")
+            return None
+
+    elif name == "cellpose3_cyto3":
+        try:
+            from dapidl.benchmark.segmenters.cellpose_adapter import CellposeCyto3CP3Adapter
+            return CellposeCyto3CP3Adapter()
+        except ImportError:
+            logger.warning("cellpose not installed — skipping cellpose3_cyto3")
+            return None
+
+    elif name == "cellpose3_nuclei":
+        try:
+            from dapidl.benchmark.segmenters.cellpose_adapter import CellposeNucleiCP3Adapter
+            return CellposeNucleiCP3Adapter()
+        except ImportError:
+            logger.warning("cellpose not installed — skipping cellpose3_nuclei")
             return None
 
     else:
