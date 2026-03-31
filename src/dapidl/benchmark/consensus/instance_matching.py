@@ -13,6 +13,10 @@ from scipy.optimize import linear_sum_assignment
 def _compute_iou_matrix(masks_a: np.ndarray, masks_b: np.ndarray) -> np.ndarray:
     """Compute an (Na, Nb) IoU matrix between all instance pairs.
 
+    Uses a fast sparse overlap approach: flattens both masks, computes
+    a confusion matrix via np.bincount, then derives IoU from the counts.
+    Complexity is O(H*W + Na*Nb_overlap) instead of O(Na*Nb*H*W).
+
     Parameters
     ----------
     masks_a:
@@ -23,10 +27,7 @@ def _compute_iou_matrix(masks_a: np.ndarray, masks_b: np.ndarray) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Shape (Na, Nb) where Na = number of unique positive labels in masks_a
-        and Nb = number of unique positive labels in masks_b.
-        iou_matrix[i, j] = IoU between instance (i+1) in a and instance (j+1) in b,
-        using label indices sorted in ascending order.
+        Shape (Na, Nb) IoU matrix.
     """
     labels_a = np.unique(masks_a)
     labels_a = labels_a[labels_a > 0]
@@ -39,19 +40,40 @@ def _compute_iou_matrix(masks_a: np.ndarray, masks_b: np.ndarray) -> np.ndarray:
     if na == 0 or nb == 0:
         return np.zeros((na, nb), dtype=np.float64)
 
-    iou_matrix = np.zeros((na, nb), dtype=np.float64)
+    # Remap labels to contiguous 0..Na-1, 0..Nb-1
+    remap_a = np.zeros(int(masks_a.max()) + 1, dtype=np.int32)
+    for idx, la in enumerate(labels_a):
+        remap_a[la] = idx + 1  # 1-indexed so 0 stays background
+    remap_b = np.zeros(int(masks_b.max()) + 1, dtype=np.int32)
+    for idx, lb in enumerate(labels_b):
+        remap_b[lb] = idx + 1
 
-    for i, la in enumerate(labels_a):
-        mask_a = masks_a == la
-        area_a = mask_a.sum()
-        for j, lb in enumerate(labels_b):
-            mask_b = masks_b == lb
-            intersection = np.logical_and(mask_a, mask_b).sum()
-            if intersection == 0:
-                continue
-            area_b = mask_b.sum()
-            union = area_a + area_b - intersection
-            iou_matrix[i, j] = intersection / union if union > 0 else 0.0
+    ra = remap_a[masks_a.ravel()]
+    rb = remap_b[masks_b.ravel()]
+
+    # Compute overlap via 2D histogram (confusion matrix)
+    # Only count pixels where both are foreground
+    fg_mask = (ra > 0) & (rb > 0)
+    if not fg_mask.any():
+        return np.zeros((na, nb), dtype=np.float64)
+
+    ra_fg = ra[fg_mask]
+    rb_fg = rb[fg_mask]
+
+    # Confusion matrix: overlap[i, j] = # pixels where remapped_a==i and remapped_b==j
+    overlap = np.zeros((na + 1, nb + 1), dtype=np.int64)
+    np.add.at(overlap, (ra_fg, rb_fg), 1)
+
+    # Slice off background row/col
+    overlap = overlap[1:, 1:]  # (Na, Nb)
+
+    # Area of each instance
+    area_a = np.bincount(ra, minlength=na + 1)[1:]  # (Na,)
+    area_b = np.bincount(rb, minlength=nb + 1)[1:]  # (Nb,)
+
+    # IoU = intersection / union = overlap / (area_a + area_b - overlap)
+    union = area_a[:, None] + area_b[None, :] - overlap
+    iou_matrix = np.where(union > 0, overlap / union, 0.0).astype(np.float64)
 
     return iou_matrix
 
