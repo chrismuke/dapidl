@@ -349,15 +349,19 @@ class EnsembleAnnotationStep(PipelineStep):
 
         # Resolve artifact URLs to local paths
         data_path = resolve_artifact_path(inputs["data_path"], "data_path")
-        expression_path = resolve_artifact_path(inputs.get("expression_path"), "expression_path")
-
         if data_path is None:
             raise ValueError("data_path artifact is required")
-        if expression_path is None:
-            raise ValueError("expression_path artifact is required")
 
         # Get platform
         platform = self._resolve_platform(inputs)
+
+        # STHELAR: passthrough existing labels (skip annotation ensemble)
+        if platform == "sthelar":
+            return self._handle_sthelar_passthrough(data_path, inputs)
+
+        expression_path = resolve_artifact_path(inputs.get("expression_path"), "expression_path")
+        if expression_path is None:
+            raise ValueError("expression_path artifact is required")
 
         # Get raw dataset ID for cache key
         raw_dataset_id = inputs.get("raw_dataset_id", cfg.parent_dataset_id or "local")
@@ -525,6 +529,86 @@ class EnsembleAnnotationStep(PipelineStep):
                 "annotated_dataset_id": dataset_id,
                 "annotation_stats": stats,
                 "annotation_methods": [r.stats["source"] for r in results],
+            },
+        )
+
+    def _handle_sthelar_passthrough(
+        self, data_path: Path, inputs: dict
+    ) -> StepArtifacts:
+        """Use existing STHELAR labels instead of running annotation ensemble."""
+        from dapidl.data.sthelar import SthelarDataReader
+
+        logger.info("STHELAR platform detected — using existing cell type labels")
+        reader = SthelarDataReader(data_path)
+        ndf = reader.nucleus_df
+
+        # Build annotation DataFrame with STHELAR's label hierarchy
+        annotations_df = ndf.select([
+            pl.col("cell_id"),
+            pl.col("label1").alias("cell_type"),  # Coarse (10 types)
+            pl.col("label1").alias("cell_type_coarse"),
+            pl.col("label2").alias("cell_type_medium"),
+            pl.col("label3").alias("cell_type_fine"),
+        ]).with_columns([
+            pl.lit("sthelar_native").alias("annotation_method"),
+            pl.lit(1.0).alias("confidence"),
+        ])
+
+        # Map STHELAR labels to DAPIDL broad categories
+        sthelar_to_broad = {
+            "Epithelial": "Epithelial",
+            "Fibroblast": "Stromal",
+            "Monocyte/Macrophage": "Immune",
+            "T": "Immune",
+            "B": "Immune",
+            "Endothelial": "Endothelial",
+            "Perivascular": "Stromal",
+            "Mast": "Immune",
+            "Adipocyte": "Stromal",
+            "less10": "Unknown",
+        }
+        annotations_df = annotations_df.with_columns(
+            pl.col("cell_type").replace_strict(
+                sthelar_to_broad, default="Unknown"
+            ).alias("cell_type_broad")
+        )
+
+        # Build class mapping
+        unique_types = sorted(annotations_df["cell_type"].unique().to_list())
+        class_mapping = {name: idx for idx, name in enumerate(unique_types)}
+        index_to_class = {str(idx): name for name, idx in class_mapping.items()}
+
+        # Save outputs
+        output_dir = get_pipeline_output_dir("ensemble_annotation", data_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        annotations_path = output_dir / "annotations.parquet"
+        annotations_df.write_parquet(annotations_path)
+
+        mapping_path = output_dir / "class_mapping.json"
+        with open(mapping_path, "w") as f:
+            json.dump({"class_mapping": class_mapping, "index_to_class": index_to_class}, f, indent=2)
+
+        # Stats
+        dist = dict(annotations_df.group_by("cell_type").len().sort("len", descending=True).iter_rows())
+        logger.info(f"STHELAR labels: {annotations_df.height:,} cells, {len(unique_types)} types")
+        for ct, count in list(dist.items())[:5]:
+            logger.info(f"  {ct}: {count:,}")
+
+        return StepArtifacts(
+            inputs=inputs,
+            outputs={
+                **inputs,
+                "annotations_parquet": str(annotations_path),
+                "class_mapping": class_mapping,
+                "index_to_class": index_to_class,
+                "annotated_dataset_id": None,
+                "annotation_stats": {
+                    "method": "sthelar_passthrough",
+                    "n_cells": annotations_df.height,
+                    "n_types": len(unique_types),
+                    "distribution": dist,
+                },
             },
         )
 

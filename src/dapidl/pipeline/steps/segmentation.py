@@ -201,6 +201,10 @@ class SegmentationStep(PipelineStep):
                     },
                 )
 
+        # STHELAR: skip segmentation, use existing nucleus centroids from zarr
+        if platform == "sthelar":
+            return self._handle_sthelar(data_path, inputs, output_dir, centroids_path, boundaries_path, config_path)
+
         # Load DAPI image
         dapi_image = self._load_dapi_image(data_path, platform)
         logger.info(f"Loaded DAPI image: {dapi_image.shape}, dtype={dapi_image.dtype}")
@@ -285,11 +289,61 @@ class SegmentationStep(PipelineStep):
             },
         )
 
+    def _handle_sthelar(
+        self,
+        data_path: Path,
+        inputs: dict,
+        output_dir: Path,
+        centroids_path: Path,
+        boundaries_path: Path,
+        config_path: Path,
+    ) -> StepArtifacts:
+        """Handle STHELAR data — use existing nucleus centroids from zarr."""
+        from dapidl.data.sthelar import SthelarDataReader
+
+        logger.info("STHELAR platform detected — using existing nucleus segmentation")
+        reader = SthelarDataReader(data_path)
+        ndf = reader.nucleus_df
+
+        # Build centroids DataFrame matching expected schema
+        centroids_df = ndf.select([
+            pl.col("cell_id"),
+            pl.col("x_centroid_px").alias("x"),
+            pl.col("y_centroid_px").alias("y"),
+        ])
+
+        logger.info(f"Loaded {centroids_df.height:,} nucleus centroids from STHELAR zarr")
+
+        # Save outputs
+        output_dir.mkdir(parents=True, exist_ok=True)
+        centroids_df.write_parquet(centroids_path)
+
+        import json
+        with open(config_path, "w") as f:
+            json.dump({"segmenter": "sthelar_native", "platform": "sthelar"}, f, indent=2)
+
+        return StepArtifacts(
+            inputs=inputs,
+            outputs={
+                **inputs,
+                "boundaries_parquet": None,
+                "centroids_parquet": str(centroids_path),
+                "masks_path": None,
+                "matching_stats": {
+                    "method": "sthelar_native",
+                    "n_nuclei": centroids_df.height,
+                    "source": "table_nuclei",
+                },
+                "segmenter_used": "sthelar_native",
+            },
+        )
+
     def _get_pixel_size(self, platform: str) -> float:
         """Get pixel size for platform."""
         pixel_sizes = {
             "xenium": 0.2125,  # µm/pixel
             "merscope": 0.108,  # µm/pixel
+            "sthelar": 0.2125,  # Xenium-based slides
         }
         return pixel_sizes.get(platform, 0.2125)
 
@@ -312,6 +366,13 @@ class SegmentationStep(PipelineStep):
                 dapi_image = dapi_image[0]
 
             return dapi_image
+
+        elif platform == "sthelar":
+            # STHELAR: DAPI in zarr pyramid
+            from dapidl.data.sthelar import SthelarDataReader
+
+            reader = SthelarDataReader(data_path)
+            return reader.load_dapi()
 
         else:  # merscope
             # MERSCOPE: Multiple z-slices, use middle z

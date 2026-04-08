@@ -262,7 +262,7 @@ class DataLoaderConfig:
     dataset_version: str | None = None
 
     # Platform detection
-    platform: str = "auto"  # "auto", "xenium", "merscope"
+    platform: str = "auto"  # "auto", "xenium", "merscope", "sthelar"
 
     # Tissue name (for dataset name matching fallback)
     tissue: str | None = None
@@ -767,6 +767,10 @@ class DataLoaderStep(PipelineStep):
         if (data_path / "morphology.ome.tif").exists():
             return "xenium"
 
+        # STHELAR markers (zarr with images/morpho and tables/table_nuclei)
+        if (data_path / "images" / "morpho").exists() and (data_path / "tables" / "table_nuclei").exists():
+            return "sthelar"
+
         # MERSCOPE markers
         images_dir = data_path / "images"
         if images_dir.exists():
@@ -776,7 +780,8 @@ class DataLoaderStep(PipelineStep):
 
         raise ValueError(
             f"Could not detect platform from {data_path}. "
-            "Expected Xenium (morphology*.ome.tif) or MERSCOPE (images/mosaic_DAPI_z*.tif)"
+            "Expected Xenium (morphology*.ome.tif), MERSCOPE (images/mosaic_DAPI_z*.tif), "
+            "or STHELAR (images/morpho + tables/table_nuclei)"
         )
 
     def _validate_files(self, data_path: Path, platform: str) -> None:
@@ -785,6 +790,11 @@ class DataLoaderStep(PipelineStep):
             required = [
                 ("morphology_focus.ome.tif", "morphology.ome.tif"),  # Either
                 ("cells.parquet",),
+            ]
+        elif platform == "sthelar":
+            required = [
+                ("images",),
+                ("tables",),
             ]
         else:  # merscope
             required = [
@@ -816,6 +826,12 @@ class DataLoaderStep(PipelineStep):
                     expression_path = None
 
             return cells_path, expression_path
+
+        elif platform == "sthelar":
+            # STHELAR: cells and expression are inside zarr tables
+            # No separate files — the SthelarDataReader handles everything
+            # Return None paths; downstream steps use SthelarDataReader directly
+            return None, None
 
         else:  # merscope
             # Cell metadata
@@ -854,6 +870,15 @@ class DataLoaderStep(PipelineStep):
                     metadata["panel"] = exp_data.get("panel_name")
                 except Exception as e:
                     logger.warning(f"Could not parse experiment.xenium: {e}")
+
+        elif platform == "sthelar":
+            from dapidl.data.sthelar import SthelarDataReader
+
+            reader = SthelarDataReader(data_path)
+            meta = reader.get_experiment_metadata()
+            metadata.update(meta)
+            metadata["n_cells"] = meta.get("n_cells_nuclei", 0)
+            metadata["pixel_size_um"] = 0.2125  # Xenium-based STHELAR slides
 
         return metadata
 
