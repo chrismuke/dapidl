@@ -2,6 +2,7 @@
 
 from dapidl.data.xenium import XeniumDataReader
 from dapidl.data.merscope import MerscopeDataReader, detect_platform, create_reader
+from dapidl.data.sthelar import SthelarDataReader
 from dapidl.data.annotation import CellTypeAnnotator, map_to_broad_category
 from dapidl.data.patches import PatchExtractor
 from dapidl.data.dataset import DAPIDLDataset, create_data_splits, create_dataloaders
@@ -35,6 +36,7 @@ __all__ = [
     # Data readers
     "XeniumDataReader",
     "MerscopeDataReader",
+    "SthelarDataReader",
     "detect_platform",
     "create_reader",
     # Annotation

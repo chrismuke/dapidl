@@ -15,22 +15,23 @@ class MerscopeDataReader:
     Loads DAPI morphology images, cell centroids, and gene expression data
     from MERSCOPE output directories.
 
+    DAPI mosaics are huge (~94K x 110K uint16, ~20 GB per z-plane).
+    Use load_dapi_region() for tiled access or image_mmap for memory-mapped
+    access instead of loading the full image into RAM.
+
     Attributes:
         merscope_path: Path to MERSCOPE output directory
         z_index: Z-slice index to use for DAPI image (default: 3)
     """
 
-    def __init__(self, merscope_path: str | Path, z_index: int = 3) -> None:
-        """Initialize MERSCOPE data reader.
+    PIXEL_SIZE_UM = 0.108  # µm/pixel for MERSCOPE
 
-        Args:
-            merscope_path: Path to MERSCOPE output directory
-            z_index: Z-slice index for DAPI image (default 3, typically best focus)
-        """
+    def __init__(self, merscope_path: str | Path, z_index: int = 3) -> None:
         self.merscope_path = Path(merscope_path)
         self.z_index = z_index
         self._validate_paths()
         self._image: np.ndarray | None = None
+        self._image_mmap: np.ndarray | None = None
         self._cells_df: pl.DataFrame | None = None
         self._expression_matrix: np.ndarray | None = None
         self._gene_names: list[str] | None = None
@@ -46,9 +47,7 @@ class MerscopeDataReader:
 
         for f in required_files:
             if not (self.merscope_path / f).exists():
-                raise FileNotFoundError(
-                    f"Required file not found: {self.merscope_path / f}"
-                )
+                raise FileNotFoundError(f"Required file not found: {self.merscope_path / f}")
 
         # Check for images directory and DAPI image
         images_dir = self.merscope_path / "images"
@@ -60,9 +59,7 @@ class MerscopeDataReader:
             # Try to find any DAPI z-slice
             dapi_files = list(images_dir.glob("mosaic_DAPI_z*.tif"))
             if not dapi_files:
-                raise FileNotFoundError(
-                    f"No DAPI images found in {images_dir}"
-                )
+                raise FileNotFoundError(f"No DAPI images found in {images_dir}")
             # Use the first available z-slice
             self.z_index = int(dapi_files[0].stem.split("_z")[-1])
             logger.warning(f"Z-index {self.z_index} not found, using z{self.z_index}")
@@ -83,7 +80,9 @@ class MerscopeDataReader:
         if transform.shape != (3, 3):
             raise ValueError(f"Expected 3x3 transform matrix, got {transform.shape}")
 
-        logger.info(f"Loaded transform: scale_x={transform[0,0]:.4f}, scale_y={transform[1,1]:.4f}")
+        logger.info(
+            f"Loaded transform: scale_x={transform[0, 0]:.4f}, scale_y={transform[1, 1]:.4f}"
+        )
         return transform
 
     @property
@@ -125,16 +124,87 @@ class MerscopeDataReader:
         """Return (height, width) of DAPI image."""
         return self.image.shape
 
-    def _load_image(self) -> np.ndarray:
-        """Load DAPI morphology image from TIFF."""
-        image_path = self.merscope_path / "images" / f"mosaic_DAPI_z{self.z_index}.tif"
-        logger.info(f"Loading DAPI image from {image_path}")
+    @property
+    def image_mmap(self) -> np.ndarray:
+        """Memory-mapped DAPI image for tiled access without loading into RAM.
 
-        with tifffile.TiffFile(image_path) as tif:
+        Returns:
+            2D memory-mapped numpy array (H, W) of uint16
+        """
+        if self._image_mmap is None:
+            self._image_mmap = self._load_image_mmap()
+        return self._image_mmap
+
+    @property
+    def dapi_path(self) -> Path:
+        """Path to the DAPI mosaic TIFF for the current z-index."""
+        return self.merscope_path / "images" / f"mosaic_DAPI_z{self.z_index}.tif"
+
+    def image_shape_fast(self) -> tuple[int, int]:
+        """Get (height, width) of DAPI image without loading it.
+
+        Reads only the TIFF header.
+        """
+        with tifffile.TiffFile(self.dapi_path) as tif:
+            page = tif.pages[0]
+            return (page.shape[0], page.shape[1])
+
+    def _load_image(self) -> np.ndarray:
+        """Load full DAPI image into memory.
+
+        WARNING: MERSCOPE mosaics are ~20 GB. Prefer load_dapi_region()
+        or image_mmap for memory-constrained environments.
+        """
+        logger.warning(
+            f"Loading full DAPI mosaic into memory from {self.dapi_path} — "
+            "this requires ~20 GB RAM. Use load_dapi_region() for tiled access."
+        )
+
+        with tifffile.TiffFile(self.dapi_path) as tif:
             image = tif.asarray()
 
         logger.info(f"Loaded image with shape {image.shape}, dtype {image.dtype}")
         return image
+
+    def _load_image_mmap(self) -> np.ndarray:
+        """Memory-map the DAPI mosaic TIFF.
+
+        This provides array-like access without loading the full ~20 GB
+        into RAM. Slicing triggers on-demand reads from disk.
+        """
+        logger.info(f"Memory-mapping DAPI image from {self.dapi_path}")
+        mmap = tifffile.memmap(str(self.dapi_path), mode="r")
+        logger.info(f"Mapped image: shape={mmap.shape}, dtype={mmap.dtype}")
+        return mmap
+
+    def load_dapi_region(
+        self,
+        y_start: int,
+        y_end: int,
+        x_start: int,
+        x_end: int,
+    ) -> np.ndarray:
+        """Load a rectangular region of the DAPI mosaic.
+
+        Uses memory-mapped access — only reads the requested region from disk.
+
+        Args:
+            y_start, y_end: Row slice (height)
+            x_start, x_end: Column slice (width)
+
+        Returns:
+            2D numpy array (h, w) of uint16
+        """
+        return np.array(self.image_mmap[y_start:y_end, x_start:x_end])
+
+    def available_z_planes(self) -> list[int]:
+        """List available DAPI z-plane indices."""
+        images_dir = self.merscope_path / "images"
+        z_planes = []
+        for f in sorted(images_dir.glob("mosaic_DAPI_z*.tif")):
+            z = int(f.stem.split("_z")[-1])
+            z_planes.append(z)
+        return z_planes
 
     def _load_cells(self) -> pl.DataFrame:
         """Load cell metadata from CSV."""
@@ -154,9 +224,7 @@ class MerscopeDataReader:
 
         # Ensure we have the expected coordinate columns
         if "center_x" not in df.columns or "center_y" not in df.columns:
-            raise ValueError(
-                f"Expected 'center_x' and 'center_y' columns, got: {df.columns}"
-            )
+            raise ValueError(f"Expected 'center_x' and 'center_y' columns, got: {df.columns}")
 
         # Add pixel coordinates using the transform matrix
         transform = self.transform_matrix
@@ -181,9 +249,7 @@ class MerscopeDataReader:
             Array of shape (N, 2) with (x, y) pixel coordinates
         """
         df = self.cells_df
-        return np.column_stack(
-            [df["x_centroid_px"].to_numpy(), df["y_centroid_px"].to_numpy()]
-        )
+        return np.column_stack([df["x_centroid_px"].to_numpy(), df["y_centroid_px"].to_numpy()])
 
     def get_centroids_microns(self) -> np.ndarray:
         """Get cell centroids in micron coordinates.
@@ -192,9 +258,7 @@ class MerscopeDataReader:
             Array of shape (N, 2) with (x, y) micron coordinates
         """
         df = self.cells_df
-        return np.column_stack(
-            [df["center_x"].to_numpy(), df["center_y"].to_numpy()]
-        )
+        return np.column_stack([df["center_x"].to_numpy(), df["center_y"].to_numpy()])
 
     def get_cell_ids(self) -> np.ndarray:
         """Get array of cell IDs."""
@@ -233,22 +297,42 @@ class MerscopeDataReader:
 
         return expression_matrix, list(gene_names), cell_ids
 
-    def get_experiment_metadata(self) -> dict[str, Any]:
-        """Load experiment metadata if available.
+    def microns_to_pixels(
+        self, x_um: np.ndarray, y_um: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Convert micron coordinates to mosaic pixel coordinates.
 
-        MERSCOPE doesn't have a standard metadata file like Xenium,
-        so we return basic info about the dataset.
+        Uses the affine transform matrix from micron_to_mosaic_pixel_transform.csv.
+
+        Args:
+            x_um: X coordinates in microns
+            y_um: Y coordinates in microns
+
+        Returns:
+            Tuple of (x_px, y_px) arrays in pixel coordinates
         """
-        metadata = {
+        t = self.transform_matrix
+        x_px = x_um * t[0, 0] + t[0, 2]
+        y_px = y_um * t[1, 1] + t[1, 2]
+        return x_px, y_px
+
+    def get_experiment_metadata(self) -> dict[str, Any]:
+        """Return basic metadata about this MERSCOPE dataset."""
+        metadata: dict[str, Any] = {
             "platform": "MERSCOPE",
             "path": str(self.merscope_path),
             "z_index": self.z_index,
+            "available_z_planes": self.available_z_planes(),
             "num_cells": self.num_cells if self._cells_df is not None else None,
+            "pixel_size_um": self.PIXEL_SIZE_UM,
         }
 
-        # Try to get image dimensions without loading full image
-        if self._image is not None:
-            metadata["image_shape"] = self._image.shape
+        # Get image shape from header (cheap)
+        try:
+            metadata["image_shape"] = self.image_shape_fast()
+        except Exception:
+            if self._image is not None:
+                metadata["image_shape"] = self._image.shape
 
         return metadata
 
@@ -287,9 +371,7 @@ def detect_platform(path: str | Path) -> str:
     # Check both direct path and outs subdirectory
     for check_path in [path, path / "outs"]:
         if check_path.exists():
-            xenium_count = sum(
-                1 for f in xenium_markers if (check_path / f).exists()
-            )
+            xenium_count = sum(1 for f in xenium_markers if (check_path / f).exists())
             if xenium_count >= 2:
                 return "xenium"
 
@@ -315,7 +397,7 @@ def detect_platform(path: str | Path) -> str:
     )
 
 
-def create_reader(path: str | Path, **kwargs) -> "XeniumDataReader | MerscopeDataReader":
+def create_reader(path: str | Path, **kwargs):  # noqa: ANN201
     """Create appropriate data reader based on detected platform.
 
     Args:
