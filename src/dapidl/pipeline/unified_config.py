@@ -65,6 +65,8 @@ class SegmenterType(str, Enum):
 
     CELLPOSE = "cellpose"
     NATIVE = "native"
+    STARDIST = "stardist"
+    ADAPTIVE = "adaptive"
 
 
 class NormalizationMethod(str, Enum):
@@ -263,7 +265,7 @@ class SegmentationConfig(BaseModel):
 
     segmenter: SegmenterType = Field(
         default=SegmenterType.CELLPOSE,
-        description="Segmentation method: cellpose or native",
+        description="Segmentation method: cellpose, native, stardist, or adaptive",
     )
     diameter: int = Field(
         default=40,
@@ -282,6 +284,46 @@ class SegmentationConfig(BaseModel):
         ge=0.0,
         le=20.0,
         description="Distance threshold for matching segmented nuclei to cells (microns)",
+    )
+
+    # StarDist-specific parameters
+    stardist_tf_memory_limit_mb: int = Field(
+        default=12288,
+        ge=1024,
+        le=49152,
+        description="TensorFlow GPU memory limit in MB (to coexist with PyTorch)",
+    )
+
+    # Adaptive consensus parameters
+    adaptive_density_threshold: float = Field(
+        default=2.0,
+        ge=1.0,
+        le=10.0,
+        description="StarDist/Cellpose ratio above which to use StarDist base strategy",
+    )
+    adaptive_aggressive_flow_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Cellpose flow threshold for aggressive gap-filling pass",
+    )
+    adaptive_aggressive_cellprob_threshold: float = Field(
+        default=-3.0,
+        ge=-6.0,
+        le=0.0,
+        description="Cellpose cell probability threshold for aggressive gap-filling pass",
+    )
+    adaptive_min_fill_area_um2: float = Field(
+        default=20.0,
+        ge=0.0,
+        le=500.0,
+        description="Minimum cell area (um^2) for gap-fill candidates",
+    )
+    adaptive_max_overlap_fraction: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Maximum overlap fraction with existing masks for gap-fill acceptance",
     )
 
 

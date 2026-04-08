@@ -324,7 +324,7 @@ class SegmentationConfig:
     UI-editable parameters for segmentation step.
     """
 
-    method: str = "cellpose"  # cellpose, native
+    method: str = "cellpose"  # cellpose, native, stardist, adaptive
     diameter: int = 40  # Nucleus diameter in pixels (Xenium: 40, MERSCOPE: 70)
     flow_threshold: float = 0.4  # Cellpose flow threshold
     cellprob_threshold: float = 0.0  # Cellpose cell probability threshold
@@ -334,10 +334,20 @@ class SegmentationConfig:
     tile_size: int = 4096  # Tile size for large images
     tile_overlap: int = 256  # Overlap between tiles
     pixel_size_um: float = 0.0  # Pixel size in microns (0 = auto-detect)
-    gpu: bool = True  # Use GPU for Cellpose
+    gpu: bool = True  # Use GPU for segmentation
     skip_boundaries: bool = True  # Skip slow boundary extraction (not needed for training)
     parallel_boundaries: bool = True  # Use parallel processing for boundaries (if extracted)
     n_boundary_workers: int = 8  # Number of workers for parallel boundary extraction
+
+    # StarDist-specific
+    stardist_tf_memory_limit_mb: int = 12288  # TF GPU memory limit in MB
+
+    # Adaptive consensus-specific
+    adaptive_density_threshold: float = 2.0  # SD/CP ratio threshold for dense strategy
+    adaptive_aggressive_flow_threshold: float = 0.8  # Cellpose flow for aggressive pass
+    adaptive_aggressive_cellprob_threshold: float = -3.0  # Cellpose cellprob for aggressive pass
+    adaptive_min_fill_area_um2: float = 20.0  # Min area (um^2) for gap-fill candidates
+    adaptive_max_overlap_fraction: float = 0.2  # Max overlap for gap-fill acceptance
 
 
 @dataclass
