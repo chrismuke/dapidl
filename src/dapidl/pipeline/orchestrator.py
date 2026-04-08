@@ -38,6 +38,7 @@ from dapidl.pipeline.unified_config import (
 # Built-in recipes (always available, cannot be overridden by user YAML).
 BUILTIN_RECIPES: dict[str, list[str]] = {
     "default": ["data_loader", "ensemble_annotation", "cl_standardization", "lmdb_creation"],
+    "full": ["data_loader", "segmentation", "ensemble_annotation", "cl_standardization", "lmdb_creation"],
     "gt": ["data_loader", "gt_annotation", "lmdb_creation"],
     "no_cl": ["data_loader", "ensemble_annotation", "lmdb_creation"],
     "annotate_only": ["data_loader", "ensemble_annotation", "cl_standardization"],
@@ -272,16 +273,36 @@ class PipelineOrchestrator:
             step = DataLoaderStep(step_config)
             return step.execute(StepArtifacts())
 
+        elif step_name == "segmentation":
+            from dapidl.pipeline.steps.segmentation import SegmentationStep, SegmentationStepConfig
+
+            step_config = SegmentationStepConfig(
+                segmenter=cfg.segmentation.segmenter.value,
+                diameter=cfg.segmentation.diameter,
+                flow_threshold=cfg.segmentation.flow_threshold,
+                match_threshold_um=cfg.segmentation.match_threshold_um,
+                gpu=True,
+            )
+            step = SegmentationStep(step_config)
+            return step.execute(input_artifacts)
+
         elif step_name == "ensemble_annotation":
             from dapidl.pipeline.steps.ensemble_annotation import (
                 EnsembleAnnotationConfig,
                 EnsembleAnnotationStep,
+                MethodSpec,
             )
 
+            # Convert unified config methods (list of dicts) to MethodSpec objects
+            method_specs = []
+            for method_dict in cfg.annotation.methods:
+                method_specs.append(MethodSpec(
+                    name=method_dict["name"],
+                    params=method_dict.get("params", {}),
+                ))
+
             step_config = EnsembleAnnotationConfig(
-                celltypist_models=cfg.annotation.celltypist_models,
-                include_singler=cfg.annotation.include_singler,
-                singler_reference=cfg.annotation.singler_reference,
+                methods=method_specs,
                 min_agreement=cfg.annotation.min_agreement,
                 confidence_threshold=cfg.annotation.confidence_threshold,
                 fine_grained=cfg.annotation.fine_grained,
