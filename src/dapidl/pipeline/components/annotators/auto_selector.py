@@ -106,6 +106,18 @@ TISSUE_MODELS = {
         "Immune_All_High.pkl",          # No cervix-specific CT model
         "Pan_Fetal_Human.pkl",          # Broad coverage
     ],
+    "prostate": [
+        "Immune_All_High.pkl",          # No prostate-specific CT model
+        "Pan_Fetal_Human.pkl",          # Broad coverage
+    ],
+    "melanoma": [
+        "Adult_Human_Skin.pkl",         # Skin lineage context (melanocytes, KC)
+        "Immune_All_High.pkl",          # Tumor-infiltrating immune cells
+    ],
+    "uterine": [
+        "Immune_All_High.pkl",          # No uterine-specific CT model
+        "Pan_Fetal_Human.pkl",          # Broad coverage
+    ],
     "mouse_brain": [
         "Mouse_Isocortex_Hippocampus.pkl",  # 97% overlap, 42 types
         "Mouse_Whole_Brain.pkl",            # 96% overlap, 334 types
@@ -288,6 +300,105 @@ DATASET_MODELS = {
         "panel_genes": 5101,
         "notes": "5K panel, no cervix CT model; fine-grained immune possible",
     },
+    # ── Prostate ────────────────────────────────────────────────────
+    "xenium-prostate-cancer-prime": {
+        "tissue": "prostate",
+        "models": ["Immune_All_Low.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 5377,
+        "notes": "5K panel, no prostate CT model; fine-grained immune possible",
+    },
+    # ── Melanoma (MERSCOPE) ─────────────────────────────────────────
+    "merscope-melanoma-p1": {
+        "tissue": "melanoma",
+        "models": ["Adult_Human_Skin.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE 500g FFPE melanoma, skin model for lineage context",
+    },
+    "merscope-melanoma-p2": {
+        "tissue": "melanoma",
+        "models": ["Adult_Human_Skin.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE 500g FFPE melanoma",
+    },
+    # ── MERSCOPE FFPE IO (pre-registered for download) ──────────────
+    "merscope-colon-cancer-1": {
+        "tissue": "colon",
+        "models": ["Cells_Intestinal_Tract.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO colon cancer",
+    },
+    "merscope-colon-cancer-2": {
+        "tissue": "colon",
+        "models": ["Cells_Intestinal_Tract.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO colon cancer",
+    },
+    "merscope-liver-cancer-1": {
+        "tissue": "liver",
+        "models": ["Healthy_Human_Liver.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO liver cancer",
+    },
+    "merscope-liver-cancer-2": {
+        "tissue": "liver",
+        "models": ["Healthy_Human_Liver.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO liver cancer",
+    },
+    "merscope-lung-cancer-1": {
+        "tissue": "lung",
+        "models": ["Human_Lung_Atlas.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO lung cancer",
+    },
+    "merscope-lung-cancer-2": {
+        "tissue": "lung",
+        "models": ["Human_Lung_Atlas.pkl", "Immune_All_High.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO lung cancer",
+    },
+    "merscope-ovarian-cancer-1": {
+        "tissue": "ovary",
+        "models": ["Immune_All_High.pkl", "Pan_Fetal_Human.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO ovarian cancer",
+    },
+    "merscope-ovarian-cancer-2": {
+        "tissue": "ovary",
+        "models": ["Immune_All_High.pkl", "Pan_Fetal_Human.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO ovarian cancer",
+    },
+    "merscope-ovarian-cancer-3": {
+        "tissue": "ovary",
+        "models": ["Immune_All_High.pkl", "Pan_Fetal_Human.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO ovarian cancer",
+    },
+    "merscope-ovarian-cancer-4": {
+        "tissue": "ovary",
+        "models": ["Immune_All_High.pkl", "Pan_Fetal_Human.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO ovarian cancer",
+    },
+    "merscope-prostate-cancer-1": {
+        "tissue": "prostate",
+        "models": ["Immune_All_High.pkl", "Pan_Fetal_Human.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO prostate cancer",
+    },
+    "merscope-prostate-cancer-2": {
+        "tissue": "prostate",
+        "models": ["Immune_All_High.pkl", "Pan_Fetal_Human.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO prostate cancer",
+    },
+    "merscope-uterine-cancer": {
+        "tissue": "uterine",
+        "models": ["Immune_All_High.pkl", "Pan_Fetal_Human.pkl"],
+        "panel_genes": 500,
+        "notes": "MERSCOPE FFPE IO uterine cancer",
+    },
 }
 
 
@@ -339,6 +450,10 @@ _TISSUE_KEYWORDS = [
     ("ovarian", "ovary"),
     ("cervix", "cervix"),
     ("cervical", "cervix"),
+    ("prostate", "prostate"),
+    ("melanoma", "melanoma"),
+    ("uterine", "uterine"),
+    ("uterus", "uterine"),
 ]
 
 
