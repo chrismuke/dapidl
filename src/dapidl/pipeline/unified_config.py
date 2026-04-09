@@ -39,6 +39,7 @@ class Platform(str, Enum):
     AUTO = "auto"
     XENIUM = "xenium"
     MERSCOPE = "merscope"
+    STHELAR = "sthelar"
 
 
 class AnnotationStrategy(str, Enum):
@@ -67,6 +68,7 @@ class SegmenterType(str, Enum):
     NATIVE = "native"
     STARDIST = "stardist"
     ADAPTIVE = "adaptive"
+    STHELAR_NATIVE = "sthelar_native"
 
 
 class NormalizationMethod(str, Enum):
@@ -238,6 +240,24 @@ class TissueDatasetConfig(BaseModel):
     is_lmdb: bool = Field(
         default=False,
         description="True if dataset_id points to an existing LMDB dataset (skip processing)",
+    )
+
+    # Per-dataset overrides (None = use global pipeline config)
+    segmenter: str | None = Field(
+        default=None,
+        description="Override segmenter for this dataset (cellpose, native, stardist, adaptive, sthelar_native)",
+    )
+    annotation_models: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Override annotation models for this dataset (list of method specs)",
+    )
+    pixel_size_um: float | None = Field(
+        default=None,
+        description="Override pixel size in micrometers",
+    )
+    fine_grained: bool | None = Field(
+        default=None,
+        description="Override fine-grained annotation (None = use global config)",
     )
 
     @field_validator("recipe")
@@ -1139,7 +1159,9 @@ class DAPIDLPipelineConfig(BaseModel):
     segmentation: SegmentationConfig = Field(default_factory=SegmentationConfig)
     annotation: AnnotationConfig = Field(default_factory=AnnotationConfig)
     ontology: OntologyConfig = Field(default_factory=OntologyConfig)
-    confidence_filtering: ConfidenceFilteringConfig = Field(default_factory=ConfidenceFilteringConfig)
+    confidence_filtering: ConfidenceFilteringConfig = Field(
+        default_factory=ConfidenceFilteringConfig
+    )
     lmdb: LMDBConfig = Field(default_factory=LMDBConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
@@ -1399,7 +1421,9 @@ class DAPIDLPipelineConfig(BaseModel):
             ),
             annotation=AnnotationConfig(
                 strategy=AnnotationStrategy(old_config.annotation_strategy),
-                methods=[{"name": "celltypist", "params": {"model": m}} for m in old_config.model_names],
+                methods=[
+                    {"name": "celltypist", "params": {"model": m}} for m in old_config.model_names
+                ],
                 confidence_threshold=old_config.confidence_threshold,
                 ground_truth_file=old_config.ground_truth_file,
                 fine_grained=old_config.fine_grained,

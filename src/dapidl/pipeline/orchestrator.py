@@ -30,6 +30,7 @@ from typing import Any
 
 from loguru import logger
 
+from dapidl.pipeline.dataset_defaults import get_dataset_defaults
 from dapidl.pipeline.unified_config import (
     DAPIDLPipelineConfig,
     TissueDatasetConfig,
@@ -38,7 +39,13 @@ from dapidl.pipeline.unified_config import (
 # Built-in recipes (always available, cannot be overridden by user YAML).
 BUILTIN_RECIPES: dict[str, list[str]] = {
     "default": ["data_loader", "ensemble_annotation", "cl_standardization", "lmdb_creation"],
-    "full": ["data_loader", "segmentation", "ensemble_annotation", "cl_standardization", "lmdb_creation"],
+    "full": [
+        "data_loader",
+        "segmentation",
+        "ensemble_annotation",
+        "cl_standardization",
+        "lmdb_creation",
+    ],
     "gt": ["data_loader", "gt_annotation", "lmdb_creation"],
     "no_cl": ["data_loader", "ensemble_annotation", "lmdb_creation"],
     "annotate_only": ["data_loader", "ensemble_annotation", "cl_standardization"],
@@ -228,6 +235,9 @@ class PipelineOrchestrator:
         """Run recipe steps for one dataset locally."""
         from dapidl.pipeline.base import StepArtifacts
 
+        # Apply per-dataset defaults before any processing
+        tissue_cfg = self._apply_dataset_defaults(tissue_cfg)
+
         # Pre-built LMDB: resolve and return immediately
         if tissue_cfg.is_lmdb:
             lmdb_path = self._resolve_lmdb(tissue_cfg)
@@ -276,8 +286,11 @@ class PipelineOrchestrator:
         elif step_name == "segmentation":
             from dapidl.pipeline.steps.segmentation import SegmentationStep, SegmentationStepConfig
 
+            # Per-dataset segmenter override, or fall back to global config
+            segmenter_value = tissue_cfg.segmenter or cfg.segmentation.segmenter.value
+
             step_config = SegmentationStepConfig(
-                segmenter=cfg.segmentation.segmenter.value,
+                segmenter=segmenter_value,
                 diameter=cfg.segmentation.diameter,
                 flow_threshold=cfg.segmentation.flow_threshold,
                 match_threshold_um=cfg.segmentation.match_threshold_um,
@@ -293,19 +306,35 @@ class PipelineOrchestrator:
                 MethodSpec,
             )
 
-            # Convert unified config methods (list of dicts) to MethodSpec objects
+            # Per-dataset annotation_models override, or fall back to global config
+            raw_methods = (
+                tissue_cfg.annotation_models
+                if tissue_cfg.annotation_models is not None
+                else cfg.annotation.methods
+            )
+
+            # Convert method dicts to MethodSpec objects
             method_specs = []
-            for method_dict in cfg.annotation.methods:
-                method_specs.append(MethodSpec(
-                    name=method_dict["name"],
-                    params=method_dict.get("params", {}),
-                ))
+            for method_dict in raw_methods:
+                method_specs.append(
+                    MethodSpec(
+                        name=method_dict["name"],
+                        params=method_dict.get("params", {}),
+                    )
+                )
+
+            # Per-dataset fine_grained override, or fall back to global config
+            fine_grained = (
+                tissue_cfg.fine_grained
+                if tissue_cfg.fine_grained is not None
+                else cfg.annotation.fine_grained
+            )
 
             step_config = EnsembleAnnotationConfig(
                 methods=method_specs,
                 min_agreement=cfg.annotation.min_agreement,
                 confidence_threshold=cfg.annotation.confidence_threshold,
-                fine_grained=cfg.annotation.fine_grained,
+                fine_grained=fine_grained,
                 upload_to_s3=cfg.output.upload_to_s3,
                 s3_bucket=cfg.output.s3_bucket,
             )
@@ -469,6 +498,9 @@ class PipelineOrchestrator:
 
     def _process_dataset_remote(self, tissue_cfg: TissueDatasetConfig) -> dict[str, Any]:
         """Run recipe steps for one dataset via ClearML task cloning."""
+        # Apply per-dataset defaults before any processing
+        tissue_cfg = self._apply_dataset_defaults(tissue_cfg)
+
         if tissue_cfg.is_lmdb:
             lmdb_path = self._resolve_lmdb(tissue_cfg)
             return {"lmdb_path": lmdb_path}
@@ -525,13 +557,39 @@ class PipelineOrchestrator:
             if "cells_parquet" in prev_artifacts:
                 params["step_config/cells_parquet"] = prev_artifacts["cells_parquet"]
 
+        elif step_name == "segmentation":
+            # Per-dataset segmenter override, or fall back to global config
+            segmenter_value = tissue_cfg.segmenter or cfg.segmentation.segmenter.value
+            params["step_config/segmenter"] = segmenter_value
+            params["step_config/diameter"] = str(cfg.segmentation.diameter)
+            params["step_config/flow_threshold"] = str(cfg.segmentation.flow_threshold)
+            params["step_config/match_threshold_um"] = str(cfg.segmentation.match_threshold_um)
+            params["step_config/gpu"] = "True"
+            if "data_path" in prev_artifacts:
+                params["step_config/data_path"] = prev_artifacts["data_path"]
+
         elif step_name == "ensemble_annotation":
-            params["step_config/celltypist_models"] = ",".join(cfg.annotation.celltypist_models)
-            params["step_config/include_singler"] = str(cfg.annotation.include_singler)
-            params["step_config/singler_reference"] = cfg.annotation.singler_reference
+            # Per-dataset annotation_models override, or fall back to global config
+            raw_methods = (
+                tissue_cfg.annotation_models
+                if tissue_cfg.annotation_models is not None
+                else cfg.annotation.methods
+            )
+
+            # Per-dataset fine_grained override, or fall back to global config
+            fine_grained = (
+                tissue_cfg.fine_grained
+                if tissue_cfg.fine_grained is not None
+                else cfg.annotation.fine_grained
+            )
+
+            # Serialize methods as JSON for remote task params
+            import json
+
+            params["step_config/methods_json"] = json.dumps(raw_methods)
             params["step_config/min_agreement"] = str(cfg.annotation.min_agreement)
             params["step_config/confidence_threshold"] = str(cfg.annotation.confidence_threshold)
-            params["step_config/fine_grained"] = str(cfg.annotation.fine_grained)
+            params["step_config/fine_grained"] = str(fine_grained)
             params["step_config/upload_to_s3"] = str(cfg.output.upload_to_s3)
             params["step_config/s3_bucket"] = cfg.output.s3_bucket
             # Chain from data_loader
@@ -652,6 +710,94 @@ class PipelineOrchestrator:
         step_name = "universal_training"
         queue = cfg.execution.gpu_queue
         return self._clone_and_run_step(step_name, params, queue)
+
+    # =====================================================================
+    # Per-dataset defaults
+    # =====================================================================
+
+    @staticmethod
+    def _detect_dataset_name(tissue_cfg: TissueDatasetConfig) -> str:
+        """Derive a dataset name for lookup in dataset_defaults.yaml.
+
+        Uses the basename of ``local_path`` (stripping trailing ``/outs``),
+        or ``dataset_id``, or falls back to tissue name.
+        """
+        if tissue_cfg.local_path:
+            p = Path(tissue_cfg.local_path).resolve()
+            # Strip trailing /outs (Xenium convention)
+            if p.name == "outs":
+                p = p.parent
+            return p.name
+
+        if tissue_cfg.dataset_id:
+            return tissue_cfg.dataset_id
+
+        return tissue_cfg.tissue
+
+    def _apply_dataset_defaults(self, tissue_cfg: TissueDatasetConfig) -> TissueDatasetConfig:
+        """Apply per-dataset defaults from dataset_defaults.yaml.
+
+        Only overrides fields that are at their default/None value in
+        ``tissue_cfg``. Explicitly set values are never overwritten.
+        """
+        name = self._detect_dataset_name(tissue_cfg)
+        defaults = get_dataset_defaults(name)
+        if not defaults:
+            return tissue_cfg
+
+        logger.info(f"  Applying dataset defaults for '{name}'")
+
+        updates: dict[str, Any] = {}
+
+        # segmenter: None in tissue_cfg means "not explicitly set"
+        if tissue_cfg.segmenter is None and "segmenter" in defaults:
+            updates["segmenter"] = defaults["segmenter"]
+
+        # annotation_models: None means "not explicitly set"
+        if tissue_cfg.annotation_models is None and "annotation_models" in defaults:
+            updates["annotation_models"] = defaults["annotation_models"]
+
+        # pixel_size_um: None means "not explicitly set"
+        if tissue_cfg.pixel_size_um is None and "pixel_size_um" in defaults:
+            updates["pixel_size_um"] = defaults["pixel_size_um"]
+
+        # fine_grained: None means "not explicitly set"
+        if tissue_cfg.fine_grained is None and "fine_grained" in defaults:
+            updates["fine_grained"] = defaults["fine_grained"]
+
+        # recipe: only override if still at the class default "default"
+        if tissue_cfg.recipe == "default" and "recipe" in defaults:
+            updates["recipe"] = defaults["recipe"]
+
+        # confidence_tier: only override if still at the class default (2)
+        if tissue_cfg.confidence_tier == 2 and "confidence_tier" in defaults:
+            updates["confidence_tier"] = defaults["confidence_tier"]
+
+        # weight_multiplier: only override if still at the class default (1.0)
+        if tissue_cfg.weight_multiplier == 1.0 and "weight_multiplier" in defaults:
+            updates["weight_multiplier"] = defaults["weight_multiplier"]
+
+        # platform: only override if still at the class default (XENIUM)
+        if tissue_cfg.platform.value == "xenium" and "platform" in defaults:
+            from dapidl.pipeline.unified_config import Platform
+
+            try:
+                updates["platform"] = Platform(defaults["platform"])
+            except ValueError:
+                logger.warning(
+                    f"Unknown platform '{defaults['platform']}' in defaults for '{name}'"
+                )
+
+        # tissue: only override if the YAML has a tissue key and tissue_cfg
+        # was given a generic value (rare, but useful for auto-detection)
+        if "tissue" in defaults and tissue_cfg.tissue == "unknown":
+            updates["tissue"] = defaults["tissue"]
+
+        if updates:
+            logger.info(f"    Overriding: {', '.join(sorted(updates.keys()))}")
+            tissue_cfg = tissue_cfg.model_copy(update=updates)
+
+        return tissue_cfg
 
     # =====================================================================
     # Helpers

@@ -1,0 +1,808 @@
+_defaults:
+  segmenter: stardist
+  recipe: full
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  confidence_tier: 2
+  weight_multiplier: 1.0
+merscope-breast:
+  tissue: breast
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Adult_Breast.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE 500g, weak epithelial markers (EPCAM/CDH1 only)
+merscope-colon-cancer-1:
+  tissue: colon
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Intestinal_Tract.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO colon cancer
+merscope-colon-cancer-2:
+  tissue: colon
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Intestinal_Tract.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO colon cancer
+merscope-liver-cancer-1:
+  tissue: liver
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Healthy_Human_Liver.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO liver cancer
+merscope-liver-cancer-2:
+  tissue: liver
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Healthy_Human_Liver.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO liver cancer
+merscope-lung-cancer-1:
+  tissue: lung
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Human_Lung_Atlas.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO lung cancer
+merscope-lung-cancer-2:
+  tissue: lung
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Human_Lung_Atlas.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO lung cancer
+merscope-melanoma-p1:
+  tissue: melanoma
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Adult_Human_Skin.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE 500g FFPE melanoma, skin model for lineage context
+merscope-melanoma-p2:
+  tissue: melanoma
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Adult_Human_Skin.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE 500g FFPE melanoma
+merscope-ovarian-cancer-1:
+  tissue: ovary
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: celltypist
+    params:
+      model: Pan_Fetal_Human.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO ovarian cancer
+merscope-ovarian-cancer-2:
+  tissue: ovary
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: celltypist
+    params:
+      model: Pan_Fetal_Human.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO ovarian cancer
+merscope-ovarian-cancer-3:
+  tissue: ovary
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: celltypist
+    params:
+      model: Pan_Fetal_Human.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO ovarian cancer
+merscope-ovarian-cancer-4:
+  tissue: ovary
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: celltypist
+    params:
+      model: Pan_Fetal_Human.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO ovarian cancer
+merscope-prostate-cancer-1:
+  tissue: prostate
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: celltypist
+    params:
+      model: Pan_Fetal_Human.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO prostate cancer
+merscope-prostate-cancer-2:
+  tissue: prostate
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: celltypist
+    params:
+      model: Pan_Fetal_Human.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO prostate cancer
+merscope-uterine-cancer:
+  tissue: uterine
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: celltypist
+    params:
+      model: Pan_Fetal_Human.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: merscope
+  pixel_size_um: 0.108
+  _notes: MERSCOPE FFPE IO uterine cancer
+xenium-brain-gbm:
+  tissue: brain
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: No adult human brain CT model; immuno-onc panel B
+xenium-breast-cancer-prime:
+  tissue: breast
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Adult_Breast.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_Low.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  fine_grained: true
+  _notes: "5K panel \u2192 fine-grained immune possible"
+xenium-breast-tumor-rep1:
+  tissue: breast
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Adult_Breast.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  recipe: gt
+  confidence_tier: 1
+  _notes: hBreast_320g panel, GT available
+xenium-breast-tumor-rep2:
+  tissue: breast
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Adult_Breast.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  recipe: gt
+  confidence_tier: 1
+  _notes: hBreast_320g panel, GT available
+xenium-cervical-cancer-prime:
+  tissue: cervix
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_Low.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  fine_grained: true
+  _notes: 5K panel, no cervix CT model; fine-grained immune possible
+xenium-colon-cancer:
+  tissue: colon
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Intestinal_Tract.pkl
+  - name: celltypist
+    params:
+      model: Human_Colorectal_Cancer.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Colon-specific panel, 70% overlap w/ IntestinalTract
+xenium-colon-normal:
+  tissue: colon
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Intestinal_Tract.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Same panel as colon-cancer
+xenium-colorectal-cancer:
+  tissue: colorectal
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Human_Colorectal_Cancer.pkl
+  - name: celltypist
+    params:
+      model: Cells_Intestinal_Tract.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Immuno-Oncology panel A, 69% CRC model overlap
+xenium-heart-normal:
+  tissue: heart
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Healthy_Adult_Heart.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: 51% overlap, 75 types incl. cardiomyocyte subtypes
+xenium-kidney-cancer:
+  tissue: kidney
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: No kidney CT model
+xenium-kidney-normal:
+  tissue: kidney
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: No kidney CT model; use immune + BANKSY/scType for broad types
+xenium-liver-cancer:
+  tissue: liver
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Healthy_Human_Liver.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Multi-tissue+addon panel, 50% overlap
+xenium-liver-normal:
+  tissue: liver
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Healthy_Human_Liver.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: 48% overlap but correct liver types (hepatocytes, Kupffer)
+xenium-lung-2fov:
+  tissue: lung
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Lung_Airway.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: "Lung-specific panel, 91% overlap w/ Lung_Airway \u2014 best fit!"
+xenium-lung-cancer:
+  tissue: lung
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Human_Lung_Atlas.pkl
+  - name: celltypist
+    params:
+      model: Cells_Lung_Airway.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Multi-tissue panel, 81% HLCA overlap
+xenium-lymph-node-normal:
+  tissue: lymph_node
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Human_Tonsil.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Tonsil model is closest lymphoid reference
+xenium-mouse-brain:
+  tissue: mouse_brain
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Mouse_Isocortex_Hippocampus.pkl
+  - name: celltypist
+    params:
+      model: Mouse_Whole_Brain.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Mouse genes, 97% overlap w/ Isocortex model
+xenium-ovarian-cancer:
+  tissue: ovary
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_Low.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  fine_grained: true
+  _notes: 5K panel, no ovary CT model; fine-grained immune possible
+xenium-ovary-cancer-ff:
+  tissue: ovary
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: No ovary CT model
+xenium-pancreas-cancer:
+  tissue: pancreas
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: PancreaticIslet model useless (18% overlap, islet-only). Use immune+BANKSY
+xenium-prostate-cancer-prime:
+  tissue: prostate
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Immune_All_Low.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  fine_grained: true
+  _notes: 5K panel, no prostate CT model; fine-grained immune possible
+xenium-skin-normal-sample1:
+  tissue: skin
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Adult_Human_Skin.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: 57% overlap, multi-tissue panel
+xenium-skin-normal-sample2:
+  tissue: skin
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Adult_Human_Skin.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Same panel as sample1
+xenium-skin-prime-ffpe:
+  tissue: skin
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Adult_Human_Skin.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_Low.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  fine_grained: true
+  _notes: "5K panel \u2192 fine-grained immune possible"
+xenium-tonsil-lymphoid:
+  tissue: tonsil
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Human_Tonsil.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: 51% overlap, heavily lymphoid tissue
+xenium-tonsil-reactive:
+  tissue: tonsil
+  annotation_models:
+  - name: celltypist
+    params:
+      model: Cells_Human_Tonsil.pkl
+  - name: celltypist
+    params:
+      model: Immune_All_High.pkl
+  - name: singler
+    params:
+      reference: blueprint
+  platform: xenium
+  _notes: Same panel, 1.3M cells (largest dataset)
+sthelar-breast_s0:
+  tissue: breast
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-breast_s1:
+  tissue: breast
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-breast_s3:
+  tissue: breast
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-breast_s6:
+  tissue: breast
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-skin_s1:
+  tissue: skin
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-skin_s2:
+  tissue: skin
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-skin_s3:
+  tissue: skin
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-skin_s4:
+  tissue: skin
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-cervix_s0:
+  tissue: cervix
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-colon_s1:
+  tissue: colon
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-colon_s2:
+  tissue: colon
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-heart_s0:
+  tissue: heart
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-kidney_s0:
+  tissue: kidney
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-kidney_s1:
+  tissue: kidney
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-liver_s0:
+  tissue: liver
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-liver_s1:
+  tissue: liver
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-lung_s1:
+  tissue: lung
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-lung_s3:
+  tissue: lung
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-lymph_node_s0:
+  tissue: lymph_node
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-ovary_s0:
+  tissue: ovary
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-ovary_s1:
+  tissue: ovary
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-pancreatic_s0:
+  tissue: pancreatic
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-pancreatic_s1:
+  tissue: pancreatic
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-pancreatic_s2:
+  tissue: pancreatic
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-prostate_s0:
+  tissue: prostate
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-tonsil_s0:
+  tissue: tonsil
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
+sthelar-tonsil_s1:
+  tissue: tonsil
+  platform: sthelar
+  segmenter: sthelar_native
+  recipe: full
+  annotation_models: []
+  confidence_tier: 1
