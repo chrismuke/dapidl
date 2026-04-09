@@ -372,7 +372,7 @@ class SegmentationStep(PipelineStep):
             from dapidl.data.sthelar import SthelarDataReader
 
             reader = SthelarDataReader(data_path)
-            return reader.load_dapi()
+            return reader.image
 
         else:  # merscope
             # MERSCOPE: Multiple z-slices, use middle z

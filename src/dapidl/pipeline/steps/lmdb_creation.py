@@ -406,12 +406,24 @@ class LMDBCreationStep(PipelineStep):
         elif "center_x" in annotations_df.columns:
             # MERSCOPE format
             x_col, y_col = "center_x", "center_y"
+        elif "x_centroid_px" in annotations_df.columns:
+            # STHELAR format: pixel coordinates from zarr
+            x_col, y_col = "x_centroid_px", "y_centroid_px"
         else:
             # Need to join with cells data
             cells_path = data_path / "cells.parquet"
             cell_metadata_path = data_path / "cell_metadata.csv"
 
-            if cells_path.exists():
+            if platform == "sthelar":
+                # STHELAR: load centroids from zarr
+                from dapidl.data.sthelar import SthelarDataReader
+
+                logger.info("Loading STHELAR cell coordinates from zarr")
+                reader = SthelarDataReader(data_path)
+                cells_df = reader.nucleus_df.select(["cell_id", "x_centroid_px", "y_centroid_px"])
+                coord_cols = ["cell_id", "x_centroid_px", "y_centroid_px"]
+                x_col, y_col = "x_centroid_px", "y_centroid_px"
+            elif cells_path.exists():
                 # Xenium format: cells.parquet with x_centroid, y_centroid
                 cells_df = pl.read_parquet(cells_path)
                 coord_cols = ["cell_id", "x_centroid", "y_centroid"]
@@ -691,6 +703,15 @@ class LMDBCreationStep(PipelineStep):
                 dapi_path = dapi_files[mid_idx]
                 logger.info(f"Loading MERSCOPE DAPI from {dapi_path} ({len(dapi_files)} z-slices, using index {mid_idx})")
                 return tifffile.imread(dapi_path)
+
+        # STHELAR: DAPI stored in zarr pyramid (images/morpho/0)
+        morpho_dir = data_path / "images" / "morpho"
+        if morpho_dir.exists():
+            from dapidl.data.sthelar import SthelarDataReader
+
+            logger.info(f"Loading STHELAR DAPI from zarr: {morpho_dir}")
+            reader = SthelarDataReader(data_path)
+            return reader.image
 
         raise FileNotFoundError(f"No DAPI image found in {data_path}")
 
