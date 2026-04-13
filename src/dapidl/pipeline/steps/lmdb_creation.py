@@ -261,7 +261,7 @@ class LMDBCreationStep(PipelineStep):
             config_parts.append(f"em{cfg.edge_margin_px}")
 
         config_suffix = "-" + "-".join(config_parts) if config_parts else ""
-        dataset_dir_name = f"xenium-{tissue}-{id_suffix}-finegrained-p{cfg.patch_size}{config_suffix}"
+        dataset_dir_name = f"{platform}-{tissue}-{id_suffix}-finegrained-p{cfg.patch_size}{config_suffix}"
         output_dir = derived_root / dataset_dir_name
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -630,6 +630,9 @@ class LMDBCreationStep(PipelineStep):
             "n_samples": n_patches,
             "n_classes": len(class_mapping),
             "patch_size": cfg.patch_size,
+            "patch_shape": [cfg.patch_size, cfg.patch_size],
+            "dtype": "uint16",
+            "format": "lmdb",
             "normalization": cfg.normalization_method,
             "platform": platform,
             "class_counts": class_counts,
@@ -645,6 +648,9 @@ class LMDBCreationStep(PipelineStep):
             },
         }
         with open(dataset_dir / "metadata.json", "w") as f:
+            json.dump(metadata_out, f, indent=2)
+        # Also write inside patches.lmdb/ for DALI-LMDB backend compatibility
+        with open(dataset_dir / "patches.lmdb" / "metadata.json", "w") as f:
             json.dump(metadata_out, f, indent=2)
 
         # Build index_to_class from class_mapping

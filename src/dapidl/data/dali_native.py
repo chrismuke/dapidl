@@ -327,7 +327,11 @@ class LMDBExternalSource:
                 raise KeyError(f"Key {actual_idx} not found in LMDB")
 
             # Unpack label and patch
-            label = struct.unpack(">q", value[:8])[0]
+            # Pipeline's lmdb_creation uses numpy native byte order;
+            # zarr_to_lmdb uses big-endian struct.pack. Auto-detect:
+            label = np.frombuffer(value[:8], dtype=np.int64)[0]
+            if label < 0 or label > 10000:
+                label = struct.unpack(">q", value[:8])[0]
             patch_bytes = value[8:]
             patch = np.frombuffer(patch_bytes, dtype=self.dtype).reshape(self.patch_shape)
 

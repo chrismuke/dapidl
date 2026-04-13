@@ -379,7 +379,8 @@ class DataLoaderStep(PipelineStep):
         data_path = self._resolve_data_path(data_path)
         logger.info(f"Resolved data path: {data_path}")
 
-        # Detect platform
+        # Detect platform — resolve nested zarr for STHELAR first
+        data_path = self._resolve_sthelar_zarr(data_path)
         platform = self._detect_platform(data_path) if cfg.platform == "auto" else cfg.platform
         logger.info(f"Platform: {platform}")
 
@@ -757,6 +758,16 @@ class DataLoaderStep(PipelineStep):
                 return output_path
 
         # Return original path, let _detect_platform raise error if needed
+        return data_path
+
+    def _resolve_sthelar_zarr(self, data_path: Path) -> Path:
+        """Resolve nested STHELAR zarr (outer.zarr/inner.zarr/) to inner path."""
+        if (data_path / "images").exists():
+            return data_path
+        stem = data_path.stem
+        inner = data_path / f"{stem}.zarr"
+        if inner.exists() and (inner / "images").exists():
+            return inner
         return data_path
 
     def _detect_platform(self, data_path: Path) -> str:
