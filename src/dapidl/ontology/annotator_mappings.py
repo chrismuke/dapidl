@@ -396,6 +396,19 @@ MERSCOPE_BREAST_GT_TO_CL = {
     "mDC": "CL:0000990",  # Conventional/myeloid dendritic cell
 }
 
+# STHELAR (Giraud-Sauveur et al. 2026) — short labels from Tangram annotation
+GT_STHELAR: dict[str, str] = {
+    "T": "CL:0000084",  # T cell
+    "B": "CL:0000236",  # B cell
+    "Perivascular": "CL:0000669",  # Pericyte
+    "Monocyte/Macrophage": "CL:0000235",  # Macrophage
+    "Mast": "CL:0000097",  # Mast cell
+    "Epithelial": "CL:0000066",  # Epithelial cell
+    "Fibroblast": "CL:0000057",  # Fibroblast
+    "Endothelial": "CL:0000115",  # Endothelial cell
+    "Adipocyte": "CL:0000136",  # Adipocyte
+}
+
 # Common pathology terms
 PATHOLOGY_TO_CL = {
     "lymphocytes": "CL:0000542",
@@ -530,6 +543,7 @@ def get_gt_mappings(dataset: str) -> dict[str, str]:
     gt_maps = {
         "xenium_breast": XENIUM_BREAST_GT_TO_CL,
         "merscope_breast": MERSCOPE_BREAST_GT_TO_CL,
+        "sthelar": GT_STHELAR,
         "pathology": PATHOLOGY_TO_CL,
         "mouse_brain": MOUSE_BRAIN_GT_TO_CL,
     }
@@ -556,7 +570,7 @@ def get_all_gt_mappings() -> dict[str, str]:
         Dict with all GT label → CL ID mappings.
     """
     combined = {}
-    for name in ["xenium_breast", "merscope_breast", "pathology", "mouse_brain"]:
+    for name in ["xenium_breast", "merscope_breast", "sthelar", "pathology", "mouse_brain"]:
         combined.update(get_gt_mappings(name))
     return combined
 
@@ -574,7 +588,7 @@ def print_mapping_stats() -> None:
     print("\nGround Truth Mapping Statistics")
     print("-" * 60)
 
-    for name in ["xenium_breast", "merscope_breast", "pathology", "mouse_brain"]:
+    for name in ["xenium_breast", "merscope_breast", "sthelar", "pathology", "mouse_brain"]:
         maps = get_gt_mappings(name)
         print(f"{name:15} {len(maps):4} mappings")
 
