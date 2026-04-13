@@ -33,6 +33,7 @@ class MerscopeDataReader:
         self._image: np.ndarray | None = None
         self._image_mmap: np.ndarray | None = None
         self._cells_df: pl.DataFrame | None = None
+        self._transcripts_df: pl.DataFrame | None = None
         self._expression_matrix: np.ndarray | None = None
         self._gene_names: list[str] | None = None
         self._cell_ids: np.ndarray | None = None
@@ -113,6 +114,22 @@ class MerscopeDataReader:
         if self._cells_df is None:
             self._cells_df = self._load_cells()
         return self._cells_df
+
+    @property
+    def transcripts_df(self) -> pl.DataFrame:
+        """Lazy-load transcript coordinates.
+
+        Returns:
+            Polars DataFrame with x (pixels), y (pixels), gene columns
+        """
+        if self._transcripts_df is None:
+            from starpose.io.transcripts import load_merscope_transcripts
+
+            self._transcripts_df = load_merscope_transcripts(
+                self.merscope_path, pixel_size=0.108,
+            )
+            logger.info(f"Loaded {self._transcripts_df.height:,} transcripts")
+        return self._transcripts_df
 
     @property
     def num_cells(self) -> int:

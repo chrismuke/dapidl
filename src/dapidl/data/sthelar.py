@@ -223,6 +223,22 @@ class SthelarDataReader:
         return self._cell_df
 
     @property
+    def transcripts_df(self) -> pl.DataFrame:
+        """Lazy-load spatial transcripts from zarr points/st.
+
+        Returns:
+            Polars DataFrame with x (pixels), y (pixels), gene columns
+        """
+        if not hasattr(self, "_transcripts_df") or self._transcripts_df is None:
+            from starpose.io.transcripts import load_sthelar_transcripts
+
+            self._transcripts_df = load_sthelar_transcripts(
+                self._root_path, pixel_size=self.PIXEL_SIZE,
+            )
+            logger.info(f"Loaded {self._transcripts_df.height:,} transcripts")
+        return self._transcripts_df
+
+    @property
     def num_cells(self) -> int:
         return len(self.nucleus_df)
 

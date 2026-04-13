@@ -51,6 +51,8 @@ dependencies = [
     "lmdb>=1.7.5",
     "scikit-image>=0.25.2",
     "cellpose>=4.0.8",
+    # Starpose: adaptive multi-modal cell & nucleus segmentation
+    "starpose",
     # ClearML experiment tracking and remote execution
     "clearml[s3]>=1.16",
     "mygene>=3.2.2",
@@ -146,6 +148,10 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+# Starpose: local editable install
+[tool.uv.sources]
+starpose = { path = "/home/chrism/git/starpose", editable = true }
 
 # Fix PyTorch Geometric build dependencies (torch-scatter/sparse need torch at build time)
 [tool.uv.extra-build-dependencies]
