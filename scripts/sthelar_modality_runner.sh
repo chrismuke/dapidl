@@ -32,7 +32,20 @@ wait_gpu() {
     done
 }
 
-# 3. Train H&E only
+# 3. Train DAPI-only on the HE-intersection (apples-to-apples comparison
+#    against the existing baseline which used the full 1.3M patches)
+wait_gpu
+echo "=================================================="
+echo "[$(date '+%F %T')] START DAPI-only (HE-intersection) training"
+echo "=================================================="
+uv run python scripts/sthelar_modality_train.py \
+    --mode dapi \
+    --output "$OUT/sthelar_modality_dapi" \
+    --epochs 21 --patience 8 --batch-size 64 --lr 1e-4 --num-workers 6 \
+    2>&1 | tee "$LOGS/sthelar_modality_dapi.log"
+echo "[$(date '+%F %T')] END DAPI-only (rc=$?)"
+
+# 4. Train H&E only
 wait_gpu
 echo "=================================================="
 echo "[$(date '+%F %T')] START H&E-only training"
@@ -44,7 +57,7 @@ uv run python scripts/sthelar_modality_train.py \
     2>&1 | tee "$LOGS/sthelar_modality_he.log"
 echo "[$(date '+%F %T')] END H&E-only (rc=$?)"
 
-# 4. Train multimodal DAPI+H&E
+# 5. Train multimodal DAPI+H&E
 wait_gpu
 echo "=================================================="
 echo "[$(date '+%F %T')] START DAPI+H&E multimodal training"

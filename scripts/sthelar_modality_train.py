@@ -193,11 +193,34 @@ class ModalityClassifier(nn.Module):
 
 # ----------------------------- helpers -----------------------------------
 
-def build_splits(num_samples: int, labels: np.ndarray):
-    idx = np.arange(num_samples)
-    train, temp = train_test_split(idx, train_size=0.7, random_state=42, stratify=labels)
-    val, test = train_test_split(temp, train_size=0.5, random_state=42, stratify=labels[temp])
+def build_splits(num_samples: int, labels: np.ndarray, valid_mask: np.ndarray | None = None):
+    """70/15/15 stratified by class. If `valid_mask` is given, only indices where
+    valid_mask is True are eligible (used to restrict to HE-intersection)."""
+    if valid_mask is None:
+        idx = np.arange(num_samples)
+        keep_labels = labels
+    else:
+        idx = np.where(valid_mask)[0]
+        keep_labels = labels[idx]
+    train, temp = train_test_split(idx, train_size=0.7, random_state=42, stratify=keep_labels)
+    temp_labels = labels[temp]
+    val, test = train_test_split(temp, train_size=0.5, random_state=42, stratify=temp_labels)
     return train, val, test
+
+
+def get_he_valid_mask(num_samples: int) -> np.ndarray:
+    """Return a boolean mask of size num_samples — True where HE LMDB has an entry."""
+    env = lmdb.open(str(HE_DIR / "patches.lmdb"), readonly=True, lock=False, readahead=False, meminit=False)
+    valid = np.zeros(num_samples, dtype=bool)
+    with env.begin() as txn:
+        cur = txn.cursor()
+        for k, _ in cur:
+            if len(k) == 8:
+                idx = struct.unpack(">Q", k)[0]
+                if idx < num_samples:
+                    valid[idx] = True
+    env.close()
+    return valid
 
 
 def reconstruct_tissue_idx(slide_stats_path: Path):
@@ -262,9 +285,15 @@ def main():
 
     labels_all = np.load(DAPI_DIR / "labels.npy")
     n_total = len(labels_all)
-    train_idx, val_idx, test_idx = build_splits(n_total, labels_all)
+
+    # Build HE-intersection mask for ALL modes — apples-to-apples comparison
+    logger.info("scanning HE LMDB for valid indices...")
+    valid_mask = get_he_valid_mask(n_total)
+    logger.info(f"HE intersection: {valid_mask.sum():,} / {n_total:,} indices")
+
+    train_idx, val_idx, test_idx = build_splits(n_total, labels_all, valid_mask=valid_mask)
     tissue_idx, tissue_names = reconstruct_tissue_idx(DAPI_DIR / "slide_stats.json")
-    logger.info(f"splits: train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}")
+    logger.info(f"splits (HE-intersection): train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}")
 
     if args.mode == "dapi":
         train_ds = DapiPatchDataset(train_idx)

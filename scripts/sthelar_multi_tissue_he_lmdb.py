@@ -75,18 +75,17 @@ def get_he_to_global_affine(reader) -> np.ndarray | None:
 def process_slide(
     zarr_path: Path,
     env: lmdb.Environment,
-    patch_idx: int,
+    dapi_patch_idx: int,
     class_mapping: dict[str, int],
     slide_stats: dict,
 ) -> int:
-    """Mirror the DAPI build's cell selection exactly, but extract H&E.
+    """Iterate the SAME cells in the SAME order as the DAPI build, advancing the
+    DAPI patch_idx counter for every cell that DAPI's boundary check accepts.
+    For each such cell, attempt H&E extraction (with the affine inverse) and,
+    if HE bounds are also OK, write to the HE LMDB at key = dapi_patch_idx.
 
-    Coordinate handling: DAPI uses identity transform → DAPI pixel coords ARE
-    global coords. H&E uses an affine transform (often rotation + scale). We
-    invert the H&E → global transform to map DAPI pixel coords → H&E pixel
-    coords, then extract a 128-H&E-pixel patch (covering a slightly different
-    physical FOV than the DAPI patch when scales differ, but at the H&E sensor's
-    native resolution, which is what we want to feed the network).
+    Result: HE LMDB keys are a strict subset of DAPI LMDB keys, so the same
+    patch_idx points to the same biological cell across both LMDBs.
     """
     from dapidl.data.sthelar import SthelarDataReader
 
@@ -100,12 +99,12 @@ def process_slide(
         reader = SthelarDataReader(zarr_path)
     except Exception as e:
         log.error(f"  Failed to load {slide_name}: {e}")
-        return patch_idx
+        return dapi_patch_idx
 
     nuc_df = reader.nucleus_df
     if "label1" not in nuc_df.columns:
         log.warning(f"  No label1 column in {slide_name}, skipping")
-        return patch_idx
+        return dapi_patch_idx
 
     nuc_df = nuc_df.with_columns(
         pl.col("label1").replace_strict(STHELAR_TO_CL, default=None).alias("cl_name")
@@ -114,7 +113,7 @@ def process_slide(
     n_cells = len(nuc_df)
     if n_cells == 0:
         log.warning(f"  No mapped cells in {slide_name}")
-        return patch_idx
+        return dapi_patch_idx
 
     if n_cells > MAX_PER_SLIDE:
         nuc_df = nuc_df.sample(n=MAX_PER_SLIDE, seed=42)
@@ -126,26 +125,29 @@ def process_slide(
         if cl_name not in class_mapping:
             class_mapping[cl_name] = len(class_mapping)
 
+    # DAPI shape (no need to load actual data — just for boundary check)
+    dapi_shape = reader.store["images"]["morpho"]["0"].shape  # (1, H, W)
+    _, dapi_h, dapi_w = dapi_shape
+
     # Load full H&E (level 0). Shape (3, H, W), uint8.
     he = reader.load_he(level=0)
-    _, h, w = he.shape
+    _, he_h, he_w = he.shape
 
     # Compute global → H&E pixel affine (inverse of H&E → global)
     M_he2global = get_he_to_global_affine(reader)
     if M_he2global is None:
-        # Identity case: DAPI/HE shapes match
         M_global2he = np.eye(3)
-        log.info(f"  H&E identity transform; shape={he.shape}")
+        log.info(f"  H&E identity transform; HE shape={he.shape}")
     else:
         M_global2he = np.linalg.inv(M_he2global)
-        log.info(f"  H&E shape={he.shape}, scale_y={M_he2global[0,0]:.3f}, scale_x={M_he2global[1,1]:.3f}")
+        log.info(f"  HE shape={he.shape}, scale_y={M_he2global[0,0]:.3f}, scale_x={M_he2global[1,1]:.3f}")
 
-    # Centroids in DAPI pixel coords = global coords (DAPI has identity transform)
-    centroids = reader.get_centroids_pixels()  # (N, 2) = (cx, cy) in DAPI pixels
+    centroids = reader.get_centroids_pixels()
     all_cell_ids = reader.get_cell_ids()
     centroid_map = {cid: (centroids[i, 0], centroids[i, 1]) for i, cid in enumerate(all_cell_ids)}
 
-    n_written = 0
+    n_dapi_pass = 0
+    n_he_written = 0
     with env.begin(write=True) as txn:
         for row in nuc_df.iter_rows(named=True):
             cell_id = row["cell_id"]
@@ -155,42 +157,53 @@ def process_slide(
             if cell_id not in centroid_map:
                 continue
 
-            cx_d, cy_d = centroid_map[cell_id]
-            # In SpatialData, DAPI pixel space = global with axes (x, y).
-            # H&E forward affine maps (y_he, x_he) → (x_global, y_global).
-            # So inverse maps (x_global, y_global) → (y_he, x_he).
-            global_xy = np.array([cx_d, cy_d, 1.0])
-            yhe_xhe = M_global2he @ global_xy  # (y_he, x_he, 1)
+            cx_d_raw, cy_d_raw = centroid_map[cell_id]
+            cx_d = int(round(cx_d_raw))
+            cy_d = int(round(cy_d_raw))
+
+            # ---- Replicate DAPI boundary check ----
+            d_y0, d_y1 = cy_d - HALF_PATCH, cy_d + HALF_PATCH
+            d_x0, d_x1 = cx_d - HALF_PATCH, cx_d + HALF_PATCH
+            if d_y0 < 0 or d_x0 < 0 or d_y1 > dapi_h or d_x1 > dapi_w:
+                continue  # DAPI build also skipped this cell — no patch_idx given
+
+            # This cell PASSED DAPI bounds; advance the counter (matches DAPI patch_idx)
+            current_dapi_idx = dapi_patch_idx
+            dapi_patch_idx += 1
+            n_dapi_pass += 1
+
+            # ---- Now attempt H&E extraction at the same cell ----
+            global_xy = np.array([cx_d_raw, cy_d_raw, 1.0])
+            yhe_xhe = M_global2he @ global_xy
             cy_h = int(round(yhe_xhe[0]))
             cx_h = int(round(yhe_xhe[1]))
 
-            y0, y1 = cy_h - HALF_PATCH, cy_h + HALF_PATCH
-            x0, x1 = cx_h - HALF_PATCH, cx_h + HALF_PATCH
-            if y0 < 0 or x0 < 0 or y1 > h or x1 > w:
-                continue
+            h_y0, h_y1 = cy_h - HALF_PATCH, cy_h + HALF_PATCH
+            h_x0, h_x1 = cx_h - HALF_PATCH, cx_h + HALF_PATCH
+            if h_y0 < 0 or h_x0 < 0 or h_y1 > he_h or h_x1 > he_w:
+                continue  # HE bounds fail — leave HE key absent
 
-            patch = he[:, y0:y1, x0:x1]
+            patch = he[:, h_y0:h_y1, h_x0:h_x1]
             if patch.shape != (3, PATCH_SIZE, PATCH_SIZE):
                 continue
 
-            key = struct.pack(">Q", patch_idx)
+            key = struct.pack(">Q", current_dapi_idx)
             label_bytes = np.array([label_idx], dtype=np.int64).tobytes()
             value = label_bytes + np.ascontiguousarray(patch).tobytes()
             txn.put(key, value)
-
-            patch_idx += 1
-            n_written += 1
+            n_he_written += 1
 
     elapsed = time.time() - t0
     slide_stats[slide_name] = {
         "tissue": tissue, "cells_total": n_cells,
-        "patches_written": n_written, "time_s": round(elapsed, 1),
+        "dapi_passes": n_dapi_pass, "patches_written": n_he_written,
+        "time_s": round(elapsed, 1),
     }
-    log.info(f"  Written {n_written} HE patches in {elapsed:.1f}s")
+    log.info(f"  DAPI bounds OK on {n_dapi_pass}, HE LMDB written {n_he_written} (drop {n_dapi_pass - n_he_written}) in {elapsed:.1f}s")
 
     del he, reader, nuc_df
     gc.collect()
-    return patch_idx
+    return dapi_patch_idx
 
 
 def main():

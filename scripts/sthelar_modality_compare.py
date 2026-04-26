@@ -23,7 +23,7 @@ import seaborn as sns
 
 
 EXP_DIRS = [
-    ("DAPI", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_multitissue_9class")),
+    ("DAPI", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_modality_dapi")),
     ("H&E", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_modality_he")),
     ("DAPI+H&E", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_modality_both")),
 ]
