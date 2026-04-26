@@ -138,12 +138,13 @@ def evaluate(model, loader, device):
     )
 
 
-def compute_metrics(y_true, y_pred, class_names, num_classes):
+def compute_metrics_with_labels(y_true, y_pred, class_names, kept_ids):
+    """Compute metrics restricted to `kept_ids` original class indices."""
     acc = float((y_true == y_pred).mean())
-    macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
-    weighted_f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+    macro_f1 = f1_score(y_true, y_pred, labels=kept_ids, average="macro", zero_division=0)
+    weighted_f1 = f1_score(y_true, y_pred, labels=kept_ids, average="weighted", zero_division=0)
     p, r, f1, support = precision_recall_fscore_support(
-        y_true, y_pred, labels=list(range(num_classes)), zero_division=0
+        y_true, y_pred, labels=kept_ids, zero_division=0,
     )
     per_class = {
         class_names[i]: {
@@ -152,7 +153,7 @@ def compute_metrics(y_true, y_pred, class_names, num_classes):
             "f1": float(f1[i]),
             "support": int(support[i]),
         }
-        for i in range(num_classes)
+        for i in range(len(kept_ids))
     }
     return {
         "accuracy": acc,
@@ -160,6 +161,10 @@ def compute_metrics(y_true, y_pred, class_names, num_classes):
         "weighted_f1": weighted_f1,
         "per_class": per_class,
     }
+
+
+def compute_metrics(y_true, y_pred, class_names, num_classes):  # legacy
+    return compute_metrics_with_labels(y_true, y_pred, class_names, list(range(num_classes)))
 
 
 def compute_per_tissue(y_true, y_pred, tissue_test, tissue_names):
@@ -200,21 +205,23 @@ def main():
     with open(args.data_dir / "class_mapping.json") as f:
         class_mapping = json.load(f)
 
+    # Always work in the ORIGINAL 9-class index space. When min_samples is used,
+    # the model still has 9 output heads but 2 classes had no training data.
+    # We evaluate with scikit-learn `labels=kept_ids` to restrict metrics to the
+    # classes we care about while still allowing the model to predict any of 9.
+    idx_to_name_full = {v: k for k, v in class_mapping.items()}
+    all_num_classes = len(class_mapping)
+
     if args.min_samples is not None:
         labels_all = np.load(args.data_dir / "labels.npy")
         unique, counts = np.unique(labels_all, return_counts=True)
-        valid_old = set(unique[counts >= args.min_samples].tolist())
-        kept = sorted(valid_old)
-        old_to_new = {old: new for new, old in enumerate(kept)}
-        idx_to_name_old = {v: k for k, v in class_mapping.items()}
-        class_names = [idx_to_name_old[old] for old in kept]
-        num_classes = len(class_names)
-        print(f"min_samples={args.min_samples} -> {num_classes} classes: {class_names}")
+        kept_ids = sorted(unique[counts >= args.min_samples].tolist())
+        class_names = [idx_to_name_full[i] for i in kept_ids]
+        print(f"min_samples={args.min_samples} -> evaluating on {len(kept_ids)} kept classes: {class_names}")
     else:
-        num_classes = len(class_mapping)
-        idx_to_name = {v: k for k, v in class_mapping.items()}
-        class_names = [idx_to_name[i] for i in range(num_classes)]
-        old_to_new = None
+        kept_ids = list(range(all_num_classes))
+        class_names = [idx_to_name_full[i] for i in kept_ids]
+    num_classes = all_num_classes
 
     train_idx, val_idx, test_idx, labels_all = reconstruct_splits(args.data_dir, args.min_samples)
     tissue_idx, tissue_names = reconstruct_tissue_idx(args.data_dir)
@@ -236,20 +243,20 @@ def main():
     tissue_test = tissue_idx[test_idx]
     print(f"inference done in {elapsed:.1f}s, n_test={len(y_true)}")
 
-    if old_to_new is not None:
-        mapped_true = np.vectorize(lambda x: old_to_new.get(x, -1))(y_true)
-        keep = mapped_true >= 0
-        y_true = mapped_true[keep].astype(np.int64)
-        y_pred = y_pred[keep]
-        y_prob = y_prob[keep]
-        tissue_test = tissue_test[keep]
+    # Filter test set to samples whose true label is one of the kept classes
+    # (for min_samples case; otherwise all samples are kept).
+    keep_mask = np.isin(y_true, kept_ids)
+    y_true = y_true[keep_mask]
+    y_pred = y_pred[keep_mask]
+    y_prob = y_prob[keep_mask]
+    tissue_test = tissue_test[keep_mask]
 
     np.savez_compressed(
         analysis_dir / "predictions.npz",
         y_true=y_true, y_pred=y_pred, y_prob=y_prob.astype(np.float16), tissue_idx=tissue_test,
     )
 
-    metrics = compute_metrics(y_true, y_pred, class_names, num_classes)
+    metrics = compute_metrics_with_labels(y_true, y_pred, class_names, kept_ids)
     per_tissue = compute_per_tissue(y_true, y_pred, tissue_test, tissue_names)
     cm = confusion_matrix(y_true, y_pred, labels=list(range(num_classes)))
     cm_norm = cm.astype(np.float64) / np.maximum(cm.sum(axis=1, keepdims=True), 1)
