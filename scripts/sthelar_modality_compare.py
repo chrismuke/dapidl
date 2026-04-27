@@ -26,6 +26,7 @@ EXP_DIRS = [
     ("DAPI", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_modality_dapi")),
     ("H&E", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_modality_he")),
     ("DAPI+H&E", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_modality_both")),
+    ("Fusion", Path("/mnt/work/git/dapidl/pipeline_output/sthelar_modality_fusion")),
 ]
 
 
@@ -64,7 +65,8 @@ def main():
         return
 
     # ---------- overall ----------
-    lines = ["# 3-Way Modality Comparison (DAPI / H&E / DAPI+H&E)\n"]
+    present_names = [n for n, _ in EXP_DIRS if n in results]
+    lines = [f"# {len(present_names)}-Way Modality Comparison ({' / '.join(present_names)})\n"]
     lines.append("| Modality | accuracy | macro F1 | weighted F1 |")
     lines.append("|---|---:|---:|---:|")
     for name, _ in EXP_DIRS:
@@ -74,52 +76,59 @@ def main():
         m = results[name]["per_class_metrics"]
         lines.append(f"| {name} | {m['accuracy']:.4f} | {m['macro_f1']:.4f} | {m['weighted_f1']:.4f} |")
 
+    # Helper for delta columns vs DAPI baseline
+    delta_modalities = [n for n in present_names if n != "DAPI"]
+    delta_header = " | ".join(f"Δ({n}−DAPI)" for n in delta_modalities)
+
+    def _build_align_row(n_modalities: int, n_deltas: int) -> str:
+        # 1 left-aligned (Class/Tissue) + 1 right (Support/n_test) + n right (modalities) + n right (deltas)
+        cols = ["---"] + ["---:"] * (1 + n_modalities + n_deltas)
+        return "| " + " | ".join(cols) + " |"
+
     # ---------- per-class ----------
     classes = []
     if "DAPI" in results:
         classes = list(results["DAPI"]["per_class_metrics"]["per_class"].keys())
     if classes:
         lines.append("\n# Per-class F1 across modalities\n")
-        lines.append("| Class | Support | DAPI | H&E | DAPI+H&E | Δ(H&E−DAPI) | Δ(DAPI+H&E−DAPI) |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|")
+        modality_cols = " | ".join(present_names)
+        lines.append(f"| Class | Support | {modality_cols} | {delta_header} |")
+        lines.append(_build_align_row(len(present_names), len(delta_modalities)))
         for c in classes:
             sup = results["DAPI"]["per_class_metrics"]["per_class"][c]["support"]
             row = [c, f"{sup:,}"]
             f1s = {}
-            for name, _ in EXP_DIRS:
-                if name in results:
-                    pc = results[name]["per_class_metrics"]["per_class"].get(c)
-                    f1s[name] = pc["f1"] if pc else None
-                    row.append(f"{pc['f1']:.3f}" if pc else "—")
-                else:
-                    row.append("—")
-            d_he = (f1s.get("H&E", 0) - f1s.get("DAPI", 0)) if all(k in f1s and f1s[k] is not None for k in ("DAPI", "H&E")) else None
-            d_both = (f1s.get("DAPI+H&E", 0) - f1s.get("DAPI", 0)) if all(k in f1s and f1s[k] is not None for k in ("DAPI", "DAPI+H&E")) else None
-            row.append(f"{d_he:+.3f}" if d_he is not None else "—")
-            row.append(f"{d_both:+.3f}" if d_both is not None else "—")
+            for name in present_names:
+                pc = results[name]["per_class_metrics"]["per_class"].get(c)
+                f1s[name] = pc["f1"] if pc else None
+                row.append(f"{pc['f1']:.3f}" if pc else "—")
+            for n in delta_modalities:
+                d = (f1s[n] - f1s["DAPI"]) if (f1s.get(n) is not None and f1s.get("DAPI") is not None) else None
+                row.append(f"{d:+.3f}" if d is not None else "—")
             lines.append("| " + " | ".join(row) + " |")
 
     # ---------- per-tissue ----------
     if "DAPI" in results and "per_tissue_metrics" in results["DAPI"]:
         tissues = list(results["DAPI"]["per_tissue_metrics"].keys())
         lines.append("\n# Per-tissue macro F1 across modalities\n")
-        lines.append("| Tissue | n_test | DAPI | H&E | DAPI+H&E | Δ(H&E−DAPI) | Δ(DAPI+H&E−DAPI) |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|")
+        modality_cols = " | ".join(present_names)
+        lines.append(f"| Tissue | n_test | {modality_cols} | {delta_header} |")
+        lines.append(_build_align_row(len(present_names), len(delta_modalities)))
         for t in tissues:
             n = results["DAPI"]["per_tissue_metrics"][t]["n"]
             row = [t, f"{n:,}"]
             f1s = {}
-            for name, _ in EXP_DIRS:
-                if name in results and t in results[name].get("per_tissue_metrics", {}):
-                    f1 = results[name]["per_tissue_metrics"][t]["macro_f1"]
-                    f1s[name] = f1
-                    row.append(f"{f1:.3f}")
+            for name in present_names:
+                pt = results[name].get("per_tissue_metrics", {}).get(t)
+                if pt is not None:
+                    f1s[name] = pt["macro_f1"]
+                    row.append(f"{f1s[name]:.3f}")
                 else:
+                    f1s[name] = None
                     row.append("—")
-            d_he = (f1s.get("H&E", 0) - f1s.get("DAPI", 0)) if all(k in f1s for k in ("DAPI", "H&E")) else None
-            d_both = (f1s.get("DAPI+H&E", 0) - f1s.get("DAPI", 0)) if all(k in f1s for k in ("DAPI", "DAPI+H&E")) else None
-            row.append(f"{d_he:+.3f}" if d_he is not None else "—")
-            row.append(f"{d_both:+.3f}" if d_both is not None else "—")
+            for nm in delta_modalities:
+                d = (f1s[nm] - f1s["DAPI"]) if (f1s.get(nm) is not None and f1s.get("DAPI") is not None) else None
+                row.append(f"{d:+.3f}" if d is not None else "—")
             lines.append("| " + " | ".join(row) + " |")
 
     md_path = args.output_dir / "modality_3way.md"
@@ -132,7 +141,7 @@ def main():
     plt.rcParams.update({"figure.dpi": 120, "savefig.dpi": 150, "font.size": 10})
 
     present = [n for n, _ in EXP_DIRS if n in results]
-    colors = {"DAPI": "#1f77b4", "H&E": "#d62728", "DAPI+H&E": "#9467bd"}
+    colors = {"DAPI": "#1f77b4", "H&E": "#d62728", "DAPI+H&E": "#9467bd", "Fusion": "#2ca02c"}
 
     # Fig 1: overall bars
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -145,7 +154,7 @@ def main():
     ax.set_xticklabels(present)
     ax.set_ylabel("score")
     ax.set_ylim(0, 1)
-    ax.set_title("DAPI vs H&E vs DAPI+H&E — overall test metrics")
+    ax.set_title("Modality comparison — overall test metrics")
     ax.legend()
     fig.tight_layout()
     fig.savefig(args.figures_dir / "modality_01_overall.png", bbox_inches="tight")
