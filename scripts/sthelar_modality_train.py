@@ -209,17 +209,31 @@ def build_splits(num_samples: int, labels: np.ndarray, valid_mask: np.ndarray | 
 
 
 def get_he_valid_mask(num_samples: int) -> np.ndarray:
-    """Return a boolean mask of size num_samples — True where HE LMDB has an entry."""
+    """Return a boolean mask of size num_samples — True where HE LMDB has an entry.
+
+    Uses keys-only iteration (cur.iternext(keys=True, values=False)) — without
+    this lmdb pulls the full 49 KB value for every entry, causing the scan to
+    read ~60 GB and OOM-kill the process. Keys-only finishes in ~2 s.
+
+    Result is cached at HE_DIR/he_valid_mask.npy on first scan.
+    """
+    cache_path = HE_DIR / "he_valid_mask.npy"
+    if cache_path.exists():
+        cached = np.load(cache_path)
+        if len(cached) == num_samples:
+            return cached.astype(bool)
     env = lmdb.open(str(HE_DIR / "patches.lmdb"), readonly=True, lock=False, readahead=False, meminit=False)
     valid = np.zeros(num_samples, dtype=bool)
     with env.begin() as txn:
         cur = txn.cursor()
-        for k, _ in cur:
-            if len(k) == 8:
-                idx = struct.unpack(">Q", k)[0]
+        for k in cur.iternext(keys=True, values=False):
+            kb = bytes(k)
+            if len(kb) == 8:
+                idx = struct.unpack(">Q", kb)[0]
                 if idx < num_samples:
                     valid[idx] = True
     env.close()
+    np.save(cache_path, valid)
     return valid
 
 
