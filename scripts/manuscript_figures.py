@@ -417,10 +417,257 @@ def fig5_backbone_comparison():
     print("✓ fig5_backbone_comparison.png")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Figure 6 — Annotation method comparison on STHELAR breast s0 (per-class heatmap)
+# Source: pipeline_output/sthelar_pipeline/{banksy,popv,combined,tangram}_*_breast_s0.json
+# ─────────────────────────────────────────────────────────────────────────────
+def fig6_annotation_method_comparison():
+    sb = PO / "sthelar_pipeline"
+    methods_files = [
+        ("BANKSY (r=2.0)",          "banksy_r2.0_breast_s0.json"),
+        ("BANKSY (r=3.0)",          "banksy_r3.0_breast_s0.json"),
+        ("Tangram + DISCO",         "tangram_disco_breast_s0.json"),
+        ("popV (hub model)",        "popv_breast_s0.json"),
+        ("Tangram + CellTypist",    "combined_breast_s0.json"),
+        ("popV (full retrain)",     "popv_full_retrain_breast_s0.json"),
+    ]
+    data = {}
+    for name, fname in methods_files:
+        d = json.load(open(sb / fname))
+        data[name] = {
+            "f1_macro": d["f1_macro"],
+            "accuracy": d.get("accuracy", 0.0),
+            "elapsed_s": d.get("elapsed_s"),
+            "per_class": {c: v["f1"] for c, v in d.get("per_class", {}).items()},
+        }
+    classes = ["Epithelial", "Blood_vessel", "Fibroblast_Myofibroblast",
+               "T_NK", "B_Plasma", "Myeloid", "Specialized"]
+    short = {"Epithelial": "Epithelial", "Blood_vessel": "Endothelial",
+             "Fibroblast_Myofibroblast": "Fibroblast", "T_NK": "T/NK",
+             "B_Plasma": "B/Plasma", "Myeloid": "Myeloid", "Specialized": "Specialized"}
+    methods = sorted(data.keys(), key=lambda m: data[m]["f1_macro"])
+
+    matrix = np.array([[data[m]["per_class"].get(c, 0.0) for c in classes] for m in methods])
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 4.6),
+                             gridspec_kw={"width_ratios": [3.0, 1.0]})
+
+    # Panel A — heat map
+    ax = axes[0]
+    im = ax.imshow(matrix, cmap="viridis", aspect="auto", vmin=0, vmax=1.0)
+    ax.set_xticks(range(len(classes)))
+    ax.set_xticklabels([short[c] for c in classes], rotation=25, ha="right")
+    ax.set_yticks(range(len(methods)))
+    ax.set_yticklabels(methods)
+    for i in range(len(methods)):
+        for j in range(len(classes)):
+            v = matrix[i, j]
+            color = "white" if v < 0.5 else "black"
+            ax.text(j, i, f"{v:.2f}", ha="center", va="center",
+                    color=color, fontsize=8)
+    ax.set_title("A. Per-class F1 across annotation methods (STHELAR breast s0, 7-class reference)")
+    cbar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+    cbar.set_label("F1", fontsize=9)
+
+    # Panel B — macro F1 + accuracy bar
+    ax = axes[1]
+    f1m = [data[m]["f1_macro"] for m in methods]
+    accs = [data[m]["accuracy"] for m in methods]
+    y = np.arange(len(methods))
+    ax.barh(y - 0.18, f1m, 0.36, color=C_DAPI, label="macro F1")
+    ax.barh(y + 0.18, accs, 0.36, color=C_GREY, label="accuracy")
+    for i, (f, a) in enumerate(zip(f1m, accs)):
+        ax.text(f + 0.01, i - 0.18, f"{f:.3f}", va="center", fontsize=7.5)
+        ax.text(a + 0.01, i + 0.18, f"{a:.3f}", va="center", fontsize=7.5)
+    ax.set_yticks(y)
+    ax.set_yticklabels([])
+    ax.set_xlim(0, 1.05)
+    ax.set_xlabel("score")
+    ax.legend(loc="lower right", frameon=False, fontsize=8)
+    ax.set_title("B. Method-level summary")
+    ax.grid(axis="x", alpha=0.25, linestyle=":")
+
+    fig.suptitle("Figure 6 · Cell-type annotation method comparison on STHELAR breast s0 reference",
+                 y=1.04, fontsize=12, fontweight="bold")
+    fig.savefig(OUT / "fig6_annotation_methods.png")
+    plt.close(fig)
+    print("✓ fig6_annotation_methods.png")
+    return data, classes, methods
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Figure 7 — STHELAR baseline confusion matrix (9 classes, row-normalised)
+# ─────────────────────────────────────────────────────────────────────────────
+def fig7_sthelar_confusion():
+    cm = json.load(open(PO / "sthelar_multitissue_9class/analysis/confusion_matrix.json"))
+    norm = np.array(cm["normalized"])
+    classes = cm["classes"]
+    pc = json.load(open(PO / "sthelar_multitissue_9class/analysis/per_class_metrics.json"))["per_class"]
+
+    # Reorder by support descending so row-normalisation is intuitive
+    order = sorted(range(len(classes)), key=lambda i: -pc[classes[i]]["support"])
+    classes_ord = [classes[i] for i in order]
+    norm_ord = norm[order][:, order]
+    short = {"epithelial cell": "Epithelial", "T cell": "T cell", "fibroblast": "Fibroblast",
+             "endothelial cell": "Endothelial", "B cell": "B cell", "macrophage": "Macrophage",
+             "pericyte": "Pericyte", "mast cell": "Mast cell", "adipocyte": "Adipocyte"}
+    labels = [short[c] for c in classes_ord]
+
+    fig, ax = plt.subplots(figsize=(8.5, 7.2))
+    im = ax.imshow(norm_ord, cmap="Blues", vmin=0, vmax=1.0)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=35, ha="right")
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels)
+    for i in range(len(labels)):
+        for j in range(len(labels)):
+            v = norm_ord[i, j]
+            if v < 0.005:
+                continue
+            color = "white" if v > 0.5 else "black"
+            ax.text(j, i, f"{v:.2f}", ha="center", va="center",
+                    color=color, fontsize=8)
+    # Annotate per-class F1 on the y-axis
+    for i, c in enumerate(classes_ord):
+        f1 = pc[c]["f1"]
+        n = pc[c]["support"]
+        ax.text(-1.2, i, f"F1={f1:.2f}\nn={n:,}", ha="right", va="center", fontsize=7,
+                color=C_GREY)
+    ax.set_xlabel("predicted class")
+    ax.set_ylabel("true class")
+    ax.set_title("Figure 7 · STHELAR baseline confusion matrix (row-normalised recall)\n9 classes · 1.3 M patches · macro F1=0.522, weighted F1=0.764, acc=0.755",
+                 fontsize=11, fontweight="bold")
+    fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02, label="recall")
+    fig.savefig(OUT / "fig7_sthelar_confusion.png", bbox_inches="tight")
+    plt.close(fig)
+    print("✓ fig7_sthelar_confusion.png")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Figure 8 — Tissue × class composition + Shannon entropy (the "brain paradox")
+# ─────────────────────────────────────────────────────────────────────────────
+def fig8_tissue_class_composition():
+    pred = np.load(PO / "sthelar_multitissue_9class/analysis/predictions.npz")
+    y_true = pred["y_true"]
+    tidx = pred["tissue_idx"]
+    cm = json.load(open(PO / "sthelar_multitissue_9class/analysis/confusion_matrix.json"))
+    classes = cm["classes"]
+    pt = json.load(open(PO / "sthelar_multitissue_9class/analysis/per_tissue_metrics.json"))
+    tissues = sorted(pt.keys())
+
+    mat = np.zeros((len(tissues), len(classes)))
+    for ti in range(len(tissues)):
+        mask = tidx == ti
+        if mask.sum() == 0:
+            continue
+        for ci in range(len(classes)):
+            mat[ti, ci] = (y_true[mask] == ci).mean()
+    entropy = -np.where(mat > 0, mat * np.log2(mat + 1e-12), 0).sum(axis=1)
+    accs = np.array([pt[t]["accuracy"] for t in tissues])
+    macro_f1 = np.array([pt[t]["macro_f1"] for t in tissues])
+
+    # Sort tissues by entropy ascending (most homogeneous first → brain paradox at top)
+    order = np.argsort(entropy)
+    tissues_o = [tissues[i] for i in order]
+    mat_o = mat[order]
+    entropy_o = entropy[order]
+    accs_o = accs[order]
+    f1_o = macro_f1[order]
+
+    short = {"epithelial cell": "Epi", "T cell": "T", "fibroblast": "Fibro",
+             "endothelial cell": "Endo", "B cell": "B", "macrophage": "Macro",
+             "pericyte": "Peri", "mast cell": "Mast", "adipocyte": "Adipo"}
+    class_short = [short[c] for c in classes]
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.6),
+                             gridspec_kw={"width_ratios": [2.6, 1.0]})
+
+    # Panel A — heat map
+    ax = axes[0]
+    im = ax.imshow(mat_o, cmap="rocket_r", aspect="auto", vmin=0, vmax=1.0) if False else \
+         ax.imshow(mat_o, cmap="OrRd", aspect="auto", vmin=0, vmax=1.0)
+    ax.set_xticks(range(len(class_short)))
+    ax.set_xticklabels(class_short)
+    ax.set_yticks(range(len(tissues_o)))
+    ax.set_yticklabels(tissues_o)
+    for i in range(len(tissues_o)):
+        for j in range(len(class_short)):
+            v = mat_o[i, j]
+            if v < 0.01:
+                continue
+            color = "white" if v > 0.55 else "black"
+            ax.text(j, i, f"{int(v*100)}%", ha="center", va="center",
+                    color=color, fontsize=7)
+    ax.set_title("A. Tissue × class composition (test split, true labels)")
+    fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02, label="fraction of tissue")
+
+    # Panel B — entropy + accuracy + macro F1 per tissue
+    ax = axes[1]
+    y = np.arange(len(tissues_o))
+    ax.barh(y - 0.27, entropy_o, 0.27, color="#444", label="Shannon H (bits)")
+    ax.barh(y, accs_o, 0.27, color=C_GT, label="accuracy")
+    ax.barh(y + 0.27, f1_o, 0.27, color=C_DAPI, label="macro F1")
+    ax.set_yticks(y)
+    ax.set_yticklabels([])
+    ax.set_xlim(0, 3.5)
+    ax.legend(loc="lower right", frameon=False, fontsize=8)
+    ax.set_xlabel("score / bits")
+    ax.set_title("B. Class-diversity + accuracy + macro F1\n(low entropy ⇒ accuracy ≫ macro F1)")
+    ax.grid(axis="x", alpha=0.25, linestyle=":")
+    # Highlight brain
+    brain_idx = tissues_o.index("brain")
+    ax.axhspan(brain_idx - 0.5, brain_idx + 0.5, alpha=0.12, color="red")
+    ax.text(2.55, brain_idx, "← brain paradox\n(H=0.33, acc=0.96, F1=0.24)",
+            va="center", fontsize=7, color="darkred")
+
+    fig.suptitle("Figure 8 · Tissue compositional imbalance is what produces the brain paradox",
+                 y=1.0, fontsize=12, fontweight="bold")
+    fig.savefig(OUT / "fig8_tissue_composition.png")
+    plt.close(fig)
+    print("✓ fig8_tissue_composition.png")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Figure 9 — Annotation method speed vs accuracy (Pareto)
+# ─────────────────────────────────────────────────────────────────────────────
+def fig9_method_speed_vs_f1(method_data: dict | None = None):
+    if method_data is None:
+        method_data, _, _ = fig6_annotation_method_comparison()
+    rows = []
+    for name, d in method_data.items():
+        if d.get("elapsed_s") is None:
+            # popV times not logged in JSON — use known approximate from logs
+            t = {"popV (hub model)": 1800, "popV (full retrain)": 4500}.get(name)
+            if t is None:
+                continue
+        else:
+            t = d["elapsed_s"]
+        rows.append((name, t, d["f1_macro"], d["accuracy"]))
+
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    for name, t, f, a in rows:
+        ax.scatter(t, f, s=180, alpha=0.85, color=C_DAPI, edgecolor="black", linewidth=0.7)
+        ax.annotate(name, xy=(t, f), xytext=(8, 6), textcoords="offset points", fontsize=9)
+    ax.set_xscale("log")
+    ax.set_xlabel("wall-clock seconds (log scale)")
+    ax.set_ylabel("macro F1 vs STHELAR breast s0 reference (7-class)")
+    ax.set_title("Figure 9 · Annotation method speed vs F1\n(approx. wall-clock per breast s0 slide; popV times approximate)",
+                 fontsize=11, fontweight="bold")
+    ax.grid(alpha=0.25, linestyle=":")
+
+    fig.savefig(OUT / "fig9_method_speed_vs_f1.png", bbox_inches="tight")
+    plt.close(fig)
+    print("✓ fig9_method_speed_vs_f1.png")
+
+
 if __name__ == "__main__":
     fig1_modality_benchmark()
     fig2_per_class_modality()
     fig3_loto_16tissue()
     fig4_annotation_vs_janesick()
     fig5_backbone_comparison()
+    method_data, _, _ = fig6_annotation_method_comparison()
+    fig7_sthelar_confusion()
+    fig8_tissue_class_composition()
+    fig9_method_speed_vs_f1(method_data)
     print(f"\nAll figures written to {OUT}")
