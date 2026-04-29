@@ -153,11 +153,18 @@ def fig2_per_class_modality():
     def f1_of(mode: str, cls: str) -> float:
         return pc[mode][cls]["f1"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.6),
-                             gridspec_kw={"width_ratios": [2.5, 1.0]})
+    def _fmt_n(n: int) -> str:
+        if n >= 1000:
+            return f"{n/1000:.1f}k".replace(".0k", "k")
+        return f"{n}"
 
-    # Panel A — grouped F1 bars
-    ax = axes[0]
+    # Tick labels carry the support inline so a separate ax.text() row
+    # below the x-axis is unnecessary (and won't collide with rotated labels).
+    xtick_labels = [f"{c}\n(n={_fmt_n(supports[c])})" for c in classes]
+
+    fig, ax = plt.subplots(figsize=(11, 5.0))
+
+    # Grouped F1 bars: DAPI / H&E / multimodal per class.
     x = np.arange(len(classes))
     w = 0.27
     for i, (m, lbl, c) in enumerate([("dapi", "DAPI", C_DAPI),
@@ -166,50 +173,14 @@ def fig2_per_class_modality():
         f1s = [f1_of(m, cls) for cls in classes]
         ax.bar(x + (i - 1) * w, f1s, w, color=c, label=lbl, edgecolor="white")
     ax.set_xticks(x)
-    ax.set_xticklabels(classes, rotation=30, ha="right")
+    ax.set_xticklabels(xtick_labels, rotation=20, ha="right")
     ax.set_ylabel("test F1")
     ax.set_ylim(0, 1.0)
-    ax.set_title("A. Per-class test F1 across modalities (sorted by support, descending)")
+    ax.set_title("Figure 2 · Per-class test F1 across modalities — DAPI vs H&E vs naive multimodal\n(STHELAR test split, 9 classes sorted by support, descending)",
+                 fontsize=11, fontweight="bold")
     ax.legend(loc="upper right", frameon=False)
     ax.grid(axis="y", alpha=0.25, linestyle=":")
-    # Annotate support
-    for i, c in enumerate(classes):
-        n = supports[c]
-        ax.text(i, -0.06, f"n={n:,}", ha="center", va="top", fontsize=7.5, color=C_GREY)
 
-    # Panel B — winner-by-class summary
-    ax = axes[1]
-    winner_counts = {"DAPI": 0, "H&E": 0, "DAPI + H&E": 0, "tie": 0}
-    rows = []
-    for cls in classes:
-        f1 = {m: f1_of(m, cls) for m in ["dapi", "he", "both"]}
-        best = max(f1, key=lambda k: f1[k])
-        delta = f1[best] - sorted(f1.values())[-2]
-        if delta < 0.005:
-            winner_counts["tie"] += 1
-        elif best == "dapi":
-            winner_counts["DAPI"] += 1
-        elif best == "he":
-            winner_counts["H&E"] += 1
-        else:
-            winner_counts["DAPI + H&E"] += 1
-        rows.append((cls, best, delta))
-
-    cats = list(winner_counts.keys())
-    vals = [winner_counts[k] for k in cats]
-    colors = [C_DAPI, C_HE, C_MULTI, C_GREY]
-    bars = ax.barh(cats, vals, color=colors, edgecolor="white")
-    for b, v in zip(bars, vals):
-        ax.text(b.get_width() + 0.07, b.get_y() + b.get_height() / 2,
-                f"{int(v)}", va="center", fontsize=10)
-    ax.set_xlabel("# classes won")
-    ax.set_xlim(0, max(vals) + 1.5)
-    ax.set_title("B. Winner-by-class summary\n(of 9 classes, ≥0.005 F1 lead)")
-    ax.invert_yaxis()
-    ax.grid(axis="x", alpha=0.25, linestyle=":")
-
-    fig.suptitle("Figure 2 · Per-class complementarity — DAPI vs H&E vs naive multimodal",
-                 y=1.02, fontsize=12, fontweight="bold")
     fig.savefig(OUT / "fig2_per_class_modality.png")
     plt.close(fig)
     print("✓ fig2_per_class_modality.png")

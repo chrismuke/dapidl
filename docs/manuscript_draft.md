@@ -424,7 +424,7 @@ H&E alone improves macro F1 by +0.046 over DAPI alone (+9.6% relative); naive mu
 
 **Per-class complementarity.** The two modalities are not redundant — they are *complementary*, but the naive 4-channel adapter is unable to combine them losslessly (Table 11e, Fig. 2).
 
-![Figure 2 — Per-class complementarity. Left: test F1 per class for DAPI, H&E, and naive multimodal, sorted by support (descending). DAPI dominates only on epithelial cells (the most numerous class); H&E dominates on most other classes. Right: winner-by-class summary — DAPI wins 0 classes outright, H&E wins 6, naive multimodal wins 3 (epithelial, endothelial, adipocyte). The sharp pericyte gap (H&E F1 0.929 vs multimodal 0.523) is the most visible architectural failure.](figures/fig2_per_class_modality.png)
+![Figure 2 — Per-class complementarity. Test F1 per class for DAPI, H&E and naive multimodal across all 9 STHELAR classes, sorted by support (descending). Sample size annotated under each class name. DAPI dominates only on epithelial cells (the most numerous class, n=86k); H&E dominates on most other classes; the sharp pericyte gap (H&E F1=0.929 vs multimodal 0.523) is the most visible architectural failure of naive 4-channel fusion. Of nine classes: DAPI wins outright on 0, H&E on 6, naive multimodal on 3 (epithelial, endothelial, adipocyte).](figures/fig2_per_class_modality.png)
 
 **Table 11e. Per-class macro F1 across modalities.**
 
