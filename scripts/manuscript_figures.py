@@ -445,14 +445,17 @@ def fig6_annotation_method_comparison():
     short = {"Epithelial": "Epithelial", "Blood_vessel": "Endothelial",
              "Fibroblast_Myofibroblast": "Fibroblast", "T_NK": "T/NK",
              "B_Plasma": "B/Plasma", "Myeloid": "Myeloid", "Specialized": "Specialized"}
+    # Sort ascending so lowest F1 lands at the top of both panels (matches the
+    # heatmap row order — imshow puts row 0 at the top).
     methods = sorted(data.keys(), key=lambda m: data[m]["f1_macro"])
 
     matrix = np.array([[data[m]["per_class"].get(c, 0.0) for c in classes] for m in methods])
 
-    fig, axes = plt.subplots(1, 2, figsize=(13.5, 4.6),
-                             gridspec_kw={"width_ratios": [3.0, 1.0]})
+    # Slightly wider B-panel so its tick labels (full method names) breathe.
+    fig, axes = plt.subplots(1, 2, figsize=(15.5, 4.8),
+                             gridspec_kw={"width_ratios": [3.0, 1.6], "wspace": 0.35})
 
-    # Panel A — heat map
+    # Panel A — heat map (origin='upper' default → row 0 at top)
     ax = axes[0]
     im = ax.imshow(matrix, cmap="viridis", aspect="auto", vmin=0, vmax=1.0)
     ax.set_xticks(range(len(classes)))
@@ -469,7 +472,10 @@ def fig6_annotation_method_comparison():
     cbar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
     cbar.set_label("F1", fontsize=9)
 
-    # Panel B — macro F1 + accuracy bar
+    # Panel B — macro F1 + accuracy bar.
+    # NOTE: barh's y=0 is at the bottom by default; we invert the y-axis so the
+    # row order matches Panel A's heatmap (imshow row 0 = top). Tick labels are
+    # the method names so the panel is readable on its own.
     ax = axes[1]
     f1m = [data[m]["f1_macro"] for m in methods]
     accs = [data[m]["accuracy"] for m in methods]
@@ -480,11 +486,12 @@ def fig6_annotation_method_comparison():
         ax.text(f + 0.01, i - 0.18, f"{f:.3f}", va="center", fontsize=7.5)
         ax.text(a + 0.01, i + 0.18, f"{a:.3f}", va="center", fontsize=7.5)
     ax.set_yticks(y)
-    ax.set_yticklabels([])
-    ax.set_xlim(0, 1.05)
+    ax.set_yticklabels(methods, fontsize=9)
+    ax.invert_yaxis()  # match Panel A's top-to-bottom order
+    ax.set_xlim(0, 1.18)
     ax.set_xlabel("score")
     ax.legend(loc="lower right", frameon=False, fontsize=8)
-    ax.set_title("B. Method-level summary")
+    ax.set_title("B. Method-level summary (same row order as A)")
     ax.grid(axis="x", alpha=0.25, linestyle=":")
 
     fig.suptitle("Figure 6 · Cell-type annotation method comparison on STHELAR breast s0 reference",
