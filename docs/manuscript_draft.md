@@ -9,9 +9,9 @@ Christian Muke^1^
 
 ## Abstract
 
-Cell type identification is fundamental to understanding tissue architecture, yet current methods require either expensive spatial transcriptomics or labor-intensive manual annotation. We present DAPIDL, a framework that leverages spatial transcriptomics platforms (10x Xenium, MERSCOPE, STHELAR) as automatic training data sources to build deep learning models that predict cell types from DAPI nuclear staining alone. We systematically evaluated over 700 experimental configurations spanning 20+ annotation methods, 7 backbone architectures, 4 patch sizes, and 6 foundation models across 3 platforms, 16 tissue types, and 11 million cells. Our ensemble annotation pipeline combines CellTypist, SingleR, scType, SCINA, BANKSY spatial clustering, and popV consensus voting, standardized through a 9-level Cell Ontology mapping cascade. We establish that BANKSY spatial clustering (F1=0.802) outperforms all cell-level methods for annotation, and that a BANKSY-first architecture with per-class routing is optimal. For DAPI classification, Cell-DINO LoRA fine-tuning (F1=0.463) outperforms supervised EfficientNetV2-S (F1=0.446) on the same data, revealing that DINO-based pretraining objectives produce superior features regardless of domain. The best DAPI-only model achieves macro F1=0.60 for coarse classification using hierarchical curriculum learning, compared to F1=0.91 for expression-based methods (HEIST) -- defining a 0.31 F1 "modality gap." GradCAM analysis reveals the model correctly identifies kidney-shaped macrophage nuclei (100% accuracy) and spindle-shaped myoepithelial nuclei (90%), but fails on lymphocyte subtypes whose identity is determined by surface markers invisible to DAPI. Our GT-free confidence filtering system improves F1 by 10-16% through 4-signal quality estimation without ground truth. Crucially, leave-one-tissue-out evaluation across all 16 STHELAR tissues reveals universal tissue-shortcutting: mean accuracy collapse of 1.78× (range 1.22×–4.79×) when each tissue is held out from training, with brain dropping from 0.956 to 0.200 accuracy. This demonstrates that in-distribution per-tissue metrics over-estimate true cell-classification capability and that LOTO validation should be a required reporting standard for multi-tissue DAPI classifiers. The fully automated pipeline processes raw spatial transcriptomics data into trained DAPI classifiers without manual intervention, offering a practical path toward inexpensive, high-throughput cell typing.
+Cell type identification is fundamental to understanding tissue architecture, yet current methods require either expensive spatial transcriptomics or labor-intensive manual annotation. We present DAPIDL, a framework that uses spatial transcriptomics platforms (10x Xenium, MERSCOPE, STHELAR) as automatic training data sources to build deep learning models that predict cell types from **DAPI nuclear staining alone** -- a near-universal, single-channel, sub-dollar imaging modality. To characterise the practical reach of DAPI-only classification we systematically evaluated over 700 experimental configurations spanning 20+ annotation methods, 7 backbone architectures, 4 patch sizes, and 6 foundation models across 3 platforms, 16 tissue types, and 11 million cells, then benchmarked DAPI against co-registered H&E and naive 4-channel multimodal fusion on the same dataset. Our ensemble annotation pipeline combines CellTypist, SingleR, scType, SCINA, BANKSY spatial clustering, and popV consensus voting, standardized through a 9-level Cell Ontology mapping cascade; BANKSY spatial clustering (F1=0.802) outperforms all cell-level annotation methods. For DAPI classification, Cell-DINO LoRA fine-tuning (F1=0.463) outperforms supervised EfficientNetV2-S (F1=0.446) on the same data, revealing that DINO-based pretraining objectives produce superior features regardless of domain. The best DAPI-only model achieves macro F1=0.60 for coarse classification using hierarchical curriculum learning. **In a within-STHELAR head-to-head benchmark (1.26 M patches, 9 classes, 16 tissues, identical architecture, splits, and hyperparameters), DAPI alone reaches macro F1=0.478, H&E alone F1=0.524 (+0.046), and naive 4-channel DAPI+H&E fusion F1=0.530 (+0.006 over H&E). DAPI dominates per-class on epithelial cells (F1=0.894 vs H&E 0.470), while H&E dominates pericytes, macrophages, B/T cells and fibroblasts; naive early fusion cannot preserve both -- pericyte F1 collapses from 0.929 (H&E) to 0.523 (multimodal). DAPI thus captures most of the single-modality F1 H&E achieves, while H&E adds discriminative tissue-context information for stromal and lymphocyte subtypes that nuclear morphology alone cannot resolve.** GradCAM corroborates this asymmetry: the model correctly identifies kidney-shaped macrophage nuclei (100%) and spindle-shaped myoepithelial nuclei (90%), but produces diffuse attention on lymphocytes whose identity is determined by surface markers invisible to DAPI. Our GT-free confidence filtering system improves F1 by 10–16% through 4-signal quality estimation without ground truth. Crucially, leave-one-tissue-out evaluation across all 16 STHELAR tissues reveals universal tissue-shortcutting in *both* image modalities: mean accuracy collapse of 1.78× for DAPI (range 1.22×–4.79×, brain 0.956→0.200), with H&E showing the same failure mode at slightly smaller magnitude (mean LOTO acc 0.506 vs DAPI 0.459). LOTO validation should therefore be a required reporting standard for any multi-tissue DAPI- or H&E-based classifier. The fully automated pipeline processes raw spatial transcriptomics data into trained DAPI classifiers without manual intervention, offering a practical path toward inexpensive, high-throughput cell typing while honestly bounding what is achievable from nuclear staining alone.
 
-**Keywords:** spatial transcriptomics, cell type classification, DAPI staining, deep learning, nuclear morphology, Xenium, MERSCOPE, STHELAR, BANKSY, foundation models, Cell Ontology
+**Keywords:** spatial transcriptomics, cell type classification, DAPI staining, deep learning, nuclear morphology, H&E benchmark, multimodal fusion, Xenium, MERSCOPE, STHELAR, BANKSY, foundation models, Cell Ontology, tissue shortcut
 
 ---
 
@@ -24,6 +24,8 @@ A key output of these platforms is cell type annotation -- the assignment of eac
 In contrast, DAPI (4',6-diamidino-2-phenylindole) staining is a universal, inexpensive fluorescent nuclear marker (<$1/slide) used in virtually all histological workflows. DAPI images reveal nuclear morphology -- size, shape, chromatin texture, and spatial arrangement -- features that correlate with cell identity (7, 8). Previous work on nuclear morphology-based classification includes NephNet3D achieving 80.3% balanced accuracy on 3D DAPI in kidney (Woloshuk et al.), CelloType reaching mAP=0.40 on DAPI-only (achieving 90% of multimodal DAPI+transcripts performance), and MitoCheck obtaining F1=0.84 for nuclear phenotype classification. The critical observation motivating this work is that spatial transcriptomics platforms co-acquire DAPI images alongside gene expression data, creating naturally paired training datasets where expression-derived cell type labels can supervise a morphology-based classifier.
 
 We present DAPIDL (DAPI Deep Learning), a fully automated pipeline that: (1) ingests raw spatial transcriptomics data from multiple platforms; (2) generates consensus cell type annotations using an ensemble of 11 computational methods including spatial clustering; (3) applies GT-free confidence filtering to remove low-quality labels; (4) standardizes heterogeneous cell type vocabularies via Cell Ontology mapping; (5) extracts normalized DAPI patches around each annotated nucleus; and (6) trains a convolutional neural network or foundation model to classify cell types from DAPI morphology alone.
+
+The DAPI-only focus is deliberate. DAPI is the cheapest, most universal, and most format-stable nuclear stain in clinical and research histology — present in essentially every fluorescence-imaging workflow, requiring a single excitation/emission channel, and reusable across decades of archival tissue. In contrast, H&E (the brightfield gold standard for human pathology) carries cytoplasmic, stromal and tissue-context information but requires a different acquisition pipeline, costlier scanners, and is not co-acquired by the major spatial transcriptomics platforms by default. The natural question is therefore not "is DAPI as good as H&E?" but "*how much* of the achievable image-only single-modality cell-type signal does DAPI alone deliver, and where does it systematically fall short?". To answer this we use STHELAR (27), the only public spatial transcriptomics dataset with co-registered DAPI and H&E across 16 human tissues, to benchmark DAPI against H&E and against a naive 4-channel multimodal fusion under matched architecture, splits, and hyperparameters. The benchmark serves as an *upper-bound reference* for DAPI-only and a guide to which classes are inherently difficult from nuclear staining alone.
 
 ---
 
@@ -370,13 +372,77 @@ DINOv2 ViT-S underperforms ImageNet-pretrained EfficientNetV2-S by ΔF1=0.138 on
 | ovary | 100,000 | 0.894 | 0.734 | 0.160 | 1.22× |
 | **mean** | | **0.722** | **0.434** | **0.288** | **1.78×** |
 
-**Every one of 16 tissues exhibits measurable tissue-shortcutting** when held out, with mean accuracy collapse of 1.78× (range 1.22×–4.79×). The two extreme cases — brain (4.79×) and bone marrow (3.16×) — are tissues with the most distinctive global DAPI texture (neuronal/glial parenchyma; densely packed haematopoietic cells) and most uniform cell-type composition (brain is ~95% endothelial in our patches). Eight tissues collapse 1.3×–1.5×, mostly heterogeneous epithelial/lymphoid tissues whose cells morphologically resemble cells from other tissues.
+**Every one of 16 tissues exhibits measurable tissue-shortcutting** when held out, with mean accuracy collapse of 1.78× (range 1.22×–4.79×). The pattern is consistent with shortcut-learning failures observed in other domain-generalisation settings (50, 52): the model exploits whichever feature minimises training loss, and global DAPI texture is a more learnable correlate of cell type than per-cell morphology when the per-tissue cell-type composition is non-uniform. The two extreme cases — brain (4.79×) and bone marrow (3.16×) — are tissues with the most distinctive global DAPI texture (neuronal/glial parenchyma; densely packed haematopoietic cells) and most uniform cell-type composition (brain is ~95% endothelial in our patches). Eight tissues collapse 1.3×–1.5×, mostly heterogeneous epithelial/lymphoid tissues whose cells morphologically resemble cells from other tissues.
 
 The most striking single result is brain: the baseline classifier achieves **0.956 accuracy on brain** when brain is in training, but only **0.200 accuracy when brain is held out**. The endothelial recall on brain drops from approximately 1.0 to 0.168 (precision remains 0.989). This empirically demonstrates that the model learned "looks-like-brain → predict endothelial" as a shortcut rather than learning brain endothelial morphology. The pattern generalises across tissues: in-distribution per-tissue accuracy substantially over-estimates true cell-classification capability when the test tissue is in the training distribution.
 
 We propose that **leave-one-tissue-out evaluation should be a required reporting standard** for any multi-tissue DAPI classifier. The mean LOTO accuracy collapse ratio is a single number that captures cross-tissue generalisation in a way the in-distribution per-tissue table cannot. For DAPIDL with 16 tissues this number is 1.78×; we expect comparable or larger collapse ratios in published multi-tissue models that have not been LOTO-validated.
 
-### 3.6 Patch Size Impact
+### 3.6 H&E Benchmark and Multimodal Fusion (STHELAR)
+
+To bound what is achievable from image-only single-modality cell typing — and to identify which classes DAPI alone is fundamentally limited on — we trained matched classifiers on three input variants over the same STHELAR HE-intersection (cells where both DAPI and co-registered H&E patches exist after inverting the per-slide SpatialData affine transforms). All three runs share an identical EfficientNetV2-S backbone (ImageNet pretrained), weighted-CE loss with 10× capped class weights and label smoothing 0.1, AdamW with cosine warm restarts (T_0=10), 21-epoch budget with patience 8, and a 70/15/15 stratified split (seed=42). Only the input adapter differs: DAPI uses a zero-parameter 1→3 channel replication preserving the ImageNet stem; H&E uses the native 3-channel stem; multimodal concatenates DAPI and RGB into a 4-channel tensor and passes it through a learned 1×1 conv (4→3, init: identity-on-RGB + 0.1× DAPI mixing). Splits: train 885,117, val 189,668, test 189,668.
+
+**Headline. DAPI captures most of the H&E single-modality macro F1, but the gap is class-specific.**
+
+**Table 11d. Within-STHELAR three-way modality benchmark (1.26 M patches, 9 classes, 16 tissues, single seed).**
+
+| Modality | accuracy | macro F1 | weighted F1 | best epoch | wall-clock |
+|---|---:|---:|---:|---:|---:|
+| DAPI alone | 0.715 | 0.478 | 0.717 | 9 | 5h 07m |
+| H&E alone | **0.758** | 0.524 | **0.757** | 5 | 4h 00m |
+| DAPI + H&E (4-ch, 1×1 conv) | 0.749 | **0.530** | 0.749 | 10 | 5h 51m |
+
+H&E alone improves macro F1 by +0.046 over DAPI alone (+9.6% relative); naive multimodal fusion adds only +0.006 macro F1 over H&E (effectively within seed-noise; we did not bootstrap). H&E reaches its best validation F1 in epoch 5; DAPI takes nine. Acquisition cost, channel count and sample-prep flexibility favour DAPI; per-class informativeness favours H&E for stromal and lymphocyte subtypes (see below).
+
+**Per-class complementarity.** The two modalities are not redundant — they are *complementary*, but the naive 4-channel adapter is unable to combine them losslessly (Table 11e).
+
+**Table 11e. Per-class macro F1 across modalities.**
+
+| Class | n_test | DAPI | H&E | DAPI+H&E | Δ(H&E − DAPI) | Best modality |
+|---|---:|---:|---:|---:|---:|---|
+| epithelial cell | 86,035 | **0.894** | 0.470 | **0.916** | −0.425 | DAPI / multimodal |
+| T cell | 35,346 | 0.658 | 0.688 | 0.672 | +0.030 | H&E |
+| fibroblast | 21,505 | 0.555 | 0.654 | 0.608 | +0.100 | H&E |
+| endothelial cell | 19,061 | 0.601 | 0.514 | **0.673** | −0.087 | multimodal |
+| B cell | 14,869 | 0.457 | 0.541 | 0.501 | +0.084 | H&E |
+| macrophage | 9,727 | 0.486 | **0.619** | 0.518 | +0.133 | H&E |
+| pericyte | 1,731 | 0.413 | **0.929** | 0.523 | +0.516 | H&E |
+| mast cell | 1,375 | 0.129 | 0.165 | 0.135 | +0.037 | H&E |
+| adipocyte | 19 | 0.111 | 0.136 | **0.227** | +0.025 | multimodal (n.b. n=19) |
+
+DAPI is uniquely the best modality only for the most abundant class (epithelial cell, 86 k test patches, F1=0.894), where nuclear shape — large, round, distinctive chromatin — is highly discriminative. H&E is the best modality on six of nine classes, with the largest gap on pericyte (+0.516 F1) — a class where the discriminative signal is the cell's elongated cytoplasmic relationship to vessel walls, not nuclear morphology. The naive multimodal model wins on three classes (epithelial, endothelial, adipocyte) but underperforms H&E alone on six (pericyte −0.406, macrophage −0.101, fibroblast −0.046, B cell −0.040, mast cell −0.030, T cell −0.016). The pericyte case is the clearest signal of architectural failure: H&E alone reaches F1=0.929, but adding the DAPI channel through a 1×1 conv collapses it to 0.523. Early fusion at the input layer cannot preserve modality-specific feature subspaces.
+
+**Cross-tissue generalisation also under H&E.** We repeated the 16-tissue leave-one-tissue-out sweep on H&E (6 epochs per holdout) to test whether shortcutting is a DAPI-specific artefact (Table 11f). It is not.
+
+**Table 11f. LOTO accuracy under DAPI vs H&E across 16 STHELAR tissues, sorted by H&E LOTO accuracy.**
+
+| Tissue | Baseline acc | DAPI LOTO acc | H&E LOTO acc | Δ(H&E − DAPI) LOTO |
+|---|---:|---:|---:|---:|
+| ovary | 0.894 | 0.734 | 0.816 | +0.082 |
+| colon | 0.854 | 0.597 | 0.765 | +0.168 |
+| prostate | 0.874 | 0.670 | 0.688 | +0.018 |
+| kidney | 0.865 | 0.511 | 0.670 | +0.159 |
+| pancreatic | 0.778 | 0.566 | 0.619 | +0.053 |
+| cervix | 0.846 | 0.507 | 0.587 | +0.080 |
+| liver | 0.825 | 0.537 | 0.559 | +0.022 |
+| skin | 0.780 | 0.545 | 0.534 | −0.011 |
+| lung | 0.651 | 0.491 | 0.487 | −0.004 |
+| tonsil | 0.603 | 0.463 | 0.442 | −0.021 |
+| breast | 0.694 | 0.440 | 0.425 | −0.015 |
+| lymph_node | 0.553 | 0.376 | 0.334 | −0.042 |
+| bone_marrow | 0.516 | 0.163 | 0.310 | +0.147 |
+| bone | 0.460 | 0.254 | 0.301 | +0.047 |
+| brain | 0.956 | 0.200 | 0.288 | +0.088 |
+| heart | 0.536 | 0.289 | 0.269 | −0.020 |
+| **mean** | **0.730** | **0.459** | **0.506** | **+0.047** |
+
+H&E generalises slightly better than DAPI (+0.047 mean LOTO acc, better in 10/16 tissues), but the failure mode is identical: large in-distribution-vs-LOTO collapses on tissues with distinctive global texture (brain 0.956→0.288 under H&E, vs 0.956→0.200 under DAPI), and uniformly low LOTO accuracy on lymphoid/marrow tissues. Tissue shortcutting is therefore a property of multi-tissue training on tissue-imbalanced cell-type compositions, not of the DAPI channel specifically.
+
+**Interpretation.** The H&E benchmark establishes three things relevant to DAPI-only research. (i) The image-only single-modality reference for STHELAR multi-tissue 9-class classification is macro F1 ≈ 0.524; DAPI alone reaches 0.478, i.e. about nine-tenths of that reference (with the caveat that this is a ratio of macro F1 values, not a clean biological decomposition). (ii) DAPI's class-specific blind spots are predictable from biology — they coincide with classes whose discriminative features are cytoplasmic, surface-marker-defined or organisation-defined (pericytes, macrophages, lymphocyte subtypes), exactly the classes where H&E carries extra signal. (iii) Naive early-fusion multimodal (4-channel concat + 1×1 conv) is *not* a free upgrade: it adds 0.006 macro F1 over H&E in aggregate but erases H&E's strongest per-class signals. This is consistent with reports that early-fusion multimodal classifiers under-perform their best uni-modal counterpart unless the optimisation rate of each modality is balanced (51); separate-stem late fusion and cross-attention are the standard mitigations. We report this as an architectural negative result rather than as a biological one.
+
+**External context (not directly comparable).** Expression-based methods that use full transcript counts and spatial graphs reach far higher F1 on related tasks — e.g., HEIST (28) achieves F1=0.913 on Xenium breast 17-class (a *different* dataset, panel and class set). We list this only as orientation: molecularly informed methods substantially outperform any image-only modality, but a directly matched comparison to DAPIDL on STHELAR-9-class is not available and we do not claim "molecular ceiling" without a matched task.
+
+### 3.7 Patch Size Impact
 
 **Table 10. Effect of patch size on DAPI classification.**
 
@@ -392,7 +458,7 @@ We propose that **leave-one-tissue-out evaluation should be a required reporting
 
 Larger patches consistently help: 256px achieves +14% F1 over 128px on Xenium. At 64px, the model fails (F1=0.086) because single-nucleus patches lack perinuclear context. On MERSCOPE, even 350px (37.8 um) achieves only F1=0.116 for 10-class immune subtyping -- confirming that DAPI cannot distinguish immune subtypes regardless of patch size.
 
-### 3.7 Segmentation Benchmarking
+### 3.8 Segmentation Benchmarking
 
 **Table 11. Xenium segmentation comparison (5 FOV types).**
 
@@ -405,7 +471,7 @@ Larger patches consistently help: 256px achieves +14% F1 over 128px on Xenium. A
 
 The adaptive dispatcher correctly identifies that Xenium tissues do not benefit from ensemble segmentation (StarDist/Cellpose density ratio < 2x). On MERSCOPE dense tissue, topological consensus provides 5.2% recovery improvement (0.604 vs 0.574).
 
-### 3.8 Negative Results
+### 3.9 Negative Results
 
 1. **Heavy augmentation degraded performance** (F1=0.33 vs 0.60 baseline). Standard augmentation (flip, rotate, brightness) is sufficient; aggressive perturbation destroys discriminative nuclear features.
 
@@ -421,15 +487,23 @@ The adaptive dispatcher correctly identifies that Xenium tissues do not benefit 
 
 7. **Cross-platform transfer without normalization: catastrophic failure.** Xenium-to-MERSCOPE: 2.99% accuracy (mode collapse to single class). Adaptive normalization recovers to F1=0.548.
 
+8. **Naive 4-channel multimodal fusion is not a free upgrade.** Concatenating DAPI and RGB H&E into a 4-channel input passed through a 1×1 conv (4→3, identity-on-RGB initialisation) adds only +0.006 macro F1 over H&E alone (0.530 vs 0.524) and *erases* H&E's strongest per-class signal — pericyte F1 collapses from 0.929 to 0.523. Six of nine classes underperform H&E alone. The result is an architectural negative result, not evidence that multimodal information is unhelpful: separate-stem or cross-attention fusion is required to preserve modality-specific feature subspaces (§4.7).
+
 ---
 
 ## 4. Discussion
 
-### 4.1 The DAPI Morphology Ceiling
+### 4.1 What DAPI Captures, Benchmarked Against H&E
 
-Our systematic evaluation consistently converges on macro F1=0.60-0.65 for coarse (3-4 class) DAPI prediction. This aligns with comparable work: Woloshuk et al. report ~60% balanced accuracy for 2D DAPI, improving to 80.3% with 3D nuclear imaging; CelloType achieves mAP=0.40 on DAPI-only (90% of DAPI+transcript multimodal performance). The 0.31 F1 gap between DAPI (F1=0.60) and expression-based HEIST (F1=0.91) quantifies what gene expression reveals that nuclear shape does not.
+Our systematic evaluation consistently converges on macro F1≈0.60 for coarse (3-4 class) DAPI prediction on Xenium and MERSCOPE, and macro F1=0.478 on the harder 9-class STHELAR multi-tissue task. Two questions follow: how much of the achievable image-only single-modality signal does DAPI deliver, and where does it systematically fall short?
 
-GradCAM analysis provides mechanistic understanding: the model successfully identifies kidney-shaped macrophage nuclei (100% accuracy) and spindle-shaped myoepithelial cells (90%), but produces diffuse, uncertain attention patterns on lymphocytes whose identity is defined by surface markers (CD3, CD4, CD8, CD19) invisible to nuclear staining. This is not a model limitation but a fundamental information-theoretic boundary.
+The within-STHELAR benchmark (§3.6) provides the cleanest answer to the first question. Under matched architecture, splits and hyperparameters, H&E alone reaches macro F1=0.524 — 0.046 above DAPI, or approximately 91% of the H&E F1 captured by DAPI. We frame this as a *single-modality reference*, not as a "ceiling": macro F1 is a class-balanced average that mixes very different per-class behaviours together, and the +0.046 aggregate gap is therefore best read alongside the per-class table. Our reading is that DAPI captures the bulk of what is achievable from image-only single-modality inputs *on average*, but with class-specific blind spots that are predictable from biology.
+
+The per-class story (Table 11e) makes those blind spots concrete. DAPI is the best modality on the most numerous class — epithelial cells (F1=0.894) — where nuclear shape is highly discriminative. H&E is the best modality on six of nine classes, with the largest H&E−DAPI gap on pericytes (+0.516 F1, attributable to elongated cytoplasmic alignment with vessel walls), macrophages (+0.133, kidney-bean morphology compounded by abundant cytoplasm and tissue context), fibroblasts (+0.100, mostly cytoplasmic) and B cells (+0.084, organisational context). The general pattern: DAPI excels where nuclear shape is discriminative; H&E excels where the discriminative signal is cytoplasmic, surface-marker-defined or organisation-defined. None of this is fundamentally about gene expression — the shortfall reflects information that is geometrically present in the cytoplasm or stroma and therefore visible to brightfield H&E but absent from a single-channel nuclear stain.
+
+GradCAM analysis on the Xenium-trained models corroborates the asymmetry: DAPI attention focuses sharply on kidney-shaped macrophage nuclei (correctly classified ~100% of the time) and spindle-shaped myoepithelial cells (~90%), but produces diffuse, low-confidence attention on lymphocyte subtypes whose identity is determined by surface markers (CD3, CD4, CD8, CD19) invisible to any nuclear stain. This is a real information-theoretic boundary — but it is a boundary on *single-channel-nuclear* images, not on imaging in general. Comparable work supports the same picture: Woloshuk et al. report ~60% balanced accuracy for 2D DAPI improving to 80.3% with 3D nuclear imaging, and CelloType achieves mAP=0.40 on DAPI-only (90% of its DAPI+transcript multimodal performance) — i.e. independent groups converge on a single-channel DAPI single-modality bound at the same order of magnitude.
+
+We therefore avoid a quantitative "DAPI vs molecular" ceiling claim across datasets. Expression-based methods such as HEIST achieve much higher F1 (0.913 on Xenium breast 17-class) but on different data, panel and class structure; that gap is large but is not a matched comparison and we report it only as external context (§3.6).
 
 ### 4.2 BANKSY: Spatial Context Before Annotation
 
@@ -453,22 +527,25 @@ Despite the morphology ceiling, DAPIDL offers practical value: (1) Rapid tissue 
 
 1. All DAPI data is 2D; 3D DAPI achieves 80.3% (Woloshuk et al.)
 2. Ground truth labels are computationally derived (circular evaluation risk)
-3. **Multi-tissue models exhibit universal tissue-shortcutting.** Across 16 STHELAR tissues, leave-one-tissue-out evaluation reveals mean accuracy collapse of 1.78× (range 1.22×–4.79×) when each tissue is held out from training. The most affected tissues are those with distinctive global DAPI texture and uniform cell-type composition (brain: 4.79× collapse; bone marrow: 3.16×). In-distribution per-tissue accuracy therefore over-estimates true cell-classification capability by an average factor of ~1.8 across tissues. Any reported per-tissue accuracy in a multi-tissue model should be paired with a LOTO accuracy on the same tissue.
-4. 37.5% "Unknown" cells in multi-tissue training from inappropriate model selection
-5. Endothelial annotation requires spatial methods (BANKSY), unavailable for all tissues
-6. MERSCOPE images (~20 GB) require memory-mapped access
-7. DAPI-CellTypist cross-modal agreement is only 6.5% at fine granularity
+3. **Multi-tissue models exhibit universal tissue-shortcutting in both image modalities.** Across 16 STHELAR tissues, leave-one-tissue-out evaluation reveals mean accuracy collapse of 1.78× for DAPI (range 1.22×–4.79×, brain 0.956→0.200) and an essentially identical pattern for H&E (mean LOTO acc 0.506 vs DAPI 0.459). In-distribution per-tissue accuracy therefore over-estimates true cell-classification capability by ~1.8× regardless of imaging modality. Any reported per-tissue accuracy in a multi-tissue model should be paired with a LOTO accuracy on the same tissue (§3.5–3.6).
+4. **Single-seed modality benchmarks.** The H&E and multimodal results in §3.6 are single-seed, with no bootstrapped per-tissue confidence intervals. Aggregate gaps of +0.046 macro F1 (H&E−DAPI) are well outside seed-noise on this scale of dataset, but the +0.006 multimodal-over-H&E delta is small enough to be plausibly within seed-noise; we report it as such and do not claim multimodal beats H&E.
+5. 37.5% "Unknown" cells in multi-tissue training from inappropriate model selection
+6. Endothelial annotation requires spatial methods (BANKSY), unavailable for all tissues
+7. MERSCOPE images (~20 GB) require memory-mapped access
+8. DAPI-CellTypist cross-modal agreement is only 6.5% at fine granularity
 
 ### 4.7 Future Directions
 
-1. **Multi-channel input**: Xenium provides boundary stain (E-Cad/CD45) and interior stain (18S rRNA) alongside DAPI -- a 3-channel approach could substantially improve classification. STHELAR ships co-registered H&E that we have not yet used; multi-modal DAPI+H&E is the highest-leverage next experiment because the classes that fail in DAPI-only (mast, adipocyte, T-vs-B) carry their discriminative signal in cytoplasm or surface markers visible in H&E.
-2. **LOTO as a standard evaluation protocol.** Based on the universal 1.3×–4.8× LOTO collapse observed here, we recommend that DAPI multi-tissue papers report at least one held-out-tissue accuracy alongside any per-tissue accuracy claim. Where compute allows, the mean LOTO collapse ratio across all training tissues is the most informative single number for cross-tissue generalisation.
+1. **Proper multimodal fusion as a benchmark upper-bound.** Naive 4-channel concat-and-1×1-conv adds only +0.006 macro F1 over H&E and erases per-class strengths (pericyte 0.929→0.523). Separate-stem late fusion, cross-attention between DAPI and H&E feature maps, or learned channel-mixing with a residual back to the H&E channels are obvious next steps; we treat these as a way to *bound* the multimodal benchmark above DAPI, not as a competitor to DAPI-only.
+2. **LOTO as a standard evaluation protocol.** Based on the universal 1.3×–4.8× LOTO collapse observed here under both DAPI and H&E, we recommend that any multi-tissue image-based cell classification paper report at least one held-out-tissue accuracy alongside any per-tissue accuracy claim. Where compute allows, the mean LOTO collapse ratio across all training tissues is the most informative single number for cross-tissue generalisation.
 3. **Tissue-conditioning ablations.** Training with an explicit tissue token vs. without — and then comparing LOTO collapse — would directly quantify how much of the shortcutting is the model's representation choice vs. how much is inherent to multi-tissue training.
-4. **Spatial neighborhood averaging**: Zero-cost post-hoc improvement requiring no retraining
-5. **Test-time adaptation (FUSION)**: Fully unsupervised batch normalization fusion for platform transfer
-6. **CelloType integration**: Using DAPI+transcript labels instead of CellTypist-only for better ground truth
-7. **Contrastive alignment (H&Enium)**: Learning shared H&E + Xenium embedding spaces
-8. **3D DAPI**: Leveraging MERSCOPE z-stacks (7 z-planes per dataset)
+4. **Multi-seed, bootstrapped confidence intervals.** The within-STHELAR benchmark is currently single-seed. Multi-seed runs and per-tissue bootstraps would let us put confidence intervals on H&E−DAPI and multimodal−H&E deltas, and on per-tissue LOTO collapse ratios.
+5. **Multi-channel DAPI-adjacent inputs (still nuclear-only).** Xenium provides a boundary stain (E-Cad/CD45) and an interior stain (18S rRNA) alongside DAPI. A 3-channel nuclear-region input is the closest extension to DAPI-only that does *not* require an H&E pipeline and could close part of the H&E-vs-DAPI gap on stromal classes while remaining single-modality.
+6. **Spatial neighbourhood averaging.** Zero-cost post-hoc improvement: aggregating softmax outputs from cells within a fixed radius (e.g. 50 µm) is reported to recover substantial F1 in comparable settings without retraining.
+7. **Test-time adaptation (FUSION).** Fully unsupervised batch normalisation fusion for platform transfer.
+8. **CelloType integration.** Using DAPI+transcript labels instead of CellTypist-only for better ground truth.
+9. **Contrastive alignment (H&Enium).** Learning shared H&E + Xenium embedding spaces.
+10. **3D DAPI.** Leveraging MERSCOPE z-stacks (7 z-planes per dataset).
 
 ---
 
@@ -529,6 +606,9 @@ DAPIDL is implemented in Python using PyTorch with NVIDIA DALI for GPU data load
 47. TRACERx-PHLEX. (2024). Spatial transcriptomics analysis framework. *Nat Commun*.
 48. Xu J, et al. (2025). Nu-Class: dual-scale nuclear classification. *bioRxiv*.
 49. Xu J, et al. (2025). TAND: tissue-aware nuclear decomposition. *bioRxiv*.
+50. Geirhos R, Jacobsen J-H, Michaelis C, Zemel R, Brendel W, Bethge M, Wichmann FA. (2020). Shortcut Learning in Deep Neural Networks. *Nat Mach Intell*, 2(11), 665–673.
+51. Wang W, Tran D, Feiszli M. (2020). What Makes Training Multi-Modal Classification Networks Hard? *CVPR 2020*.
+52. Beery S, Van Horn G, Perona P. (2018). Recognition in Terra Incognita. *ECCV 2018*.
 
 ---
 
@@ -558,6 +638,8 @@ DAPIDL is implemented in Python using PyTorch with NVIDIA DALI for GPU data load
 
 **Figure 8d.** Leave-one-tissue-out across all 16 STHELAR tissues. (A) Side-by-side bars of in-distribution (baseline) vs LOTO accuracy per tissue, with collapse ratios annotated. (B) Accuracy drop magnitude per tissue, color-mapped — brain (0.757 absolute drop) dominates, bone marrow second. (C) Collapse ratio chart showing brain at 4.79× and bone_marrow at 3.16× as extreme outliers, mean across tissues 1.78×. (D) Weighted F1 cross-check confirming the pattern is metric-robust.
 
+**Figure 8e.** STHELAR within-dataset modality benchmark (DAPI vs H&E vs naive 4-channel multimodal). (A) Overall accuracy / macro F1 / weighted F1 bar chart for the three modalities; H&E reaches its best validation F1 in 5 epochs, DAPI in 9, multimodal in 10. (B) Per-class F1 grouped bar chart over the 9 STHELAR classes, with H&E−DAPI deltas annotated; epithelial dominated by DAPI/multimodal (F1=0.916), pericyte and macrophage dominated by H&E (F1=0.929 and 0.619 respectively), naive multimodal collapses pericyte to 0.523. (C) 16-tissue LOTO comparison under DAPI vs H&E (Table 11f) showing identical shortcutting failure mode under both modalities, H&E mean LOTO acc 0.506 vs DAPI 0.459. (D) Per-class winners-by-modality bar chart highlighting the asymmetry (DAPI strong: 1 class; H&E strong: 6; multimodal strong: 3 including epithelial which DAPI also wins).
+
 **Figure 9.** Patch size ablation. (A) F1 vs patch size for Xenium and MERSCOPE. (B) Example patches at 32/64/128/256px showing context differences. (C) Physical field of view comparison across platforms.
 
 **Figure 10.** Segmentation benchmark. (A) Per-method recovery across FOV types (dense/sparse/mixed/edge/immune). (B) StarPose vs CellViT on STHELAR. (C) Adaptive dispatcher decision tree.
@@ -573,4 +655,6 @@ DAPIDL is implemented in Python using PyTorch with NVIDIA DALI for GPU data load
 **Table S7.** BANKSY parameter optimization (k, lambda, r combinations).
 **Table S8.** Foundation model inventory with rationale for inclusion/exclusion.
 **Table S9.** STHELAR 5-experiment ablation full per-class metrics (precision, recall, F1, support per class × experiment).
-**Table S10.** STHELAR 16-tissue LOTO complete results: per-tissue baseline acc, LOTO acc, drop, ratio, weighted F1, n_test, train/val split sizes, best epoch, best val macro F1.
+**Table S10.** STHELAR 16-tissue DAPI-LOTO complete results: per-tissue baseline acc, LOTO acc, drop, ratio, weighted F1, n_test, train/val split sizes, best epoch, best val macro F1.
+**Table S11.** STHELAR three-way modality benchmark — full per-class precision / recall / F1 / support for DAPI, H&E and naive multimodal under matched architecture, splits and hyperparameters.
+**Table S12.** STHELAR 16-tissue H&E-LOTO complete results paralleling S10: per-tissue baseline acc, H&E LOTO acc, weighted F1, n_train/val/test, best epoch, best val macro F1.
