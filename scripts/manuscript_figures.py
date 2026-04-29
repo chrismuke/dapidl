@@ -598,13 +598,12 @@ def fig8_tissue_class_composition():
              "pericyte": "Peri", "mast cell": "Mast", "adipocyte": "Adipo"}
     class_short = [short[c] for c in classes]
 
-    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.6),
-                             gridspec_kw={"width_ratios": [2.6, 1.0]})
+    fig, axes = plt.subplots(1, 2, figsize=(15.0, 5.8),
+                             gridspec_kw={"width_ratios": [2.4, 1.5], "wspace": 0.32})
 
-    # Panel A — heat map
+    # Panel A — heat map (origin='upper' default → row 0 at top)
     ax = axes[0]
-    im = ax.imshow(mat_o, cmap="rocket_r", aspect="auto", vmin=0, vmax=1.0) if False else \
-         ax.imshow(mat_o, cmap="OrRd", aspect="auto", vmin=0, vmax=1.0)
+    im = ax.imshow(mat_o, cmap="OrRd", aspect="auto", vmin=0, vmax=1.0)
     ax.set_xticks(range(len(class_short)))
     ax.set_xticklabels(class_short)
     ax.set_yticks(range(len(tissues_o)))
@@ -620,24 +619,35 @@ def fig8_tissue_class_composition():
     ax.set_title("A. Tissue × class composition (test split, true labels)")
     fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02, label="fraction of tissue")
 
-    # Panel B — entropy + accuracy + macro F1 per tissue
+    # Panel B — entropy + accuracy + macro F1 per tissue.
+    # Same invert_yaxis() trick as fig 6: barh's y=0 is at the bottom by
+    # default; we flip so the row order matches Panel A's heatmap. Tick
+    # labels are tissue names so the panel is readable on its own.
     ax = axes[1]
     y = np.arange(len(tissues_o))
     ax.barh(y - 0.27, entropy_o, 0.27, color="#444", label="Shannon H (bits)")
     ax.barh(y, accs_o, 0.27, color=C_GT, label="accuracy")
     ax.barh(y + 0.27, f1_o, 0.27, color=C_DAPI, label="macro F1")
     ax.set_yticks(y)
-    ax.set_yticklabels([])
-    ax.set_xlim(0, 3.5)
-    ax.legend(loc="lower right", frameon=False, fontsize=8)
+    ax.set_yticklabels(tissues_o, fontsize=8.5)
+    ax.invert_yaxis()  # match Panel A's top-to-bottom order
+    ax.set_xlim(0, 3.0)
     ax.set_xlabel("score / bits")
-    ax.set_title("B. Class-diversity + accuracy + macro F1\n(low entropy ⇒ accuracy ≫ macro F1)")
+    ax.set_title("B. Class diversity + accuracy + macro F1 per tissue\n(low entropy ⇒ accuracy ≫ macro F1)")
     ax.grid(axis="x", alpha=0.25, linestyle=":")
-    # Highlight brain
+    # Legend below the panel, three items in one row — never collides with
+    # bars regardless of tissue order or values.
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=3,
+              frameon=False, fontsize=8)
+    # Highlight brain row (top, since sorted ascending by entropy + inverted).
     brain_idx = tissues_o.index("brain")
     ax.axhspan(brain_idx - 0.5, brain_idx + 0.5, alpha=0.12, color="red")
-    ax.text(2.55, brain_idx, "← brain paradox\n(H=0.33, acc=0.96, F1=0.24)",
-            va="center", fontsize=7, color="darkred")
+    # Inline annotation in the empty area to the right of the bars (brain's
+    # longest bar is accuracy = 0.96, well clear of x = 1.6).
+    ax.text(1.7, brain_idx,
+            "brain paradox\nH=0.33 · acc=0.96 · F1=0.24",
+            va="center", ha="left", fontsize=7.5, color="darkred",
+            fontweight="bold")
 
     fig.suptitle("Figure 8 · Tissue compositional imbalance is what produces the brain paradox",
                  y=1.0, fontsize=12, fontweight="bold")
