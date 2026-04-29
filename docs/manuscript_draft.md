@@ -31,6 +31,18 @@ The DAPI-only focus is deliberate. DAPI is the cheapest, most universal, and mos
 
 ## 2. Methods
 
+### 2.0 What we mean by "ground truth"
+
+Three tiers of supervision feed into this work, and the distinction matters because the available references are themselves of different quality:
+
+1. **Expert pathologist annotations (true GT).** Janesick et al. (3) provide 167,780 manually reviewed cell-type labels on Xenium breast rep1, organised into 3 broad and 13 fine-grained categories. This is the only true expert GT we use at scale, and it is the reference against which our annotation pipeline is benchmarked in §3.1. We use the unqualified term "ground truth" only for tier 1.
+
+2. **Reference labels (high-quality computational consensus).** STHELAR (27) provides cell-type labels for ~11 million cells across 16 human tissues, derived from a published Tangram (39) deconvolution pipeline followed by ontology mapping and partial manual review. STHELAR labels are themselves model-derived — Tangram aligns single-cell-RNA references with the spatial transcripts and propagates cell-type assignments — so we treat them as a *reference* rather than as expert GT. They are nonetheless the strongest cross-tissue cell-typing dataset available at scale, and their public, peer-reviewed nature makes them suitable for benchmarking. Whenever we report STHELAR-based F1 (§3.5, §3.6), the reference is explicitly STHELAR labels and not pathologist GT.
+
+3. **Automatic training labels (our pipeline).** For datasets without either of the above (e.g. MERSCOPE breast, additional Xenium datasets), DAPIDL generates training labels by ensemble annotation (CellTypist, SingleR, scType, BANKSY, popV) followed by GT-free confidence filtering and Cell Ontology standardisation. These are the labels the DAPI classifier is trained on. Their distance from tier 1 (Janesick) is bounded in §3.1; their distance from tier 2 (STHELAR) is bounded in §3.5.
+
+Asking whether STHELAR can serve as a substitute "ground truth" for the broader field is a fair question. Within this manuscript, our position is: STHELAR labels are *reliable enough* to support method-development and benchmarking (in particular, large-scale cross-tissue LOTO evaluation), but they are not equivalent to manual expert annotation and we do not use the term "ground truth" interchangeably. Where it matters — interpreting a low DAPI F1 on a class — we report against both tiers separately rather than averaging across them.
+
 ### 2.1 Data Sources and Platform Support
 
 DAPIDL supports three spatial transcriptomics platforms with distinct data formats, imaging characteristics, and DAPI resolutions (Table 1).
@@ -234,7 +246,9 @@ We systematically evaluated 12+ annotation methods on STHELAR breast_s0 (574,869
 
 **Method complementarity.** BANKSY achieves the best T_NK F1 (0.885, +20% vs popV) while popV dominates Blood_vessel (F1=0.891, +43% vs BANKSY). The optimal per-class assignment would exceed any single method.
 
-**Xenium benchmarks.** On Xenium breast with Janesick ground truth (3), the best ensemble (5 CellTypist + 2 SingleR) achieves F1=0.844 for 3 broad categories, consistent across replicates (rep2: F1=0.843). SingleR references (HPCA + Blueprint) boost Stromal F1 from 0.35 to 0.76 (+117%).
+**Xenium benchmarks.** On Xenium breast with Janesick ground truth (3), the best ensemble (5 CellTypist + 2 SingleR) achieves F1=0.844 for 3 broad categories, consistent across replicates (rep2: F1=0.843). SingleR references (HPCA + Blueprint) boost Stromal F1 from 0.35 to 0.76 (+117%). Figure 4 ranks every annotation strategy we evaluated against the Janesick expert GT and shows the per-class F1 of the popV ensembles.
+
+![Figure 4 — Annotation pipeline benchmarked against expert ground truth (Janesick et al. 2023, Xenium breast rep1, 167,780 manually reviewed cells, 3 broad classes). Left: macro F1 of every method evaluated, ranked. SingleR-Blueprint (F1=0.907) wins as a single method; popV ensembles (5 CellTypist + 2 SingleR) reach F1=0.844 with strong per-class balance and are our default choice for tissues without per-method tuning. Right: per-class F1 of the popV ensembles — Epithelial F1 ≈ 0.97, Immune F1 ≈ 0.80, Stromal F1 ≈ 0.74-0.76 (limited by gene-panel coverage of stromal markers).](figures/fig4_annotation_vs_janesick.png)
 
 **Endothelial detection failure.** Endothelial F1=0.000 across ALL 23+ non-spatial expression-based methods on 313-gene Xenium panels (only 4/9 endothelial markers present). BANKSY spatial clustering is the only method achieving Endothelial F1=0.844 by leveraging spatial gene expression patterns. 92% of endothelial cells are misclassified as Stromal without spatial context.
 
@@ -284,7 +298,11 @@ We trained and evaluated 50+ DAPI models (subset of 700+ total configurations) a
 
 *Training in progress at time of writing (epoch 3/50).
 
-**Expression-based upper bound.** HEIST (28), a graph neural network using gene expression and spatial context, achieves F1=0.913 on 17 fine-grained types, establishing a 0.31 F1 modality gap.
+Figure 5 visualises the backbone & foundation-model sweep. Supervised ImageNet-pretrained CNNs lead on Xenium 3-class coarse classification; LoRA-fine-tuned DINO-pretrained vision transformers lead on the harder STHELAR 4-class task. MAE-pretrained models (OpenPhenom, NuSPIRe) underperform DINO-pretrained models even when MAE was pretrained on the most domain-relevant data (NuSPIRe: 15.5 M DAPI nuclear crops).
+
+![Figure 5 — DAPI backbone & foundation-model comparison. Test macro F1 (best across runs) per architecture, with parameter count and dataset annotation. Supervised ImageNet-pretrained EfficientNetV2-S leads on Xenium 3-class coarse (F1=0.596); on the harder STHELAR 4-class task, Cell-DINO LoRA-fine-tuned ViT-L narrowly leads (F1=0.463). DINO-pretrained models consistently outperform MAE-pretrained models — domain (fluorescence) matters less than the pretraining objective.](figures/fig5_backbone_comparison.png)
+
+**External orientation: expression-based methods.** HEIST (28), a graph neural network using gene expression and spatial context, achieves F1=0.913 on Xenium breast 17-class. We list this only as orientation: HEIST uses molecular information (transcript counts, spatial gene-gene graphs), not images, and operates on a different dataset and class set, so a directly matched comparison is not available. Across-modality F1 differences of this magnitude are expected; the open question for image-only methods is how much of that distance can be closed without molecular input (§4.1).
 
 ### 3.4 Per-Class Analysis and GradCAM Interpretability
 
@@ -384,6 +402,8 @@ To bound what is achievable from image-only single-modality cell typing — and 
 
 **Headline. DAPI captures most of the H&E single-modality macro F1, but the gap is class-specific.**
 
+![Figure 1 — Three-way modality benchmark and training trajectories. Left panel: overall accuracy / macro F1 / weighted F1 for DAPI, H&E and naive 4-channel multimodal on the same 1.26 M-patch STHELAR test set. Right panel: validation macro F1 across epochs. H&E reaches its best validation F1 at epoch 5; DAPI plateaus at epoch 9; naive multimodal at epoch 10.](figures/fig1_modality_benchmark.png)
+
 **Table 11d. Within-STHELAR three-way modality benchmark (1.26 M patches, 9 classes, 16 tissues, single seed).**
 
 | Modality | accuracy | macro F1 | weighted F1 | best epoch | wall-clock |
@@ -394,7 +414,9 @@ To bound what is achievable from image-only single-modality cell typing — and 
 
 H&E alone improves macro F1 by +0.046 over DAPI alone (+9.6% relative); naive multimodal fusion adds only +0.006 macro F1 over H&E (effectively within seed-noise; we did not bootstrap). H&E reaches its best validation F1 in epoch 5; DAPI takes nine. Acquisition cost, channel count and sample-prep flexibility favour DAPI; per-class informativeness favours H&E for stromal and lymphocyte subtypes (see below).
 
-**Per-class complementarity.** The two modalities are not redundant — they are *complementary*, but the naive 4-channel adapter is unable to combine them losslessly (Table 11e).
+**Per-class complementarity.** The two modalities are not redundant — they are *complementary*, but the naive 4-channel adapter is unable to combine them losslessly (Table 11e, Fig. 2).
+
+![Figure 2 — Per-class complementarity. Left: test F1 per class for DAPI, H&E, and naive multimodal, sorted by support (descending). DAPI dominates only on epithelial cells (the most numerous class); H&E dominates on most other classes. Right: winner-by-class summary — DAPI wins 0 classes outright, H&E wins 6, naive multimodal wins 3 (epithelial, endothelial, adipocyte). The sharp pericyte gap (H&E F1 0.929 vs multimodal 0.523) is the most visible architectural failure.](figures/fig2_per_class_modality.png)
 
 **Table 11e. Per-class macro F1 across modalities.**
 
@@ -412,7 +434,9 @@ H&E alone improves macro F1 by +0.046 over DAPI alone (+9.6% relative); naive mu
 
 DAPI is uniquely the best modality only for the most abundant class (epithelial cell, 86 k test patches, F1=0.894), where nuclear shape — large, round, distinctive chromatin — is highly discriminative. H&E is the best modality on six of nine classes, with the largest gap on pericyte (+0.516 F1) — a class where the discriminative signal is the cell's elongated cytoplasmic relationship to vessel walls, not nuclear morphology. The naive multimodal model wins on three classes (epithelial, endothelial, adipocyte) but underperforms H&E alone on six (pericyte −0.406, macrophage −0.101, fibroblast −0.046, B cell −0.040, mast cell −0.030, T cell −0.016). The pericyte case is the clearest signal of architectural failure: H&E alone reaches F1=0.929, but adding the DAPI channel through a 1×1 conv collapses it to 0.523. Early fusion at the input layer cannot preserve modality-specific feature subspaces.
 
-**Cross-tissue generalisation also under H&E.** We repeated the 16-tissue leave-one-tissue-out sweep on H&E (6 epochs per holdout) to test whether shortcutting is a DAPI-specific artefact (Table 11f). It is not.
+**Cross-tissue generalisation also under H&E.** We repeated the 16-tissue leave-one-tissue-out sweep on H&E (6 epochs per holdout) to test whether shortcutting is a DAPI-specific artefact (Table 11f, Fig. 3). It is not.
+
+![Figure 3 — Universal tissue-shortcutting under both image modalities. Top: per-tissue accuracy comparing in-distribution baseline (green), DAPI LOTO (blue), and H&E LOTO (pink) across all 16 STHELAR tissues, sorted by baseline accuracy. Mean baseline ≈ 0.73; mean DAPI LOTO ≈ 0.46; mean H&E LOTO ≈ 0.51 (dotted lines). Bottom: collapse ratio (baseline ÷ LOTO) per tissue. Brain is the extreme case (4.8× collapse for DAPI). H&E shortcutting magnitude is slightly smaller (mean 1.56× vs DAPI 1.81×) but the qualitative pattern is identical: every tissue collapses under LOTO regardless of imaging modality.](figures/fig3_loto_16tissue.png)
 
 **Table 11f. LOTO accuracy under DAPI vs H&E across 16 STHELAR tissues, sorted by H&E LOTO accuracy.**
 
@@ -616,7 +640,9 @@ DAPIDL is implemented in Python using PyTorch with NVIDIA DALI for GPU data load
 
 ### Figure Descriptions
 
-**Figure 1.** DAPIDL pipeline overview. (A) Data flow from raw spatial transcriptomics (Xenium/MERSCOPE/STHELAR) through ensemble annotation, CL standardization, GT-free filtering, LMDB creation, to CNN training. (B) Platform-specific data reader architecture. (C) Deployed DAPI-only inference mode.
+The five embedded figures (`docs/figures/fig{1..5}_*.png`) are computed directly from `pipeline_output/` JSON via `scripts/manuscript_figures.py` and can be regenerated reproducibly. Captions for these embedded figures are inline at the relevant section. Below are the additional figures planned for the full manuscript figure set.
+
+**Figure A (concept).** DAPIDL pipeline overview. (A) Data flow from raw spatial transcriptomics (Xenium/MERSCOPE/STHELAR) through ensemble annotation, CL standardization, GT-free filtering, LMDB creation, to CNN training. (B) Platform-specific data reader architecture. (C) Deployed DAPI-only inference mode.
 
 **Figure 2.** Annotation method comparison. (A) Macro F1 bar chart across 12+ methods on STHELAR breast. (B) Per-class F1 heatmap showing method complementarity (BANKSY wins spatial types, CellTypist wins expression types). (C) BANKSY-first vs cell-level consensus architecture comparison.
 
