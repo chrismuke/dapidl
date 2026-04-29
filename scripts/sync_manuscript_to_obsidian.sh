@@ -29,6 +29,9 @@ DST_DIR="$HOME/obsidian/llmbrain/DAPIDL/manuscript"
 DST_MD="$DST_DIR/manuscript.md"
 DST_FIG_DIR="$DST_DIR/figures"
 
+# The metrics dossier embeds the same figures; keep it in sync too.
+METRICS_FIG_DIR="$HOME/obsidian/llmbrain/DAPIDL/metrics-260429/figures"
+
 if [[ ! -f "$SRC_MD" ]]; then
   echo "ERROR: source manuscript not found: $SRC_MD" >&2
   exit 1
@@ -42,6 +45,12 @@ mkdir -p "$DST_FIG_DIR"
 
 # Sync figures (overwrites; deletes orphans so Obsidian doesn't accumulate stale PNGs)
 rsync -a --delete --include="*.png" --exclude="*" "$SRC_FIG_DIR/" "$DST_FIG_DIR/"
+
+# If the metrics dossier exists, mirror the figures there too.
+if [[ -d "$(dirname "$METRICS_FIG_DIR")" ]]; then
+  mkdir -p "$METRICS_FIG_DIR"
+  rsync -a --delete --include="*.png" --exclude="*" "$SRC_FIG_DIR/" "$METRICS_FIG_DIR/"
+fi
 
 # Build the destination markdown: frontmatter + source body
 NOW="$(date -Iseconds)"
@@ -81,4 +90,7 @@ echo "✓ Synced manuscript to Obsidian"
 echo "  Source:  $SRC_MD ($SRC_LINES lines @ $GIT_REV)"
 echo "  Dest:    $DST_MD ($DST_LINES lines incl. frontmatter)"
 echo "  Figures: $N_FIGS PNG(s) in $DST_FIG_DIR"
+if [[ -d "$METRICS_FIG_DIR" ]]; then
+  echo "  Mirror:  $N_FIGS PNG(s) in $METRICS_FIG_DIR"
+fi
 echo "  Total:   ${DST_SIZE_KB} KiB"

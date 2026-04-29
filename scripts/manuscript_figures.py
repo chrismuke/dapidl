@@ -513,12 +513,25 @@ def fig7_sthelar_confusion():
              "pericyte": "Pericyte", "mast cell": "Mast cell", "adipocyte": "Adipocyte"}
     labels = [short[c] for c in classes_ord]
 
-    fig, ax = plt.subplots(figsize=(8.5, 7.2))
+    # Compose y-tick labels with F1 / n inline so matplotlib owns the spacing
+    # (avoids overlap between separate ax.text annotations and the tick text).
+    def _fmt_n(n: int) -> str:
+        if n >= 1000:
+            return f"{n/1000:.1f}k".replace(".0k", "k")
+        return f"{n:,}"
+
+    ytick_labels = [
+        f"{short[c]}\n$\\mathrm{{F_1}}$={pc[c]['f1']:.2f} · n={_fmt_n(pc[c]['support'])}"
+        for c in classes_ord
+    ]
+
+    fig, ax = plt.subplots(figsize=(9.0, 7.4))
     im = ax.imshow(norm_ord, cmap="Blues", vmin=0, vmax=1.0)
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=35, ha="right")
     ax.set_yticks(range(len(labels)))
-    ax.set_yticklabels(labels)
+    ax.set_yticklabels(ytick_labels, fontsize=9)
+    ax.tick_params(axis="y", which="major", pad=2)
     for i in range(len(labels)):
         for j in range(len(labels)):
             v = norm_ord[i, j]
@@ -527,14 +540,8 @@ def fig7_sthelar_confusion():
             color = "white" if v > 0.5 else "black"
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
                     color=color, fontsize=8)
-    # Annotate per-class F1 on the y-axis
-    for i, c in enumerate(classes_ord):
-        f1 = pc[c]["f1"]
-        n = pc[c]["support"]
-        ax.text(-1.2, i, f"F1={f1:.2f}\nn={n:,}", ha="right", va="center", fontsize=7,
-                color=C_GREY)
     ax.set_xlabel("predicted class")
-    ax.set_ylabel("true class")
+    ax.set_ylabel("true class  (per-class F1 · support)")
     ax.set_title("Figure 7 · STHELAR baseline confusion matrix (row-normalised recall)\n9 classes · 1.3 M patches · macro F1=0.522, weighted F1=0.764, acc=0.755",
                  fontsize=11, fontweight="bold")
     fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02, label="recall")
