@@ -581,15 +581,20 @@ def fig8_tissue_class_composition():
             continue
         for ci in range(len(classes)):
             mat[ti, ci] = (y_true[mask] == ci).mean()
-    entropy = -np.where(mat > 0, mat * np.log2(mat + 1e-12), 0).sum(axis=1)
+    # Raw Shannon entropy (bits, range [0, log2(N_classes)]) and a
+    # normalised version in [0, 1] so it shares an axis with accuracy / F1.
+    entropy_bits = -np.where(mat > 0, mat * np.log2(mat + 1e-12), 0).sum(axis=1)
+    H_max = np.log2(len(classes))
+    diversity = entropy_bits / H_max  # in [0, 1]: 0 = mono-class, 1 = uniform mix
     accs = np.array([pt[t]["accuracy"] for t in tissues])
     macro_f1 = np.array([pt[t]["macro_f1"] for t in tissues])
 
     # Sort tissues by entropy ascending (most homogeneous first → brain paradox at top)
-    order = np.argsort(entropy)
+    order = np.argsort(entropy_bits)
     tissues_o = [tissues[i] for i in order]
     mat_o = mat[order]
-    entropy_o = entropy[order]
+    diversity_o = diversity[order]
+    bits_o = entropy_bits[order]
     accs_o = accs[order]
     f1_o = macro_f1[order]
 
@@ -619,21 +624,30 @@ def fig8_tissue_class_composition():
     ax.set_title("A. Tissue × class composition (test split, true labels)")
     fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02, label="fraction of tissue")
 
-    # Panel B — entropy + accuracy + macro F1 per tissue.
+    # Panel B — diversity + accuracy + macro F1 per tissue, all on a single
+    # dimensionless [0, 1] axis. Class-diversity is Shannon H normalised by
+    # log2(N_classes), so 0 = mono-class, 1 = uniform mix; the raw bit value
+    # is annotated next to each bar for reference.
     # Same invert_yaxis() trick as fig 6: barh's y=0 is at the bottom by
     # default; we flip so the row order matches Panel A's heatmap. Tick
     # labels are tissue names so the panel is readable on its own.
     ax = axes[1]
     y = np.arange(len(tissues_o))
-    ax.barh(y - 0.27, entropy_o, 0.27, color="#444", label="Shannon H (bits)")
+    ax.barh(y - 0.27, diversity_o, 0.27, color="#444",
+            label=f"class diversity (H / log₂{len(classes)})")
     ax.barh(y, accs_o, 0.27, color=C_GT, label="accuracy")
     ax.barh(y + 0.27, f1_o, 0.27, color=C_DAPI, label="macro F1")
+    # Annotate each diversity bar with its raw entropy in bits (the source of
+    # truth) so the normalised [0, 1] axis doesn't hide that information.
+    for i, (d, b) in enumerate(zip(diversity_o, bits_o)):
+        ax.text(d + 0.012, i - 0.27, f"{b:.2f} bits", va="center",
+                fontsize=6.5, color="#444")
     ax.set_yticks(y)
     ax.set_yticklabels(tissues_o, fontsize=8.5)
     ax.invert_yaxis()  # match Panel A's top-to-bottom order
-    ax.set_xlim(0, 3.0)
-    ax.set_xlabel("score / bits")
-    ax.set_title("B. Class diversity + accuracy + macro F1 per tissue\n(low entropy ⇒ accuracy ≫ macro F1)")
+    ax.set_xlim(0, 1.20)
+    ax.set_xlabel("score (all three quantities on a [0, 1] scale)")
+    ax.set_title("B. Class diversity + accuracy + macro F1 per tissue\n(low diversity ⇒ accuracy ≫ macro F1)")
     ax.grid(axis="x", alpha=0.25, linestyle=":")
     # Legend below the panel, three items in one row — never collides with
     # bars regardless of tissue order or values.
@@ -642,12 +656,6 @@ def fig8_tissue_class_composition():
     # Highlight brain row (top, since sorted ascending by entropy + inverted).
     brain_idx = tissues_o.index("brain")
     ax.axhspan(brain_idx - 0.5, brain_idx + 0.5, alpha=0.12, color="red")
-    # Inline annotation in the empty area to the right of the bars (brain's
-    # longest bar is accuracy = 0.96, well clear of x = 1.6).
-    ax.text(1.7, brain_idx,
-            "brain paradox\nH=0.33 · acc=0.96 · F1=0.24",
-            va="center", ha="left", fontsize=7.5, color="darkred",
-            fontweight="bold")
 
     fig.suptitle("Figure 8 · Tissue compositional imbalance is what produces the brain paradox",
                  y=1.0, fontsize=12, fontweight="bold")
