@@ -23,11 +23,43 @@ PO = ROOT / "pipeline_output"
 OUT = ROOT / "docs/figures"
 OUT.mkdir(parents=True, exist_ok=True)
 
-# Consistent palette: DAPI = blue, H&E = pink, Multimodal = purple, Janesick GT = grey-green
-C_DAPI = "#1f77b4"
-C_HE = "#e377c2"
-C_MULTI = "#9467bd"
-C_GT = "#2ca02c"
+# ─── Cross-figure color contract ─────────────────────────────────────────────
+# Only the most-repeated semantic entities get reserved colors. Everything
+# else (method families, metric bars, generic scatter dots) uses a per-figure
+# palette drawn from the unreserved range so a reader who has internalised
+# "blue = DAPI" doesn't see blue in a figure where it means something else.
+#
+# Reserved across figures (whenever these concepts appear):
+#   blue   → DAPI modality
+#   pink   → H&E modality
+#   purple → naive multimodal (DAPI + H&E)
+#   green  → in-distribution baseline / pathologist ground truth
+#
+# Unreserved (each figure picks from this pool, never reusing the modality
+# colors above):
+#   orange, brown, cyan, olive, grey shades, near-black
+
+# === Modality palette (figs 1, 2, 3) ===
+C_DAPI = "#1f77b4"   # blue
+C_HE = "#e377c2"     # pink
+C_MULTI = "#9467bd"  # purple
+
+# === Reference / baseline (figs 3, 4) ===
+C_GT = "#2ca02c"     # green
+
+# === Method-family palette (figs 4, 5) ===
+C_ENSEMBLE = "#8c564b"        # brown
+C_CONSENSUS = "#17becf"       # cyan
+C_SINGLE_METHOD = "#7f7f7f"   # grey
+C_SUPERVISED_CNN = "#ff7f0e"  # orange
+C_FROZEN_VIT = "#bcbd22"      # olive
+C_LORA_VIT = "#17becf"        # cyan (figure 5 doesn't render alongside figure 4)
+
+# === Metric palette (when bars are metric values, not modalities) ===
+C_METRIC_PRIMARY = "#444444"    # dark grey — primary metric (macro F1 / diversity)
+C_METRIC_SECONDARY = "#888888"  # mid grey  — secondary metric (accuracy / weighted)
+
+# === Generic ===
 C_GREY = "#7f7f7f"
 
 plt.rcParams.update({
@@ -287,7 +319,9 @@ def fig4_annotation_vs_janesick():
     methods = [d[0] for d in data]
     f1 = [d[2] for d in data]
     types = [d[6] for d in data]
-    color_map = {"ensemble": C_MULTI, "consensus": C_DAPI, "single": C_GREY}
+    # Non-modality palette so blue/pink/purple don't collide with the DAPI/H&E
+    # /multimodal contract from figs 1-3.
+    color_map = {"ensemble": C_ENSEMBLE, "consensus": C_CONSENSUS, "single": C_SINGLE_METHOD}
     colors = [color_map[t] for t in types]
 
     order = np.argsort(f1)
@@ -302,7 +336,7 @@ def fig4_annotation_vs_janesick():
     ax.set_xlabel("macro F1 vs Janesick expert GT")
     ax.set_title("A. Annotation methods on Xenium breast rep1 (167,780 cells, 3 broad)\nGT = Janesick et al. 2023 expert pathologist labels")
     # Manual legend
-    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in [C_MULTI, C_DAPI, C_GREY]]
+    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in [C_ENSEMBLE, C_CONSENSUS, C_SINGLE_METHOD]]
     ax.legend(handles, ["popV ensemble", "CellTypist consensus", "single method"],
               loc="lower right", frameon=False)
     ax.grid(axis="x", alpha=0.25, linestyle=":")
@@ -314,7 +348,9 @@ def fig4_annotation_vs_janesick():
     x = np.arange(len(class_labels))
     n_e = len(ensembles)
     w = 0.8 / n_e
-    palette = ["#5a3093", C_MULTI, "#ad6cd1", "#c193dc"][:n_e]
+    # Brown gradient for the popV ensembles (matches the "ensemble" color
+    # used for the same methods in panel A, and avoids the modality purples).
+    palette = ["#5e3a25", C_ENSEMBLE, "#b08368", "#c8ad9a"][:n_e]
     for i, row in enumerate(ensembles):
         name, _, _, e, im, st, _ = row
         vals = [e, im, st]
@@ -326,7 +362,10 @@ def fig4_annotation_vs_janesick():
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("per-class F1")
     ax.set_title("B. Per-class F1 (ensembles)\nEpi excellent · Imm strong · Str hardest")
-    ax.legend(loc="lower left", frameon=False, fontsize=7)
+    # Legend below the panel — Epithelial bars reach 0.97, leaving no clean
+    # in-panel corner. Two columns so it doesn't extend below the figure.
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2,
+              frameon=False, fontsize=7)
     ax.grid(axis="y", alpha=0.25, linestyle=":")
 
     fig.suptitle("Figure 4 · Automatic annotation pipeline benchmarked against expert GT",
@@ -354,10 +393,12 @@ def fig5_backbone_comparison():
         ("Cell-DINO ViT-L (frozen)", 304, 0.407, "frozen ViT", "Fluorescence DINO"),
     ]
 
+    # Non-modality palette: orange/olive/cyan instead of blue/grey/purple,
+    # so the DAPI/multimodal contract from figs 1-3 stays clean.
     fam_color = {
-        "supervised CNN": C_DAPI,
-        "frozen ViT":     C_GREY,
-        "LoRA ViT":       C_MULTI,
+        "supervised CNN": C_SUPERVISED_CNN,
+        "frozen ViT":     C_FROZEN_VIT,
+        "LoRA ViT":       C_LORA_VIT,
     }
 
     fig, ax = plt.subplots(figsize=(11, 5.2))
@@ -451,8 +492,10 @@ def fig6_annotation_method_comparison():
     f1m = [data[m]["f1_macro"] for m in methods]
     accs = [data[m]["accuracy"] for m in methods]
     y = np.arange(len(methods))
-    ax.barh(y - 0.18, f1m, 0.36, color=C_DAPI, label="macro F1")
-    ax.barh(y + 0.18, accs, 0.36, color=C_GREY, label="accuracy")
+    # Neutral grey shades — these are metric bars, not modality bars, so
+    # they shouldn't borrow the DAPI/H&E/multimodal palette.
+    ax.barh(y - 0.18, f1m, 0.36, color=C_METRIC_PRIMARY, label="macro F1")
+    ax.barh(y + 0.18, accs, 0.36, color=C_METRIC_SECONDARY, label="accuracy")
     for i, (f, a) in enumerate(zip(f1m, accs)):
         ax.text(f + 0.01, i - 0.18, f"{f:.3f}", va="center", fontsize=7.5)
         ax.text(a + 0.01, i + 0.18, f"{a:.3f}", va="center", fontsize=7.5)
@@ -604,15 +647,19 @@ def fig8_tissue_class_composition():
     # labels are tissue names so the panel is readable on its own.
     ax = axes[1]
     y = np.arange(len(tissues_o))
-    ax.barh(y - 0.27, diversity_o, 0.27, color="#444",
+    # Diversity = dark grey (it's a property of the test data, not a metric);
+    # accuracy = green (matches the "in-distribution baseline" semantic from
+    # fig 3 — accuracy is an "agreement with truth" metric);
+    # macro F1 = mid grey (neutral metric tone, NOT modality blue).
+    ax.barh(y - 0.27, diversity_o, 0.27, color=C_METRIC_PRIMARY,
             label=f"class diversity (H / log₂{len(classes)})")
     ax.barh(y, accs_o, 0.27, color=C_GT, label="accuracy")
-    ax.barh(y + 0.27, f1_o, 0.27, color=C_DAPI, label="macro F1")
+    ax.barh(y + 0.27, f1_o, 0.27, color=C_METRIC_SECONDARY, label="macro F1")
     # Annotate each diversity bar with its raw entropy in bits (the source of
     # truth) so the normalised [0, 1] axis doesn't hide that information.
     for i, (d, b) in enumerate(zip(diversity_o, bits_o)):
         ax.text(d + 0.012, i - 0.27, f"{b:.2f} bits", va="center",
-                fontsize=6.5, color="#444")
+                fontsize=6.5, color=C_METRIC_PRIMARY)
     ax.set_yticks(y)
     ax.set_yticklabels(tissues_o, fontsize=8.5)
     ax.invert_yaxis()  # match Panel A's top-to-bottom order
@@ -654,7 +701,9 @@ def fig9_method_speed_vs_f1(method_data: dict | None = None):
 
     fig, ax = plt.subplots(figsize=(9, 5.5))
     for name, t, f, a in rows:
-        ax.scatter(t, f, s=180, alpha=0.85, color=C_DAPI, edgecolor="black", linewidth=0.7)
+        # Neutral dot colour — fig 9 has no modality concept, so it must
+        # not use C_DAPI (which would visually imply "DAPI modality").
+        ax.scatter(t, f, s=180, alpha=0.85, color=C_METRIC_PRIMARY, edgecolor="black", linewidth=0.7)
         ax.annotate(name, xy=(t, f), xytext=(8, 6), textcoords="offset points", fontsize=9)
     ax.set_xscale("log")
     ax.set_xlabel("wall-clock seconds (log scale)")
