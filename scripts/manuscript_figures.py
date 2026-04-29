@@ -490,7 +490,12 @@ def fig6_annotation_method_comparison():
     ax.invert_yaxis()  # match Panel A's top-to-bottom order
     ax.set_xlim(0, 1.18)
     ax.set_xlabel("score")
-    ax.legend(loc="lower right", frameon=False, fontsize=8)
+    # Legend goes upper-right: with bars sorted ascending and the y-axis
+    # inverted, the top rows are the lowest-F1 methods (shortest bars), so
+    # there's always free space top-right. Lower-right would collide with
+    # the longest-bar method.
+    ax.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=8,
+              edgecolor="none")
     ax.set_title("B. Method-level summary (same row order as A)")
     ax.grid(axis="x", alpha=0.25, linestyle=":")
 
