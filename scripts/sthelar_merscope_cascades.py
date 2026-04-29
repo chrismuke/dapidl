@@ -31,6 +31,7 @@ import sys
 import time
 from pathlib import Path
 
+import cv2
 import geopandas as gpd
 import numpy as np
 import polars as pl
@@ -370,45 +371,80 @@ def build_panels_sthelar(
             tl_x, tl_y = x0, y0
             scale = 1.0
             origin_in_he = False
-        else:  # he
-            # Compute HE-pixel center via inverse affine
+        else:  # he — extract HE patch and warp to DAPI orientation
             if M_global2he is not None:
-                v = M_global2he @ np.array([cx_px, cy_px, 1.0])
-                # M_global2he : global (x, y, 1) -> HE (y, x, 1)
-                cy_he = v[0]; cx_he = v[1]
-                # scale: how much HE pixels per global pixel — use ratio of identity vector
-                v0 = M_global2he @ np.array([cx_px, cy_px, 1.0])
-                v1 = M_global2he @ np.array([cx_px + 1.0, cy_px, 1.0])
-                v2 = M_global2he @ np.array([cx_px, cy_px + 1.0, 1.0])
-                # HE displacement per global x step is (v1 - v0)
-                dxh_x = v1[1] - v0[1]; dyh_x = v1[0] - v0[0]
-                dxh_y = v2[1] - v0[1]; dyh_y = v2[0] - v0[0]
-                # average HE-pixels-per-global-pixel
-                scale = float(np.mean([np.hypot(dxh_x, dyh_x), np.hypot(dxh_y, dyh_y)]))
+                # Map the 4 corners of the desired DAPI-aligned patch into HE space
+                # to find the HE bounding box we need to read (with buffer for the warp).
+                corners_global = np.array([
+                    [cx_px - half, cy_px - half],
+                    [cx_px + half, cy_px - half],
+                    [cx_px + half, cy_px + half],
+                    [cx_px - half, cy_px + half],
+                ])
+                corners_he = np.empty_like(corners_global, dtype=np.float64)
+                for i, (gx, gy) in enumerate(corners_global):
+                    v = M_global2he @ np.array([gx, gy, 1.0])
+                    # M_global2he maps (x_g, y_g, 1) -> (y_he, x_he, 1); store as (x_he, y_he)
+                    corners_he[i] = (v[1], v[0])
+                buf = 4
+                x0_he = int(np.floor(corners_he[:, 0].min())) - buf
+                x1_he = int(np.ceil(corners_he[:, 0].max())) + buf
+                y0_he = int(np.floor(corners_he[:, 1].min())) - buf
+                y1_he = int(np.ceil(corners_he[:, 1].max())) + buf
             else:
-                cy_he = cy_px; cx_he = cx_px; scale = 1.0
-            half_he = int(round(half * scale))
-            sz_he = half_he * 2
-            y0, y1 = int(round(cy_he - half_he)), int(round(cy_he + half_he))
-            x0, x1 = int(round(cx_he - half_he)), int(round(cx_he + half_he))
-            y0c = max(0, y0); y1c = min(he_h, y1)
-            x0c = max(0, x0); x1c = min(he_w, x1)
-            he_chunk = np.asarray(he_zarr[:, y0c:y1c, x0c:x1c])  # (3, h, w) uint8
-            # Pad if near border
-            if he_chunk.shape[1] != sz_he or he_chunk.shape[2] != sz_he:
-                pad = np.zeros((3, sz_he, sz_he), dtype=he_chunk.dtype)
-                pad[:, (y0c - y0):(y0c - y0) + he_chunk.shape[1],
-                    (x0c - x0):(x0c - x0) + he_chunk.shape[2]] = he_chunk
+                # Identity affine — extract HE region directly at global coords.
+                x0_he = int(round(cx_px - half)); x1_he = int(round(cx_px + half))
+                y0_he = int(round(cy_px - half)); y1_he = int(round(cy_px + half))
+
+            x0c = max(0, x0_he); x1c = min(he_w, x1_he)
+            y0c = max(0, y0_he); y1c = min(he_h, y1_he)
+            he_chunk = np.asarray(he_zarr[:, y0c:y1c, x0c:x1c])  # (3, h, w)
+            target_h = y1_he - y0_he
+            target_w = x1_he - x0_he
+            if he_chunk.shape[1] != target_h or he_chunk.shape[2] != target_w:
+                pad = np.zeros((3, target_h, target_w), dtype=he_chunk.dtype)
+                pad[:, (y0c - y0_he):(y0c - y0_he) + he_chunk.shape[1],
+                    (x0c - x0_he):(x0c - x0_he) + he_chunk.shape[2]] = he_chunk
                 he_chunk = pad
-            # Resize HE patch to global pixel size for consistent display
-            patch_for_overlay = he_chunk.transpose(1, 2, 0)  # (h, w, 3)
-            if patch_for_overlay.shape[0] != sz or patch_for_overlay.shape[1] != sz:
-                from PIL import Image
-                pil = Image.fromarray(patch_for_overlay, mode="RGB")
-                pil = pil.resize((sz, sz), Image.BILINEAR)
-                patch_for_overlay = np.array(pil)
-            tl_x, tl_y = x0, y0
-            origin_in_he = True
+            he_region = he_chunk.transpose(1, 2, 0).copy()  # (H_r, W_r, 3) uint8
+
+            if M_global2he is not None:
+                # Build composite: patch coord (out_x, out_y, 1) -> HE region (x_r, y_r, 1)
+                # 1) patch -> global:    [out_x + (cx_px - half), out_y + (cy_px - half)]
+                # 2) global -> HE (x, y): swap rows of M_global2he so output is (x_he, y_he, 1)
+                # 3) HE -> region:       subtract (x0_he, y0_he)
+                T_p2g = np.array([
+                    [1.0, 0.0, cx_px - half],
+                    [0.0, 1.0, cy_px - half],
+                    [0.0, 0.0, 1.0],
+                ])
+                M_g2he_xy = np.array([
+                    [M_global2he[1, 0], M_global2he[1, 1], M_global2he[1, 2]],
+                    [M_global2he[0, 0], M_global2he[0, 1], M_global2he[0, 2]],
+                    [0.0, 0.0, 1.0],
+                ])
+                T_he2region = np.array([
+                    [1.0, 0.0, -x0_he],
+                    [0.0, 1.0, -y0_he],
+                    [0.0, 0.0, 1.0],
+                ])
+                T_combined = T_he2region @ M_g2he_xy @ T_p2g
+                M_2x3 = T_combined[:2, :].astype(np.float32)
+                patch_for_overlay = cv2.warpAffine(
+                    he_region, M_2x3, (sz, sz),
+                    flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                    borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0),
+                )
+            else:
+                patch_for_overlay = he_region
+                if patch_for_overlay.shape[0] != sz or patch_for_overlay.shape[1] != sz:
+                    patch_for_overlay = cv2.resize(patch_for_overlay, (sz, sz),
+                                                   interpolation=cv2.INTER_LINEAR)
+
+            # After warping, polygons can use the same DAPI-aligned local coord
+            # system as the DAPI branch — patch-local pixel = global pixel - top-left.
+            tl_x, tl_y = cx_px - half, cy_px - half
+            origin_in_he = False  # HE patch is now in DAPI-aligned coord space
 
         # ---- Find nuclei within the patch + their boundaries ----
         # Use pixel space search (DAPI/global coords), then transform overlay coords.
