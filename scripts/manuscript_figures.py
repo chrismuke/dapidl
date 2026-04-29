@@ -144,7 +144,10 @@ def fig1_modality_benchmark():
     ax.set_ylim(0, 0.92)
     ax.set_ylabel("score")
     ax.set_title("A. Three-way modality benchmark on STHELAR\n(1.26 M patches, 9 classes, 16 tissues)")
-    ax.legend(loc="upper left", frameon=False)
+    # Legend below the panel so it can't crowd the value annotations above
+    # the accuracy bars (which cluster at y ≈ 0.72–0.77).
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=3,
+              frameon=False)
     ax.grid(axis="y", alpha=0.25, linestyle=":")
 
     # Panel B — val macro F1 training curves
