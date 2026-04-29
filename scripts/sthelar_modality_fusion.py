@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import struct
 import time
 from pathlib import Path
@@ -36,6 +37,17 @@ from pathlib import Path
 import lmdb
 import numpy as np
 import torch
+
+
+# Graceful-stop flag — set on SIGINT/SIGTERM. The training loop checks this
+# at the end of every batch and exits cleanly with full state saved.
+_STOP_REQUESTED = False
+
+
+def _request_stop(signum, _frame):
+    global _STOP_REQUESTED
+    _STOP_REQUESTED = True
+    print(f"\n[signal] received signal {signum} — will stop after current batch and save state")
 import torch.nn as nn
 from loguru import logger
 from sklearn.metrics import f1_score, precision_recall_fscore_support
@@ -268,7 +280,12 @@ def main():
     ap.add_argument("--num-workers", type=int, default=6)
     ap.add_argument("--num-fusion-layers", type=int, default=2)
     ap.add_argument("--num-heads", type=int, default=8)
+    ap.add_argument("--resume", type=Path, default=None,
+                    help="Resume from a state.pt file (full state) or best_model.pt (weights only).")
     args = ap.parse_args()
+
+    signal.signal(signal.SIGTERM, _request_stop)
+    signal.signal(signal.SIGINT, _request_stop)
 
     args.output.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -323,9 +340,58 @@ def main():
     best_val_f1 = -1.0
     epochs_without_improvement = 0
     history = []
+    start_epoch = 0  # 0-indexed epoch to start from
+
+    # ---- resume from checkpoint ----
+    if args.resume is not None:
+        logger.info(f"resume: loading {args.resume}")
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt["model_state_dict"])
+        if "optimizer_state_dict" in ckpt:
+            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            logger.info("  restored optimizer state")
+        if "scheduler_state_dict" in ckpt:
+            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            logger.info("  restored scheduler state")
+        if "history" in ckpt:
+            history = list(ckpt["history"])
+        elif (args.output / "history.json").exists():
+            # Older best_model.pt doesn't embed history — fall back to side-car file.
+            with open(args.output / "history.json") as f:
+                history = json.load(f)
+            logger.info(f"  loaded history from history.json ({len(history)} epochs)")
+        if "best_val_f1" in ckpt:
+            best_val_f1 = float(ckpt["best_val_f1"])
+        elif "metrics" in ckpt and "val_macro_f1" in ckpt["metrics"]:
+            best_val_f1 = float(ckpt["metrics"]["val_macro_f1"])
+        if "epochs_without_improvement" in ckpt:
+            epochs_without_improvement = int(ckpt["epochs_without_improvement"])
+        # 1-indexed `epoch` field in ckpt = last completed epoch
+        last_epoch = int(ckpt.get("epoch", len(history)))
+        start_epoch = last_epoch
+        logger.info(f"  starting from epoch {start_epoch + 1} "
+                    f"(best_val_f1={best_val_f1:.4f}, "
+                    f"epochs_without_improvement={epochs_without_improvement})")
+
     t_start = time.time()
 
-    for epoch in range(args.epochs):
+    def _save_state(out_path: Path, epoch_completed: int):
+        """Save full training state for clean resume. epoch_completed is 1-indexed."""
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "epoch": epoch_completed,
+            "best_val_f1": best_val_f1,
+            "epochs_without_improvement": epochs_without_improvement,
+            "history": history,
+            "hparams": {"mode": "fusion", "num_classes": num_classes,
+                        "backbone_name": "efficientnetv2_rw_s",
+                        "num_fusion_layers": args.num_fusion_layers,
+                        "num_heads": args.num_heads},
+        }, out_path)
+
+    for epoch in range(start_epoch, args.epochs):
         model.train(True)
         train_loss, train_correct, train_total = 0.0, 0, 0
         t0 = time.time()
@@ -343,6 +409,17 @@ def main():
             if bi % 500 == 0:
                 logger.info(f"  epoch {epoch+1} [{bi}/{len(train_loader)}] "
                             f"loss={float(loss):.4f} acc={train_correct/max(1,train_total):.4f}")
+            if _STOP_REQUESTED:
+                # Mid-epoch stop: save state of the LAST completed epoch (epoch, 0-indexed in
+                # the loop, so we've completed `epoch` epochs already; the partial work in the
+                # current epoch is discarded) and exit cleanly.
+                logger.warning(f"stop requested mid-epoch at batch {bi}/{len(train_loader)} of "
+                               f"epoch {epoch+1}; saving state at last completed epoch={epoch}")
+                _save_state(args.output / "state.pt", epoch_completed=epoch)
+                with open(args.output / "history.json", "w") as f:
+                    json.dump(history, f, indent=2)
+                logger.info("state saved; exiting cleanly")
+                return
         scheduler.step()
         train_loss /= train_total
         train_acc = train_correct / train_total
@@ -383,6 +460,18 @@ def main():
             if epochs_without_improvement >= args.patience:
                 logger.info(f"early stopping (patience {args.patience} reached)")
                 break
+
+        # Save full state every epoch — this is what enables clean resume.
+        # We also write history.json after every epoch so a crash never loses it.
+        _save_state(args.output / "state.pt", epoch_completed=epoch + 1)
+        with open(args.output / "history.json", "w") as f:
+            json.dump(history, f, indent=2)
+
+        # Post-epoch stop check (in case the signal arrived between batches and we
+        # finished the epoch normally).
+        if _STOP_REQUESTED:
+            logger.info(f"stop requested after completing epoch {epoch+1}; exiting cleanly")
+            return
 
     logger.info(f"training done in {(time.time()-t_start)/60:.1f} min, best val f1={best_val_f1:.4f}")
     with open(args.output / "history.json", "w") as f:
