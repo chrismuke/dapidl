@@ -41,6 +41,25 @@ DAPI_NORM_STD = 0.229
 COARSE_NAMES = ["Endothelial", "Epithelial", "Immune", "Stromal"]
 
 
+def load_class_names(tier: str) -> list[str]:
+    """Load class names for the chosen tier."""
+    if tier == "coarse":
+        return COARSE_NAMES
+    import json
+    map_path = LMDB_DIR / f"class_mapping_{tier}.json"
+    if not map_path.exists():
+        raise SystemExit(f"missing {map_path} -- run derive_tier_labels.py --tier {tier}")
+    name_to_idx = json.loads(map_path.read_text())
+    return [n for n, _ in sorted(name_to_idx.items(), key=lambda kv: kv[1])]
+
+
+def load_labels(tier: str):
+    """Load label array for the chosen tier."""
+    import numpy as np
+    label_file = "labels.npy" if tier == "coarse" else f"labels_{tier}.npy"
+    return np.load(LMDB_DIR / label_file)
+
+
 def load_indices_for_sources(sources_to_keep):
     sources = np.load(LMDB_DIR / "sources.npy", allow_pickle=True)
     mask = np.isin(sources, sources_to_keep)
@@ -104,7 +123,7 @@ def class_weights(labels, n_classes, max_ratio=10.0):
     return torch.from_numpy((inv / inv.mean()).astype(np.float32))
 
 
-def score_loader(model, loader, device):
+def score_loader(model, loader, device, class_names):
     model.train(False)
     all_p, all_t = [], []
     with torch.no_grad():
@@ -119,10 +138,10 @@ def score_loader(model, loader, device):
     weighted_f1 = f1_score(t, p, average="weighted", zero_division=0)
     accuracy = (p == t).mean()
     pre, rec, f1, sup = precision_recall_fscore_support(
-        t, p, labels=list(range(len(COARSE_NAMES))), zero_division=0)
-    per_class = {COARSE_NAMES[k]: dict(precision=float(pre[k]), recall=float(rec[k]),
+        t, p, labels=list(range(len(class_names))), zero_division=0)
+    per_class = {class_names[k]: dict(precision=float(pre[k]), recall=float(rec[k]),
                                         f1=float(f1[k]), support=int(sup[k]))
-                 for k in range(len(COARSE_NAMES))}
+                 for k in range(len(class_names))}
     return dict(macro_f1=float(macro_f1), weighted_f1=float(weighted_f1),
                 accuracy=float(accuracy), per_class=per_class, n_eval=int(len(t)))
 
@@ -139,6 +158,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--num-workers", type=int, default=6)
     ap.add_argument("--val-frac", type=float, default=0.15)
+    ap.add_argument("--tier", choices=["coarse", "medium", "fine"], default="coarse")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -151,7 +171,9 @@ def main():
     train_pool = load_indices_for_sources(train_sources)
     if len(train_pool) == 0:
         raise SystemExit(f"No cells for train sources: {train_sources}")
-    labels_full = np.load(LMDB_DIR / "labels.npy")
+    class_names = load_class_names(args.tier)
+    labels_full = load_labels(args.tier)
+    logger.info(f"Tier: {args.tier}  ({len(class_names)} classes)")
     pool_labels = labels_full[train_pool]
     train_idx, val_idx = train_test_split(
         train_pool, test_size=args.val_frac, stratify=pool_labels, random_state=args.seed)
@@ -160,7 +182,7 @@ def main():
     logger.info(f"Train sources: {train_sources}  ->  {len(train_idx):,} train + {len(val_idx):,} val")
     logger.info(f"Train class dist: {dict(zip(*np.unique(train_labels, return_counts=True)))}")
 
-    weights_per_cell = class_weights(train_labels, len(COARSE_NAMES))[train_labels]
+    weights_per_cell = class_weights(train_labels, len(class_names))[train_labels]
     sampler = WeightedRandomSampler(weights_per_cell, num_samples=len(train_idx), replacement=True)
     train_loader = DataLoader(DapiPatchDataset(train_idx, augment=True),
                               batch_size=args.batch_size, sampler=sampler,
@@ -170,8 +192,8 @@ def main():
                             num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = DapiClassifier(len(COARSE_NAMES)).to(device)
-    cw = class_weights(train_labels, len(COARSE_NAMES)).to(device)
+    model = DapiClassifier(len(class_names)).to(device)
+    cw = class_weights(train_labels, len(class_names)).to(device)
     crit = nn.CrossEntropyLoss(weight=cw)
     opt = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     sched = CosineAnnealingWarmRestarts(opt, T_0=5, T_mult=2)
@@ -195,7 +217,7 @@ def main():
             running += loss.item() * x.size(0); n += x.size(0)
         sched.step()
         train_loss = running / n
-        val = score_loader(model, val_loader, device)
+        val = score_loader(model, val_loader, device, class_names)
         history.append(dict(epoch=epoch, train_loss=train_loss, **val))
         logger.info(f"epoch {epoch:>2d}  train_loss={train_loss:.3f}  val_F1={val['macro_f1']:.3f}  val_acc={val['accuracy']:.3f}")
         if val["macro_f1"] > best_val_f1:
@@ -218,18 +240,19 @@ def main():
         loader = DataLoader(DapiPatchDataset(idx, augment=False),
                             batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True)
-        m = score_loader(model, loader, device)
+        m = score_loader(model, loader, device, class_names)
         per_test_results[ts] = m
         logger.info(f"TEST {ts:35s} n={m['n_eval']:>7d}  macro_F1={m['macro_f1']:.3f}  acc={m['accuracy']:.3f}")
 
     summary = dict(
+        tier=args.tier,
         train_sources=train_sources, test_sources=test_sources,
         n_train=int(len(train_idx)), n_val=int(len(val_idx)),
         best_epoch=int(best_epoch), best_val_macro_f1=float(best_val_f1),
         train_time_s=float(train_time),
-        train_class_dist={COARSE_NAMES[int(k)]: int(v)
+        train_class_dist={class_names[int(k)]: int(v)
                           for k, v in zip(*np.unique(train_labels, return_counts=True))},
-        per_test=per_test_results, class_names=COARSE_NAMES, epochs_run=len(history),
+        per_test=per_test_results, class_names=class_names, epochs_run=len(history),
     )
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2))
     (args.output / "history.json").write_text(json.dumps(history, indent=2))
