@@ -407,6 +407,161 @@ GT_STHELAR: dict[str, str] = {
     "Fibroblast": "CL:0000057",  # Fibroblast
     "Endothelial": "CL:0000115",  # Endothelial cell
     "Adipocyte": "CL:0000136",  # Adipocyte
+
+    # === STHELAR ct_tangram fine-grained labels (May 2026 patch) ===
+    # These are exact-match overrides for labels that the pattern matcher
+    # would otherwise miss or mis-route. Targets: drop unmapped from 24.8% → <5%.
+
+    # --- Tonsil / lymphoid B-cell subtypes (germinal center biology) ---
+    "Naive B": "CL:0001201",  # Naive B cell
+    "Pre-GC B": "CL:0000236",  # B cell (pre-germinal center)
+    "LZ B": "CL:0000844",  # Light zone GC B → germinal center B
+    "DZ/LZ B": "CL:0000844",  # GC B
+    "S phase DZ B": "CL:0000844",  # Cycling GC B
+    "G2M DZ B": "CL:0000844",
+    "Histone high S phase DZ B": "CL:0000844",
+    "PIF1+ G2M DZ B": "CL:0000844",
+    "Light zone GC B cell": "CL:0000844",
+    "Dark zone GC B cell": "CL:0000844",
+    "Nonproliferative GC B": "CL:0000844",
+    "GC committed cell": "CL:0000844",
+    "INF responsed naive B": "CL:0001201",
+    "preB cell (cycling)": "CL:0000817",  # pre-B-I cell
+    "preB cell": "CL:0000817",
+    "Cycling preB cell": "CL:0000817",
+    "proB cell": "CL:0000826",  # pro-B cell
+    "ProB cell": "CL:0000826",
+    "proB cell (cycling)": "CL:0000826",
+
+    # --- Tonsil / lymphoid follicular DC + mreg DC ---
+    "Light zone follicular DC": "CL:0000442",  # follicular dendritic cell
+    "Dark zone follicular DC": "CL:0000442",
+    "mregDC": "CL:0001056",  # mature/migratory regulatory DC ≈ lymphoid DC
+
+    # --- T cell variants ---
+    "Tfh": "CL:0002038",  # T follicular helper cell
+    "Proliferation T": "CL:0000084",
+    "Proliferation T/NK": "CL:0000084",
+    "Double negative T": "CL:0000084",  # DN T → T cell
+    "Double positive T cell": "CL:0000084",  # DP thymocyte
+    "Cycling DP T cell": "CL:0000084",
+    "MAIT": "CL:0000940",  # mucosal-associated invariant T
+    "IFN-activated T cell": "CL:0000084",
+
+    # --- NK variants ---
+    "CD56 NK": "CL:0000938",
+    "CD56+ NK": "CL:0000938",
+    "INF responsed CD56 NK": "CL:0000938",
+    "CD16 NK": "CL:0000939",
+    "CD16+ NK": "CL:0000939",
+
+    # --- ILC ---
+    "ILC": "CL:0001065",  # innate lymphoid cell
+
+    # --- Myeloid catch-alls ---
+    "Myeloid": "CL:0000766",
+    "Granulocyte": "CL:0000094",
+    "Alveolar macrophage": "CL:0000583",
+    "Osteoclast": "CL:0000092",
+    "cDC2 (cycling)": "CL:0002399",
+    "Cycling cDC2": "CL:0002399",
+    "S phase myeloid cell": "CL:0000766",
+    "G2/M phase myeloid cell": "CL:0000766",
+    "Proliferation myeloid cell": "CL:0000766",
+    "Myelocyte": "CL:0002193",
+    "Promyelocyte": "CL:0000836",
+    "Megakaryocyte": "CL:0000556",
+
+    # --- Hematopoietic progenitors ---
+    "HSC": "CL:0000037",
+    "MPP": "CL:0000837",  # multipotent progenitor
+    "CMP": "CL:0000049",
+    "Common myeloid progenitor": "CL:0000049",
+    "GMP": "CL:0000557",
+    "MEP": "CL:0000050",
+    "CLP": "CL:0000051",
+    "Common lymphoid progenitor": "CL:0000051",
+    "CDP": "CL:0001029",  # common DC progenitor
+    "Megakaryocyte progenitor": "CL:0000556",
+
+    # --- Erythroid lineage ---
+    "Red blood cell": "CL:0000232",
+    "Erythrocyte": "CL:0000232",
+    "Fetal HBG+ erythrocyte": "CL:0000232",
+    "Late hemoglobin+ erythroblast": "CL:0000765",  # erythroblast
+    "Cycling late hemoglobin+ erythroblast": "CL:0000765",
+    "Intermediate EPCAM+ erythroblast": "CL:0000765",
+    "Early SOX4+ erythroblast": "CL:0000765",
+
+    # --- Brain / neural (uses existing CL terms in DB) ---
+    "Pyramidal neuron": "CL:0002608",  # hippocampal pyramidal
+    "TSHZ2 L4/5 excitatory neuron": "CL:0000679",
+    "PLCH1 L4/5 excitatory neuron": "CL:0000679",
+    "ETV1+ neuron": "CL:0000679",
+    "BNC2+ neuron": "CL:0000540",  # generic neuron
+    "CXCL14 inhibitory neuron": "CL:0000617",
+    "Neuroblast": "CL:0000540",
+    "Protoplasmic astrocyte": "CL:0000127",
+    "Fibrous astrocyte": "CL:0000127",
+    "Glia": "CL:0000125",  # generic glial cell
+    "Glial cell": "CL:0000125",
+    "Glia progenitor": "CL:0000125",
+    "S phase glial cell": "CL:0000125",
+    "G2/M phase glial cell": "CL:0000125",
+    "MBP+MAL+AATK+ glial cell": "CL:0000128",  # MBP+ → oligodendrocyte
+    "APOE+BCAN+ glial cell": "CL:0000127",  # APOE+ → astrocyte
+    "CRYAB+PLAT+ glial cell": "CL:0000125",
+
+    # --- Pancreatic / endocrine islet cells (epithelial lineage) ---
+    "Acinar cell": "CL:0000622",  # acinar cell of pancreas
+    "Beta cell": "CL:0000169",
+    "Alpha cell": "CL:0000171",
+    "Delta cell": "CL:0000173",
+    "Epsilon cell": "CL:0005019",
+    "PP cell": "CL:0002275",  # pancreatic PP cell
+    "Neuroendocrine cell": "CL:0000165",
+    "Enteroendocrine cell": "CL:0000164",
+    "TUBA1A ductal cell": "CL:0002079",  # pancreatic ductal cell
+    "TFF1 ductal cell": "CL:0002079",
+
+    # --- Reproductive / mammary ---
+    "Lactocyte": "CL:0002325",  # luminal mammary cell (lactating)
+    "Granulosa cell": "CL:0000501",
+    "Steroidogenesis granulosa cell": "CL:0000501",
+
+    # --- Tonsillar / GI epithelial subtypes ---
+    "Tonsillar crypt": "CL:0000066",  # tonsil crypt epithelium
+    "Microfold cell": "CL:0000868",  # M cell of gut
+    "Paneth cell": "CL:0000510",
+    "Secretory cell": "CL:0000151",
+    "Intestinal stem cell": "CL:0002088",
+    "S phase transit-amplifying cell": "CL:0009010",  # transit amplifying
+    "G2/M phase transit-amplifying cell": "CL:0009010",
+    "Type A intercalated cell": "CL:0002201",  # kidney intercalated cell
+    "Type B intercalated cell": "CL:0002202",
+    "Cycling AT2": "CL:0002063",  # AT2 pneumocyte
+    "Aerocyte": "CL:0000115",  # aerocyte capillary EC
+
+    # --- Stromal / mesenchymal misc ---
+    "Mesodermal cell": "CL:0000499",
+    "Cycling mesodermal cell": "CL:0000499",
+    "ACTG2+ contractile VSMC": "CL:0000192",
+    "Podocyte": "CL:0000653",
+    "Melanocyte": "CL:0000148",
+
+    # --- Cardiac (heart_s0 only) ---
+    "Ventricular cardiomyocyte": "CL:0000746",  # cardiac muscle cell
+    "Atrial cardiomyocyte": "CL:0000746",
+    "Fetal ventricular cardiomyocyte": "CL:0000746",
+    "Endocardial cell": "CL:0000115",  # endocardial = endothelial subtype
+
+    # --- Cancer / unknown buckets ---
+    # Malignant + Ovarian cancer EMT cell are tumor — route to epithelial as
+    # most carcinomas are epithelial-origin (matches Janesick GT convention).
+    "Malignant": "CL:0000066",
+    "Ovarian cancer specific EMT cell": "CL:0000066",
+    # "Proliferation unknown" — intentionally LEFT UNMAPPED (truly ambiguous,
+    # could be any compartment; ~96K cells, see report)
 }
 
 # Common pathology terms

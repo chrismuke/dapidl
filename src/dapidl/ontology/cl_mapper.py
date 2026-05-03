@@ -298,35 +298,141 @@ class CLMapper:
         Macro-IFN (interferon-stimulated), etc.
         """
         patterns = [
-            # T cells - enhanced for memory/effector subtypes
+            # ==== ORDER MATTERS: most specific first ====
+
+            # --- B-cell GC subtypes (must precede generic B) ---
+            # Tonsil germinal center B cells: "DZ B", "LZ B", "GC B", "Pre-GC B"
+            (r"\b(dz|lz|gc)\b.*\bb\b|germinal.*center.*b|gc.*b\s*cell|nonproliferative.*gc", "CL:0000844"),
+            # Pre-B / pro-B (precursor lineage)
+            (r"\bpre[\s_-]*b\b|\bpreb\b|precursor.*b", "CL:0000817"),
+            (r"\bpro[\s_-]*b\b|\bprob\b", "CL:0000826"),
+
+            # --- T-cell subtypes (specific before generic) ---
+            # T follicular helper
+            (r"\btfh\b|t.*follicular.*helper|follicular.*helper.*t", "CL:0002038"),
+            # MAIT
+            (r"\bmait\b|mucosal.*invariant", "CL:0000940"),
             # CD4+ T cells: CD4-Tem, CD4-Th, CD4-naive, CD4_naive/CM
             (r"cd4.*t|cd4.*(tem|th|naive|cm|em|trm)|t.*cd4|helper.*t|th\d*\s*cell", "CL:0000624"),
             # CD8+ T cells: CD8-Tem, CD8-Trm, CD8_EM, CD8_TRM/EM, Activated CD8 T
             (r"cd8.*t|cd8.*(tem|tmem|trm|em|activated)|t.*cd8|cytotoxic.*t|ctl\b|activated.*cd8", "CL:0000625"),
             (r"\btreg\b|regulatory.*t", "CL:0000815"),
             (r"\bnkt\b|nk.*t\s*cell", "CL:0000814"),  # NKT cells
-            (r"thymocyte|double.*positive.*thymocyte", "CL:0000084"),  # Thymocytes
-            (r"^t\s*cell$|^t-cell$|t.*lymphocyte", "CL:0000084"),
-            # B cells - enhanced for memory subtypes
+            (r"double.*positive.*thymocyte|double.*positive.*t|^dp[\s_-].*t|cycling.*dp.*t", "CL:0000084"),
+            (r"double.*negative.*t|^dn[\s_-].*t", "CL:0000084"),
+            (r"thymocyte", "CL:0000084"),
+            # IFN-activated / proliferation T (catch-all → T cell)
+            (r"ifn.*activated.*t|inf.*responsed.*t|proliferation.*t\b|prolif.*t\s*cell", "CL:0000084"),
+            (r"^t\s*cell$|^t-cell$|t.*lymphocyte|^t$", "CL:0000084"),
+
+            # --- B cells - enhanced for memory subtypes ---
             (r"plasma.*cell|plasmacyte|plasma_", "CL:0000786"),
             (r"bmem|memory.*b", "CL:0000787"),  # Memory B cells
-            (r"^b\s*cell$|^b-cell$|b.*lymphocyte", "CL:0000236"),
-            # Myeloid - enhanced for macrophage/monocyte subtypes
+            (r"naive.*b|inf.*responsed.*naive.*b", "CL:0001201"),
+            (r"^b\s*cell$|^b-cell$|b.*lymphocyte|^b$", "CL:0000236"),
+
+            # --- NK variants ---
+            # CD56 NK / CD56+ NK / INF-responsed CD56 NK → CD56-bright NK
+            (r"cd56.*nk", "CL:0000938"),
+            # CD16 NK / CD16+ NK → CD56-dim NK
+            (r"cd16.*nk", "CL:0000939"),
+            # ILC (innate lymphoid) — must be before generic NK/NK-ILC pattern
+            (r"^ilc$|innate.*lymphoid", "CL:0001065"),
+            # NK/ILC general
+            (r"\bnk\s*cell|\bnatural\s*killer|\bnk[-_]ilc|\bilc\b|^nk$", "CL:0000623"),
+
+            # --- Myeloid ---
+            # Alveolar macrophage (specific before generic macrophage)
+            (r"alveolar.*macrophage|alveolar.*mph", "CL:0000583"),
             # Macrophages: Macro-IFN, Macro_interstitial, Macro_intravascular
             (r"macrophage|macro[-_]|histiocyte|\bm[12φ]\b", "CL:0000235"),
+            # Osteoclast
+            (r"osteoclast", "CL:0000092"),
             # Monocytes: Mono-non-classical, Mono-classical
             (r"monocyte|mono[-_]", "CL:0000576"),
-            # Myeloid proliferating
-            (r"mye[-_]prol|myeloid.*prol", "CL:0000766"),
-            # Dendritic cells: DC_1, DC_2, DC_activated
+            # Granulocytes / myelocytes
+            (r"\bgranulocyte\b", "CL:0000094"),
+            (r"promyelocyte", "CL:0000836"),
+            (r"\bmyelocyte\b", "CL:0002193"),
+            # Megakaryocyte
+            (r"megakaryocyte", "CL:0000556"),
+            # Myeloid proliferating + general myeloid
+            (r"mye[-_]prol|myeloid.*prol|prolif.*myeloid|s\s*phase.*myeloid|g2.*phase.*myeloid|^myeloid$", "CL:0000766"),
+            # Dendritic cells: DC_1, DC_2, DC_activated, follicular DC, mregDC
+            (r"follicular.*dc|\bfdc\b", "CL:0000442"),
+            (r"mreg\s*dc|mature.*reg.*dc|migratory.*reg.*dc", "CL:0001056"),
+            (r"cycling.*cdc|cdc.*cycling", "CL:0002399"),
             (r"dendritic|^dc$|^dc_\d|dc_activated|\bcdc\b|\bpdc\b", "CL:0000451"),
             (r"mast.*cell|mastocyte", "CL:0000097"),
             (r"neutrophil|\bpmn\b", "CL:0000775"),
-            # NK/ILC - enhanced, careful to avoid "unknown"
-            (r"\bnk\s*cell|\bnatural\s*killer|\bnk[-_]ilc|\bilc\b", "CL:0000623"),
-            # Lymphocyte general
+
+            # --- Hematopoietic progenitors ---
+            (r"\bhsc\b|hematopoietic.*stem", "CL:0000037"),
+            (r"\bmpp\b|multipotent.*progenitor", "CL:0000837"),
+            (r"\bcmp\b|common.*myeloid.*progenitor", "CL:0000049"),
+            (r"\bgmp\b|granulocyte.*monocyte.*progenitor", "CL:0000557"),
+            (r"\bmep\b|megakaryocyte.*erythroid", "CL:0000050"),
+            (r"\bclp\b|common.*lymphoid.*progenitor", "CL:0000051"),
+            (r"\bcdp\b|common.*dendritic.*progenitor", "CL:0001029"),
+
+            # --- Erythroid ---
+            (r"erythroblast|erythroid", "CL:0000765"),
+            (r"erythrocyte|red.*blood.*cell|\brbc\b", "CL:0000232"),
+
+            # --- Lymphocyte general ---
             (r"lymphocyte", "CL:0000542"),
-            # Epithelial - enhanced for specialized types
+
+            # --- Neural / glia (specific first) ---
+            (r"protoplasmic.*astrocyte|fibrous.*astrocyte|astrocyte|\bastro\b", "CL:0000127"),
+            (r"oligodendrocyte|\boligo\b|mbp.*glial", "CL:0000128"),
+            (r"microglia|microglial", "CL:0000129"),
+            # Hippocampal pyramidal / generic pyramidal neuron
+            (r"pyramidal.*neuron|hippocampal.*neuron|ca\d.*pros", "CL:0002608"),
+            # Cortical excitatory / glutamatergic
+            (r"excitatory.*neuron|glutamatergic|granule.*cell|\bglut\b", "CL:0000679"),
+            # Inhibitory / GABAergic
+            (r"inhibitory.*neuron|gabaergic|interneuron|\bgaba\b", "CL:0000617"),
+            # Glia (catch-all): "Glia", "Glial cell", "S phase glial cell", "APOE+BCAN+ glial cell"
+            (r"\bglia\b|glial.*cell|glia.*progenitor|glial.*progenitor", "CL:0000125"),
+            # Generic neuron / neuroblast / specific marker neurons (BNC2+, ETV1+, etc.)
+            (r"neuroblast|^neuron$|\bneuron\b", "CL:0000540"),
+
+            # --- Pancreatic / endocrine islet ---
+            (r"acinar.*cell", "CL:0000622"),
+            (r"\bbeta\s*cell\b|pancreatic.*beta", "CL:0000169"),
+            (r"\balpha\s*cell\b|pancreatic.*alpha", "CL:0000171"),
+            (r"\bdelta\s*cell\b|somatostatin.*cell", "CL:0000173"),
+            (r"\bepsilon\s*cell\b|ghrelin.*cell", "CL:0005019"),
+            (r"\bpp\s*cell\b|pancreatic.*polypeptide", "CL:0002275"),
+            (r"neuroendocrine.*cell", "CL:0000165"),
+            (r"enteroendocrine", "CL:0000164"),
+            (r"ductal.*cell|pancreatic.*duct", "CL:0002079"),
+
+            # --- Reproductive / mammary ---
+            (r"granulosa", "CL:0000501"),
+            (r"lactocyte|lactating.*luminal", "CL:0002325"),
+
+            # --- Cardiac ---
+            (r"cardiomyocyte|cardiac.*muscle", "CL:0000746"),
+            (r"endocardial", "CL:0000115"),  # endocardial = endothelium
+
+            # --- Specialised epithelial ---
+            (r"microfold.*cell|\bm\s*cell\b", "CL:0000868"),
+            (r"paneth.*cell", "CL:0000510"),
+            (r"intestinal.*stem|\bisc\b", "CL:0002088"),
+            (r"transit.*amplifying|^ta\s*cell$", "CL:0009010"),
+            (r"type.*a.*intercalated|alpha.*intercalated", "CL:0002201"),
+            (r"type.*b.*intercalated|beta.*intercalated", "CL:0002202"),
+            (r"podocyte|glomerular.*epithelial", "CL:0000653"),
+            (r"melanocyte", "CL:0000148"),
+            (r"^secretory\s*cell$|secretory.*cell$", "CL:0000151"),
+            (r"tonsillar.*crypt|tonsil.*crypt|crypt.*epithelial", "CL:0000066"),
+            # Cycling AT2
+            (r"cycling.*at2|at2.*cycling", "CL:0002063"),
+            # Aerocyte (lung capillary EC)
+            (r"aerocyte", "CL:0000115"),
+
+            # --- Epithelial - enhanced for specialized types ---
             (r"epithelial|epithelium", "CL:0000066"),
             # Luminal: LummHR-SCGB, Lumsec-prol
             (r"luminal|lumm|lumsec", "CL:0002325"),
@@ -340,14 +446,20 @@ class CLMapper:
             (r"goblet", "CL:0000160"),
             (r"club|secretory.*club", "CL:0000158"),
             (r"tuft", "CL:0002204"),
-            # Stromal - enhanced for subtypes
+
+            # --- Tumor / cancer (route to epithelial; matches Janesick GT) ---
+            (r"malignant|tumor|carcinoma|emt.*cell", "CL:0000066"),
+
+            # --- Stromal - enhanced for subtypes ---
             (r"fibroblast|fibro[-_]", "CL:0000057"),
             (r"myofibroblast", "CL:0000186"),
-            (r"smooth.*muscle|\bsmc\b", "CL:0000192"),
+            (r"smooth.*muscle|\bvsmc\b|\bsmc\b|contractile.*vsmc", "CL:0000192"),
             (r"pericyte|mural.*cell", "CL:0000669"),
             (r"adipocyte|fat.*cell", "CL:0000136"),
+            (r"mesodermal.*cell|mesoderm", "CL:0000499"),
             (r"stromal|stroma", "CL:0000499"),
-            # Endothelial - enhanced for EC abbreviations
+
+            # --- Endothelial - enhanced for EC abbreviations ---
             # Mature venous EC, cycling EC, Endothelia_Lymphatic
             (r"endotheli|endothelium|venous.*ec|cycling.*ec|\bec\b", "CL:0000115"),
             (r"lymphatic.*endotheli|\blec\b", "CL:0002138"),

@@ -638,6 +638,252 @@ FINE_TERMS = {
         level=HierarchyLevel.FINE,
         markers=["CD3D", "NCAM1", "KLRB1"],
     ),
+
+    # === STHELAR ct_tangram extensions (May 2026 patch) ===========
+    # Added so ancestry-walk resolves these new IDs to a super-coarse
+    # compartment via get_broad_category() and _walk_to_target().
+
+    # --- B-cell lineage extensions ---
+    "CL:0000844": CLTerm(
+        "CL:0000844", "germinal center B cell",
+        ["GC B cell", "centroblast", "centrocyte"],
+        parent_id="CL:0000236", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000817": CLTerm(
+        "CL:0000817", "precursor B cell",
+        ["pre-B cell", "pre-B-I cell", "preB cell"],
+        parent_id="CL:0000236", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000826": CLTerm(
+        "CL:0000826", "pro-B cell",
+        ["proB cell", "ProB cell"],
+        parent_id="CL:0000236", level=HierarchyLevel.FINE,
+    ),
+
+    # --- DC subtypes ---
+    "CL:0000442": CLTerm(
+        "CL:0000442", "follicular dendritic cell",
+        ["FDC", "follicular DC"],
+        parent_id="CL:0000451", level=HierarchyLevel.FINE,
+    ),
+
+    # --- T-cell subtypes ---
+    "CL:0002038": CLTerm(
+        "CL:0002038", "T follicular helper cell",
+        ["Tfh", "follicular helper T"],
+        parent_id="CL:0000624", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000940": CLTerm(
+        "CL:0000940", "mucosal invariant T cell",
+        ["MAIT", "MAIT cell"],
+        parent_id="CL:0000084", level=HierarchyLevel.FINE,
+    ),
+
+    # --- ILC ---
+    "CL:0001065": CLTerm(
+        "CL:0001065", "innate lymphoid cell",
+        ["ILC"],
+        parent_id="CL:0000542", level=HierarchyLevel.FINE,
+    ),
+
+    # --- Granulocyte / specialised myeloid ---
+    "CL:0000094": CLTerm(
+        "CL:0000094", "granulocyte",
+        ["polymorphonuclear leukocyte"],
+        parent_id="CL:0000766", level=HierarchyLevel.MEDIUM,
+    ),
+    "CL:0000583": CLTerm(
+        "CL:0000583", "alveolar macrophage",
+        ["AM"],
+        parent_id="CL:0000235", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000092": CLTerm(
+        "CL:0000092", "osteoclast",
+        [],
+        parent_id="CL:0000766", level=HierarchyLevel.FINE,
+    ),
+    "CL:0002193": CLTerm(
+        "CL:0002193", "myelocyte",
+        [],
+        parent_id="CL:0000766", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000836": CLTerm(
+        "CL:0000836", "promyelocyte",
+        [],
+        parent_id="CL:0000766", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000556": CLTerm(
+        "CL:0000556", "megakaryocyte",
+        ["MK", "megakaryocyte progenitor"],
+        parent_id="CL:0000766", level=HierarchyLevel.FINE,
+    ),
+
+    # --- Hematopoietic progenitors (all roll up to leukocyte) ---
+    "CL:0000037": CLTerm(
+        "CL:0000037", "hematopoietic stem cell",
+        ["HSC"],
+        parent_id="CL:0000738", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000837": CLTerm(
+        "CL:0000837", "hematopoietic multipotent progenitor cell",
+        ["MPP"],
+        parent_id="CL:0000037", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000049": CLTerm(
+        "CL:0000049", "common myeloid progenitor",
+        ["CMP"],
+        parent_id="CL:0000766", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000557": CLTerm(
+        "CL:0000557", "granulocyte monocyte progenitor cell",
+        ["GMP"],
+        parent_id="CL:0000766", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000050": CLTerm(
+        "CL:0000050", "megakaryocyte-erythroid progenitor cell",
+        ["MEP"],
+        parent_id="CL:0000766", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000051": CLTerm(
+        "CL:0000051", "common lymphoid progenitor",
+        ["CLP"],
+        parent_id="CL:0000542", level=HierarchyLevel.FINE,
+    ),
+    "CL:0001029": CLTerm(
+        "CL:0001029", "common dendritic progenitor",
+        ["CDP"],
+        parent_id="CL:0000451", level=HierarchyLevel.FINE,
+    ),
+
+    # --- Erythroid lineage (rolls up via leukocyte for CL ancestry,
+    # which still routes to Immune in DAPIDL super-coarse) ---
+    "CL:0000232": CLTerm(
+        "CL:0000232", "erythrocyte",
+        ["red blood cell", "RBC"],
+        parent_id="CL:0000738", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000765": CLTerm(
+        "CL:0000765", "erythroblast",
+        ["nucleated red blood cell"],
+        parent_id="CL:0000232", level=HierarchyLevel.FINE,
+    ),
+
+    # --- Glia ---
+    "CL:0000125": CLTerm(
+        "CL:0000125", "glial cell",
+        ["glia"],
+        parent_id="CL:0000540", level=HierarchyLevel.MEDIUM,  # → Neural
+    ),
+
+    # --- Pancreas / endocrine (epithelial lineage) ---
+    "CL:0000622": CLTerm(
+        "CL:0000622", "acinar cell",
+        ["pancreatic acinar cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000169": CLTerm(
+        "CL:0000169", "type B pancreatic cell",
+        ["beta cell", "pancreatic beta cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000171": CLTerm(
+        "CL:0000171", "pancreatic A cell",
+        ["alpha cell", "pancreatic alpha cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000173": CLTerm(
+        "CL:0000173", "pancreatic D cell",
+        ["delta cell", "somatostatin cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0005019": CLTerm(
+        "CL:0005019", "pancreatic epsilon cell",
+        ["epsilon cell", "ghrelin cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0002275": CLTerm(
+        "CL:0002275", "pancreatic PP cell",
+        ["PP cell", "F cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000165": CLTerm(
+        "CL:0000165", "neuroendocrine cell",
+        [],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000164": CLTerm(
+        "CL:0000164", "enteroendocrine cell",
+        [],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0002079": CLTerm(
+        "CL:0002079", "pancreatic ductal cell",
+        ["ductal cell", "pancreatic duct cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+
+    # --- Reproductive ---
+    "CL:0000501": CLTerm(
+        "CL:0000501", "granulosa cell",
+        [],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,  # ovary epithelial
+    ),
+
+    # --- GI / specialised epithelial ---
+    "CL:0000868": CLTerm(
+        "CL:0000868", "intestinal microfold cell",
+        ["M cell", "microfold cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000510": CLTerm(
+        "CL:0000510", "paneth cell",
+        [],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0000151": CLTerm(
+        "CL:0000151", "secretory cell",
+        [],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0002088": CLTerm(
+        "CL:0002088", "intestinal stem cell",
+        ["ISC"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0009010": CLTerm(
+        "CL:0009010", "transit amplifying cell",
+        ["TA cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0002201": CLTerm(
+        "CL:0002201", "renal alpha-intercalated cell",
+        ["type A intercalated cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+    "CL:0002202": CLTerm(
+        "CL:0002202", "renal beta-intercalated cell",
+        ["type B intercalated cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,
+    ),
+
+    # --- Other stromal / mesenchymal ---
+    "CL:0000653": CLTerm(
+        "CL:0000653", "podocyte",
+        ["glomerular epithelial cell"],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,  # actually epithelial
+    ),
+    "CL:0000148": CLTerm(
+        "CL:0000148", "melanocyte",
+        [],
+        parent_id="CL:0000066", level=HierarchyLevel.FINE,  # epithelial-derived
+    ),
+
+    # --- Cardiomyocyte (treated as Stromal/muscle compartment) ---
+    "CL:0000746": CLTerm(
+        "CL:0000746", "cardiac muscle cell",
+        ["cardiomyocyte"],
+        parent_id="CL:0000499", level=HierarchyLevel.FINE,
+    ),
 }
 
 
