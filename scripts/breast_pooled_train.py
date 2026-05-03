@@ -67,8 +67,16 @@ def load_indices_for_sources(sources_to_keep):
 
 
 class DapiPatchDataset(Dataset):
-    def __init__(self, indices, augment=False):
+    """LMDB-backed DAPI patch dataset.
+
+    Labels come from an external array (one entry per global LMDB index), not
+    the LMDB header. The first 8 bytes of each LMDB value (a stale coarse-class
+    label written at LMDB build time) are skipped.
+    """
+
+    def __init__(self, indices, labels, augment=False):
         self.indices = indices
+        self.labels = labels  # external label per global LMDB index
         self.augment = augment
         self.env = None
 
@@ -82,10 +90,11 @@ class DapiPatchDataset(Dataset):
     def __getitem__(self, i):
         if self.env is None:
             self._open()
-        key = struct.pack(">Q", int(self.indices[i]))
+        global_idx = int(self.indices[i])
+        key = struct.pack(">Q", global_idx)
         with self.env.begin() as txn:
             value = txn.get(key)
-        label = np.frombuffer(value[:8], dtype=np.int64)[0]
+        label = int(self.labels[global_idx])
         patch = np.frombuffer(value[8:], dtype=np.uint16).reshape(128, 128)
         img = patch.astype(np.float32) / 65535.0
         if self.augment:
@@ -168,12 +177,20 @@ def main():
     train_sources = args.train_sources.split(",")
     test_sources = args.test_sources.split(",")
 
-    train_pool = load_indices_for_sources(train_sources)
-    if len(train_pool) == 0:
-        raise SystemExit(f"No cells for train sources: {train_sources}")
     class_names = load_class_names(args.tier)
     labels_full = load_labels(args.tier)
     logger.info(f"Tier: {args.tier}  ({len(class_names)} classes)")
+
+    train_pool = load_indices_for_sources(train_sources)
+    if len(train_pool) == 0:
+        raise SystemExit(f"No cells for train sources: {train_sources}")
+    # Drop cells whose label is -1 (less10/Unknown/unmapped)
+    n_before = len(train_pool)
+    train_pool = train_pool[labels_full[train_pool] != -1]
+    n_dropped = n_before - len(train_pool)
+    if n_dropped:
+        logger.info(f"Dropped {n_dropped:,} cells ({100*n_dropped/n_before:.1f}%) with label=-1 from train pool")
+
     pool_labels = labels_full[train_pool]
     train_idx, val_idx = train_test_split(
         train_pool, test_size=args.val_frac, stratify=pool_labels, random_state=args.seed)
@@ -184,10 +201,10 @@ def main():
 
     weights_per_cell = class_weights(train_labels, len(class_names))[train_labels]
     sampler = WeightedRandomSampler(weights_per_cell, num_samples=len(train_idx), replacement=True)
-    train_loader = DataLoader(DapiPatchDataset(train_idx, augment=True),
+    train_loader = DataLoader(DapiPatchDataset(train_idx, labels_full, augment=True),
                               batch_size=args.batch_size, sampler=sampler,
                               num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
-    val_loader = DataLoader(DapiPatchDataset(val_idx, augment=False),
+    val_loader = DataLoader(DapiPatchDataset(val_idx, labels_full, augment=False),
                             batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
 
@@ -234,10 +251,11 @@ def main():
     per_test_results = {}
     for ts in test_sources:
         idx = load_indices_for_sources([ts])
+        idx = idx[labels_full[idx] != -1]  # drop -1 cells from test too
         if len(idx) == 0:
             logger.warning(f"  {ts}: no cells")
             continue
-        loader = DataLoader(DapiPatchDataset(idx, augment=False),
+        loader = DataLoader(DapiPatchDataset(idx, labels_full, augment=False),
                             batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True)
         m = score_loader(model, loader, device, class_names)
