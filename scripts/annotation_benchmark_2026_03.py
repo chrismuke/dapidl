@@ -168,14 +168,29 @@ def load_xenium_adata(rep: str) -> ad.AnnData:
 
 
 def load_sthelar_adata(slide_name: str) -> ad.AnnData:
-    """Load STHELAR breast slide with Tangram ground truth."""
+    """Load STHELAR breast slide with Tangram ground truth.
+
+    Uses `tables/table_nuclei` (not `table_combined`) because:
+    - `table_combined.X` is already log-normalized + scaled (has negative values),
+      which makes another `sc.pp.normalize_total + log1p` produce NaN that breaks
+      CellTypist's HVG step ("[nan] not in index").
+    - `table_nuclei.layers["count"]` has the raw integer counts CellTypist expects.
+    Both tables share the same 692k cells and the same `ct_tangram` labels.
+    """
     from dapidl.data.sthelar_reader import TANGRAM_TO_COARSE
 
     zarr_path = STHELAR_BASE / f"sdata_{slide_name}.zarr" / f"sdata_{slide_name}.zarr"
-    table_path = zarr_path / "tables" / "table_combined"
+    table_path = zarr_path / "tables" / "table_nuclei"
 
     logger.info(f"Loading STHELAR {slide_name} from {table_path}")
     adata = ad.read_zarr(str(table_path))
+
+    # Use raw counts as X (drops the upstream log-normalized X with negatives).
+    if "count" in adata.layers:
+        adata.X = adata.layers["count"]
+        del adata.layers["count"]
+    if "log_norm" in adata.layers:
+        del adata.layers["log_norm"]
 
     # Map Tangram labels to coarse
     if "ct_tangram" in adata.obs.columns:
@@ -200,10 +215,37 @@ def load_sthelar_adata(slide_name: str) -> ad.AnnData:
 
 
 def preprocess_adata(adata: ad.AnnData) -> ad.AnnData:
-    """Standard preprocessing for annotation methods."""
+    """Standard preprocessing for annotation methods.
+
+    Note: clears stale PCA / neighbors / UMAP state from upstream — STHELAR's
+    `tables/table_combined` ships with `obsm['X_pca']` precomputed at only 31
+    components, which silently breaks CellTypist (`_construct_neighbor_graph`
+    skips its own PCA when X_pca exists, then `sc.pp.neighbors(n_pcs=50)` fails
+    with "X_pca does not have enough PCs"). Drop the stale artifacts so every
+    downstream method computes fresh.
+    """
     a = adata.copy()
+
+    # Strip upstream PCA/neighbors/UMAP state — keep `spatial` and `tangram_pred`.
+    for k in ("X_pca", "X_umap"):
+        if k in a.obsm:
+            del a.obsm[k]
+    for k in list(a.obsp.keys()):
+        if any(s in k for s in ("pca", "neighbor", "connectivities", "distances")):
+            del a.obsp[k]
+    for k in list(a.uns.keys()):
+        if any(s in k for s in ("pca", "neighbor", "umap", "leiden")):
+            del a.uns[k]
+
     if issparse(a.X):
         a.X = a.X.toarray()
+
+    # Drop zero-count cells: normalize_total divides by 0 → NaN, which then
+    # propagates through log1p and silently breaks downstream tools (scanpy's
+    # seurat-flavor highly_variable_genes raises "[nan] not in index" inside
+    # CellTypist's HVG step). Standard scanpy preprocessing order.
+    sc.pp.filter_cells(a, min_counts=1)
+
     # Store raw counts
     a.layers["raw"] = a.X.copy()
     # Normalize
@@ -553,10 +595,19 @@ def get_cellmarker2_markers() -> dict:
 
 
 def map_predictions_to_coarse(predictions: np.ndarray) -> np.ndarray:
-    """Map fine-grained predictions to coarse categories."""
-    from dapidl.pipeline.components.annotators.mapping import map_to_broad_category
+    """Map fine-grained predictions to coarse categories.
 
-    return np.array([map_to_broad_category(str(p)) for p in predictions])
+    Uses the 4-class variant (Endothelial, Epithelial, Immune, Stromal) which
+    matches `COARSE_CLASSES` used for scoring. The default 3-class
+    `map_to_broad_category` lumps Endothelial into Stromal — that's wired into
+    training pipelines and we keep it for compatibility, but the benchmark
+    needs the explicit Endothelial bucket.
+    """
+    from dapidl.pipeline.components.annotators.mapping import (
+        map_to_broad_category_4class,
+    )
+
+    return np.array([map_to_broad_category_4class(str(p)) for p in predictions])
 
 
 # ──────────────────────────────────────────────────────────────────────────────

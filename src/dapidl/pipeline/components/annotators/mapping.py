@@ -528,6 +528,52 @@ def map_to_broad_category(cell_type: str) -> str:
     return "Unknown"
 
 
+# 4-class mapping: keywords that should resolve to "Endothelial" instead of
+# "Stromal". Used by map_to_broad_category_4class() — does not affect the
+# default 3-class scheme used by training pipelines (which still groups
+# endothelial under stromal via BROAD_CATEGORY_MAPPING).
+_ENDOTHELIAL_KEYWORDS_4CLASS = (
+    # CellTypist breast model
+    "vas-arterial", "vas-capillary", "vas-venous", "vas",
+    "lymph-immune", "lymph-major", "lymph-valve1", "lymph-valve2", "lymph",
+    # Cell Ontology / popV / generic
+    "endothelial cell", "vascular endothelial cell",
+    "lymphatic endothelial cell", "capillary endothelial cell",
+    "arterial endothelial cell", "venous endothelial cell",
+    # CellTypist lung & cross-organ atlases
+    "ec aerocyte capillary", "ec arterial",
+    "ec general capillary", "ec venous pulmonary", "ec venous systemic",
+    "ec ", "ec-",  # generic EC prefix
+    # STHELAR / Tangram label spellings
+    "venous ec", "capillary ec", "arterial ec", "lymphatic ec",
+    # Bare "Endothelial" — must be after specific names so prefixes hit first
+    "endothelial",
+)
+
+
+def map_to_broad_category_4class(cell_type: str) -> str:
+    """Map a detailed cell type to one of 4 broad categories.
+
+    Returns ``"Endothelial"`` for endothelial keywords; otherwise delegates to
+    :func:`map_to_broad_category` (the 3-class mapping). Used by the breast
+    annotation benchmark (``annotation_benchmark_2026_03.py``) which scores
+    against `COARSE_CLASSES = ["Endothelial", "Epithelial", "Immune", "Stromal"]`.
+
+    Why a separate function: the 3-class scheme (``COARSE_CLASS_NAMES``,
+    ``BROAD_CATEGORY_MAPPING``) is wired into training pipelines whose model
+    indices would shift if we added Endothelial. Keep both schemes side by side.
+    """
+    cell_type_lower = cell_type.lower()
+    for kw in _ENDOTHELIAL_KEYWORDS_4CLASS:
+        if cell_type_lower == kw or cell_type_lower.startswith(kw):
+            return "Endothelial"
+    # Special-case GT label "Endothelial" — GROUND_TRUTH_MAPPING returns
+    # "Stromal" for it (3-class compat); we want "Endothelial" here.
+    if cell_type == "Endothelial":
+        return "Endothelial"
+    return map_to_broad_category(cell_type)
+
+
 def get_class_index(cell_type: str, fine_grained: bool = False) -> int | None:
     """Get the class index for a cell type.
 

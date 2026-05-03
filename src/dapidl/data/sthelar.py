@@ -21,6 +21,7 @@ Zarr structure (nested):
         points/st/              — Spatial transcripts
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -105,7 +106,175 @@ TANGRAM_TO_COARSE = {
     "Mast cell": "Immune",
 }
 
+# STHELAR ct_tangram → dapidl MEDIUM_CLASS_NAMES (10 classes).
+# Covers all 39 fine labels observed across breast slides s0/s1/s3/s6.
+# Source-of-truth for instance-seg classification heads; stays in this module
+# so the spatial-data reader and the training pipeline use the same table.
+TANGRAM_TO_MEDIUM = {
+    # Mammary luminal — Epithelial_Luminal
+    "SFN mammary luminal progenitor": "Epithelial_Luminal",
+    "Secretoglobin mammary luminal progenitor": "Epithelial_Luminal",
+    "Cycling mammary luminal progenitor": "Epithelial_Tumor",  # cycling = tumor-like
+    "SCGB3A1 mammary luminal progenitor": "Epithelial_Luminal",
+    "PIP mammary luminal cell": "Epithelial_Luminal",
+    "SAA2 mammary luminal progenitor": "Epithelial_Luminal",
+    "KRT17 mammary luminal cell": "Epithelial_Luminal",
+    "Secretoglobin mammary luminal cell": "Epithelial_Luminal",
+    "Lactocyte": "Epithelial_Luminal",
+    # Mammary basal — Epithelial_Basal
+    "CXCL14 mammary basal cell": "Epithelial_Basal",
+    "KRT6B mammary basal cell": "Epithelial_Basal",
+    "CCSER1 mammary basal cell": "Epithelial_Basal",
+    # Endothelial — flat
+    "Venous EC": "Endothelial",
+    "Capillary EC": "Endothelial",
+    "Arterial EC": "Endothelial",
+    "Lymphatic EC": "Endothelial",
+    # Fibroblasts — Stromal_Fibroblast
+    "CXCL+ fibroblast": "Stromal_Fibroblast",
+    "IGFBP6+APOD+ fibroblast": "Stromal_Fibroblast",
+    "IGFBP6+SFRP4+ fibroblast": "Stromal_Fibroblast",
+    # Pericyte / smooth muscle — Stromal_Pericyte
+    "CCL19/21 pericyte": "Stromal_Pericyte",
+    "Pericyte": "Stromal_Pericyte",
+    "CXCL+ pericyte": "Stromal_Pericyte",
+    "CREB+MT1A+ vascular smooth muscle cell": "Stromal_Pericyte",
+    "Vascular smooth muscle cell": "Stromal_Pericyte",
+    # Myeloid (lumped, dapidl MEDIUM has only one Myeloid bucket)
+    "Monocyte": "Myeloid",
+    "Dendritic cell": "Myeloid",
+    "pDC": "Myeloid",
+    "Macrophage": "Myeloid",
+    "M1 macrophage": "Myeloid",
+    "LYVE1 macrophage": "Myeloid",
+    "Mast cell": "Myeloid",
+    # T cells
+    "CD4 T cell": "T_Cell",
+    "GZMK CD8 T cell": "T_Cell",
+    "GZMB CD8 T cell": "T_Cell",
+    "Treg cell": "T_Cell",
+    # B cells (Plasma rolled in — dapidl MEDIUM has one B_Cell)
+    "B cell": "B_Cell",
+    "Plasma cell": "B_Cell",
+    # NK / ILC
+    "NK cell": "NK_Cell",
+    "ILC": "NK_Cell",
+}
+
+# 4-class broad (Endothelial as a separate broad class).
+# Inherits from TANGRAM_TO_COARSE (above) which already separates Endothelial.
+TANGRAM_TO_BROAD = TANGRAM_TO_COARSE.copy()
+
+
 XENIUM_PIXEL_SIZE_UM = 0.2125
+
+# Scale factor: 1 / XENIUM_PIXEL_SIZE_UM. STHELAR shapes/nucleus_boundaries
+# polygons are stored in microns; multiply by this to get level-0 pixel coords.
+# Matches `starpose.methods.cellvit.STHELAR_SCALE_FACTOR` (kept local so this
+# module is self-sufficient).
+STHELAR_SCALE_FACTOR = 1.0 / XENIUM_PIXEL_SIZE_UM  # ≈ 4.705882352941177
+
+
+class DapiChannelError(RuntimeError):
+    """Raised when DAPI channel cannot be unambiguously selected."""
+
+
+def load_omero_attrs(slide_root: Path) -> dict:
+    """Load `images/morpho/.zattrs` JSON for a STHELAR slide root."""
+    zattrs = slide_root / "images" / "morpho" / ".zattrs"
+    if not zattrs.exists():
+        raise FileNotFoundError(f"No .zattrs at {zattrs}")
+    return json.loads(zattrs.read_text())
+
+
+def select_dapi_channel(slide_root: Path) -> int:
+    """Return the channel index for DAPI in `images/morpho/0`.
+
+    For multi-channel slides (e.g., STHELAR breast_s6 has 5 channels),
+    selects by OMERO label match `'DAPI'` (case-insensitive). For
+    single-channel slides where the OMERO label is just the channel index
+    `'0'`, returns 0. Raises if no clear DAPI channel is found.
+    """
+    attrs = load_omero_attrs(slide_root)
+    channels = attrs.get("omero", {}).get("channels") or []
+    if not channels:
+        raise DapiChannelError(f"No OMERO channels metadata at {slide_root}")
+    if len(channels) == 1:
+        return 0
+    matches = [
+        i
+        for i, ch in enumerate(channels)
+        if str(ch.get("label", "")).strip().lower() == "dapi"
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) == 0:
+        labels = [ch.get("label") for ch in channels]
+        raise DapiChannelError(
+            f"No channel labelled 'DAPI' at {slide_root}; available labels = {labels}"
+        )
+    raise DapiChannelError(
+        f"Multiple channels labelled 'DAPI' at {slide_root}: indices {matches}"
+    )
+
+
+def load_nucleus_geometry_with_labels(
+    slide_root: Path,
+    label_cols: list[str],
+):
+    """Load nucleus polygons + selected `table_nuclei.obs` columns, joined by `cell_id`.
+
+    Returns a GeoDataFrame with columns `["geometry", *label_cols]`, indexed by
+    `cell_id`. Geometry is **converted to pixel coordinates** via
+    `STHELAR_SCALE_FACTOR` (incoming polygons are in microns).
+
+    Polars cannot read STHELAR's `geoarrow.wkb` extension type — uses GeoPandas.
+    Geometries are repaired with `shapely.make_valid`; rows whose repaired
+    geometry is not a `Polygon` are dropped (count returned via `attrs`).
+
+    Args:
+        slide_root: inner zarr path (the one that contains `images/`, `tables/`, `shapes/`).
+        label_cols: column names to pull from `tables/table_nuclei/obs/`.
+
+    Returns:
+        GeoDataFrame with `attrs["n_invalid_dropped"]` set to the number of
+        rows discarded after `make_valid`.
+    """
+    import geopandas as gpd
+    from shapely.validation import make_valid
+
+    parquet = slide_root / "shapes" / "nucleus_boundaries" / "shapes.parquet"
+    gdf = gpd.read_parquet(parquet)
+    gdf.index.name = "cell_id"
+
+    grp = zarr.open(str(slide_root), mode="r")
+    obs_root = grp["tables/table_nuclei/obs"]
+    label_data: dict[str, list] = {}
+    cell_id_arr = obs_root["cell_id"][:]
+    label_data["cell_id"] = [str(c) for c in cell_id_arr]
+    for col in label_cols:
+        node = obs_root[col]
+        if hasattr(node, "shape"):
+            label_data[col] = [str(v) for v in node[:]]
+        else:
+            codes = node["codes"][:]
+            cats = node["categories"][:]
+            label_data[col] = [
+                str(cats[i]) if 0 <= i < len(cats) else None for i in codes
+            ]
+    labels = pl.DataFrame(label_data).to_pandas().set_index("cell_id")
+
+    joined = gdf.join(labels, how="inner")
+    joined.geometry = joined.geometry.apply(make_valid)
+    n_before = len(joined)
+    joined = joined[joined.geometry.geom_type == "Polygon"].copy()
+    n_dropped = n_before - len(joined)
+
+    joined.geometry = joined.geometry.scale(
+        STHELAR_SCALE_FACTOR, STHELAR_SCALE_FACTOR, origin=(0, 0)
+    )
+    joined.attrs["n_invalid_dropped"] = n_dropped
+    return joined
 
 
 class SthelarDataReader:

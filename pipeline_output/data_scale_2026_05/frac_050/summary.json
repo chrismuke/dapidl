@@ -1,0 +1,75 @@
+{
+  "fraction": 0.5,
+  "n_train": 166196,
+  "n_train_pool": 332395,
+  "n_val": 71228,
+  "n_test": 71228,
+  "num_classes": 6,
+  "class_names": [
+    "adipocyte",
+    "endothelial cell",
+    "epithelial cell",
+    "fibroblast",
+    "macrophage",
+    "mast cell"
+  ],
+  "train_class_counts": {
+    "adipocyte": 258,
+    "endothelial cell": 6860,
+    "epithelial cell": 117776,
+    "fibroblast": 26556,
+    "macrophage": 14010,
+    "mast cell": 736
+  },
+  "best_epoch": 10,
+  "best_val_macro_f1": 0.39590867785039924,
+  "test_loss": 1.0351666494456697,
+  "test_accuracy": 0.7801145616892233,
+  "test_macro_f1": 0.3859372355757853,
+  "test_weighted_f1": 0.7758234179871295,
+  "per_class": [
+    {
+      "class_name": "adipocyte",
+      "precision": 0.1568627450980392,
+      "recall": 0.07272727272727272,
+      "f1": 0.09937888198757763,
+      "support": 110
+    },
+    {
+      "class_name": "endothelial cell",
+      "precision": 0.2691381800674049,
+      "recall": 0.1902007485539299,
+      "f1": 0.22288676236044658,
+      "support": 2939
+    },
+    {
+      "class_name": "epithelial cell",
+      "precision": 0.8966308890763888,
+      "recall": 0.9052817180442191,
+      "f1": 0.9009355376137383,
+      "support": 50476
+    },
+    {
+      "class_name": "fibroblast",
+      "precision": 0.5418132395267029,
+      "recall": 0.5954138112809699,
+      "f1": 0.5673503557974048,
+      "support": 11382
+    },
+    {
+      "class_name": "macrophage",
+      "precision": 0.4625900609643451,
+      "recall": 0.4169858451290591,
+      "f1": 0.43860571028201084,
+      "support": 6005
+    },
+    {
+      "class_name": "mast cell",
+      "precision": 0.10648148148148148,
+      "recall": 0.07278481012658228,
+      "f1": 0.08646616541353383,
+      "support": 316
+    }
+  ],
+  "wall_clock_s": 3107.890553712845
+}

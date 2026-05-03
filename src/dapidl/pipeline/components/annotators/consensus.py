@@ -302,3 +302,163 @@ def get_high_confidence_cells(
         (pl.col("consensus_confidence") >= min_confidence) &
         (pl.col("broad_category").is_in(["Epithelial", "Immune", "Stromal"]))
     )
+
+
+# =============================================================================
+# Naive majority-vote baseline (string-only, no Cell-Ontology hierarchy)
+# =============================================================================
+
+def naive_majority_vote(
+    method_predictions: dict[str, list[str]],
+    cell_ids: list[str] | None = None,
+    confidence_scores: dict[str, list[float]] | None = None,
+) -> pl.DataFrame:
+    """Aggregate per-method cell-type predictions by exact-string majority vote.
+
+    This is the **counterfactual baseline** for popV's ontology-aware ensemble:
+    treats labels as opaque strings, no parent-class agreement, no depth tie-break.
+    Same input voters as popV → directly measures the lift from CL hierarchy.
+
+    Args:
+        method_predictions: {method_name: [str_label_per_cell, ...]} — all lists
+            must be the same length and aligned by cell index.
+        cell_ids: Optional list of cell IDs (length = n_cells). Defaults to range(n).
+        confidence_scores: Optional {method_name: [confidence_per_cell]} for
+            confidence-weighted tie-breaking. If omitted, ties resolve to
+            first-seen label.
+
+    Returns:
+        Polars DataFrame with columns:
+            cell_id, predicted_type, n_votes, n_methods, agreement_fraction,
+            tied (bool), per-method labels (one column per method).
+
+    Note:
+        This function is intentionally simple. The point is to make the
+        algorithmic difference vs popV's `_ontology_hierarchical_vote` explicit
+        and testable.
+    """
+    from collections import Counter
+
+    methods = list(method_predictions.keys())
+    if not methods:
+        raise ValueError("method_predictions must contain at least one method")
+
+    n_cells = len(method_predictions[methods[0]])
+    for m, preds in method_predictions.items():
+        if len(preds) != n_cells:
+            raise ValueError(
+                f"All methods must agree on n_cells; {m} has {len(preds)} != {n_cells}"
+            )
+    if cell_ids is None:
+        cell_ids = [str(i) for i in range(n_cells)]
+    elif len(cell_ids) != n_cells:
+        raise ValueError(f"cell_ids has {len(cell_ids)} entries, expected {n_cells}")
+
+    rows: list[dict] = []
+    for i in range(n_cells):
+        votes = [method_predictions[m][i] for m in methods]
+        # Strip None/empty/"Unknown" from the vote pool
+        clean_votes = [v for v in votes if v and v != "Unknown"]
+        if not clean_votes:
+            rows.append({
+                "cell_id": cell_ids[i],
+                "predicted_type": "Unknown",
+                "n_votes": 0,
+                "n_methods": len(methods),
+                "agreement_fraction": 0.0,
+                "tied": False,
+                **{f"vote_{m}": method_predictions[m][i] for m in methods},
+            })
+            continue
+
+        counts = Counter(clean_votes)
+        max_count = max(counts.values())
+        winners = [label for label, c in counts.items() if c == max_count]
+
+        if len(winners) == 1:
+            chosen = winners[0]
+            tied = False
+        elif confidence_scores is not None:
+            # Tie-break by max confidence among methods voting for each tied label
+            best_label = winners[0]
+            best_conf = -1.0
+            for label in winners:
+                conf_for_label = max(
+                    confidence_scores[m][i]
+                    for m in methods
+                    if method_predictions[m][i] == label
+                )
+                if conf_for_label > best_conf:
+                    best_conf = conf_for_label
+                    best_label = label
+            chosen = best_label
+            tied = True
+        else:
+            # First-seen tie-break (deterministic w.r.t. method ordering)
+            chosen = winners[0]
+            tied = True
+
+        rows.append({
+            "cell_id": cell_ids[i],
+            "predicted_type": chosen,
+            "n_votes": int(max_count),
+            "n_methods": len(clean_votes),
+            "agreement_fraction": float(max_count) / len(clean_votes),
+            "tied": tied,
+            **{f"vote_{m}": method_predictions[m][i] for m in methods},
+        })
+
+    return pl.DataFrame(rows)
+
+
+def compare_aggregation_strategies(
+    method_predictions: dict[str, list[str]],
+    ground_truth: list[str],
+    confidence_scores: dict[str, list[float]] | None = None,
+) -> pl.DataFrame:
+    """Side-by-side comparison: per-method, naive majority, and confidence-weighted majority.
+
+    PopV ONTOLOGY_HIERARCHICAL is implemented in popv_ensemble.py — call it
+    separately on the same `method_predictions` to add a third row.
+
+    Returns a polars DataFrame with one row per strategy and columns:
+        strategy, accuracy, macro_f1, weighted_f1.
+    """
+    from sklearn.metrics import f1_score, accuracy_score
+
+    rows: list[dict] = []
+    # Each individual method
+    for m, preds in method_predictions.items():
+        rows.append({
+            "strategy": m,
+            "accuracy": accuracy_score(ground_truth, preds),
+            "macro_f1": f1_score(ground_truth, preds, average="macro", zero_division=0),
+            "weighted_f1": f1_score(ground_truth, preds, average="weighted", zero_division=0),
+        })
+
+    # Naive majority (no confidence)
+    nm = naive_majority_vote(method_predictions)
+    rows.append({
+        "strategy": "naive_majority",
+        "accuracy": accuracy_score(ground_truth, nm["predicted_type"].to_list()),
+        "macro_f1": f1_score(ground_truth, nm["predicted_type"].to_list(),
+                             average="macro", zero_division=0),
+        "weighted_f1": f1_score(ground_truth, nm["predicted_type"].to_list(),
+                                average="weighted", zero_division=0),
+    })
+
+    # Naive majority with confidence tie-break
+    if confidence_scores is not None:
+        nmc = naive_majority_vote(
+            method_predictions, confidence_scores=confidence_scores
+        )
+        rows.append({
+            "strategy": "naive_majority_confidence_tie",
+            "accuracy": accuracy_score(ground_truth, nmc["predicted_type"].to_list()),
+            "macro_f1": f1_score(ground_truth, nmc["predicted_type"].to_list(),
+                                 average="macro", zero_division=0),
+            "weighted_f1": f1_score(ground_truth, nmc["predicted_type"].to_list(),
+                                    average="weighted", zero_division=0),
+        })
+
+    return pl.DataFrame(rows)
