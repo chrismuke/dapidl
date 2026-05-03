@@ -66,7 +66,7 @@ from annotation_benchmark_2026_03 import GT_TO_COARSE
 JANESICK17_TO_COARSE = {k: v if v != "Unknown" else None
                         for k, v in GT_TO_COARSE.items()}
 
-SLIDES = ["rep1"]  # SMOKE TEST
+SLIDES = ["rep1", "rep2", "breast_s0", "breast_s1", "breast_s3", "breast_s6"]
 COARSE_4 = ["Endothelial", "Epithelial", "Immune", "Stromal"]
 
 
@@ -134,6 +134,26 @@ def consensus_majority(preds_list):
     return out
 
 
+def consensus_confidence_weighted(preds_list, conf_list):
+    """Per-cell confidence-weighted vote.
+
+    For each cell, sum confidence per class across methods. Pick highest sum.
+    `preds_list[i]` and `conf_list[i]` must align (same method).
+    """
+    if len(preds_list) == 1:
+        return preds_list[0]
+    n = len(preds_list[0])
+    out = np.empty(n, dtype=object)
+    for i in range(n):
+        scores = {}
+        for preds, conf in zip(preds_list, conf_list):
+            label = preds[i]
+            w = float(conf[i]) if conf is not None and i < len(conf) else 1.0
+            scores[label] = scores.get(label, 0.0) + w
+        out[i] = max(scores, key=scores.get)
+    return out
+
+
 def per_class_f1(gt, pred, labels):
     mask = np.isin(gt, labels)
     if mask.sum() == 0:
@@ -143,15 +163,119 @@ def per_class_f1(gt, pred, labels):
     return dict(zip(labels, [float(x) for x in f1]))
 
 
-def run_methods_on_slide(adata_pp, methods_to_run):
+def run_celltypist_no_mv(adata, model_name):
+    """CellTypist without majority_voting (skip slow Leiden over-clustering)."""
+    import celltypist
+    from celltypist import models as ct_models
+    try:
+        model = ct_models.Model.load(model_name)
+    except Exception:
+        ct_models.download_models(model=model_name, force_update=False)
+        model = ct_models.Model.load(model_name)
+    predictions = celltypist.annotate(adata, model=model, majority_voting=False)
+    result = predictions.to_adata()
+    preds = result.obs["predicted_labels"].astype(str).values
+    conf = (result.obs["conf_score"].values
+            if "conf_score" in result.obs.columns
+            else np.ones(len(result)))
+    return {"predictions": preds, "confidence": conf,
+            "method": f"celltypist_noMV_{model_name.replace('.pkl', '')}"}
+
+
+def run_banksy_sctype(adata_raw, markers, k_nbr=15, lam=0.5, resolution=1.0):
+    """BANKSY spatial clustering + scType labeling per cluster.
+
+    Uses x_centroid/y_centroid from adata.obs. Returns per-cell predictions
+    by labeling each BANKSY cluster with the scType-best cell type using
+    cluster-mean expression.
+    """
+    import scanpy as sc
+    from banksy.initialize_banksy import initialize_banksy
+    from banksy.embed_banksy import generate_banksy_matrix
+    from banksy_utils.umap_pca import pca_umap
+    from scipy.sparse import issparse
+
+    a = adata_raw.copy()
+    if issparse(a.X):
+        a.X = a.X.toarray()
+    sc.pp.normalize_total(a, target_sum=1e4)
+    sc.pp.log1p(a)
+    n_hvg = min(2000, a.n_vars)
+    sc.pp.highly_variable_genes(a, n_top_genes=n_hvg, subset=False)
+    a_hvg = a[:, a.var["highly_variable"]].copy()
+
+    if "x_centroid" not in a.obs.columns or "y_centroid" not in a.obs.columns:
+        return {"predictions": None,
+                "error": "no spatial coords (x_centroid/y_centroid)"}
+
+    a_hvg.obs["xcoord"] = a.obs["x_centroid"].values
+    a_hvg.obs["ycoord"] = a.obs["y_centroid"].values
+    a_hvg.obsm["xy_coord"] = np.column_stack([
+        a_hvg.obs["xcoord"].values.astype(float),
+        a_hvg.obs["ycoord"].values.astype(float),
+    ])
+
+    banksy_dict = initialize_banksy(
+        adata=a_hvg, coord_keys=("xcoord", "ycoord", "xy_coord"),
+        num_neighbours=k_nbr, nbr_weight_decay="scaled_gaussian",
+        max_m=1, plt_edge_hist=False, plt_nbr_weights=False, plt_theta=False,
+    )
+    banksy_dict, banksy_matrix = generate_banksy_matrix(
+        adata=a_hvg, banksy_dict=banksy_dict, lambda_list=[lam],
+        max_m=1, plot_std=False, verbose=False,
+    )
+    pca_umap(banksy_dict=banksy_dict, pca_dims=[20],
+             plt_remaining_var=False, add_umap=False)
+
+    # Find the inner key (lambda_0.5 -> nbr -> ... varies; iterate to find PCs)
+    nbr_key = list(banksy_dict.keys())[0]
+    inner = banksy_dict[nbr_key][lam]
+    pca_arr = inner["pca"]["20"] if "20" in inner.get("pca", {}) else None
+    if pca_arr is None:
+        return {"predictions": None, "error": "BANKSY PCA missing"}
+
+    a_hvg.obsm["X_banksy_pca"] = pca_arr
+    sc.pp.neighbors(a_hvg, use_rep="X_banksy_pca", n_neighbors=15)
+    sc.tl.leiden(a_hvg, resolution=resolution, key_added="banksy_leiden")
+    clusters = a_hvg.obs["banksy_leiden"].astype(str).values
+
+    # Label each cluster via scType on cluster-mean expression
+    # Build per-cluster mean expression using ORIGINAL gene set (not just HVG)
+    gene_means = {}
+    for c in np.unique(clusters):
+        mask = clusters == c
+        gene_means[c] = a.X[mask].mean(axis=0)
+    gene_names = list(a.var_names)
+    cluster_labels = {}
+    for c, mean_expr in gene_means.items():
+        best_score = -np.inf
+        best_ct = "Unknown"
+        for ct, m_dict in markers.items():
+            pos = [g for g in m_dict.get("positive", []) if g in gene_names]
+            if not pos:
+                continue
+            idx = [gene_names.index(g) for g in pos]
+            score = float(np.mean(mean_expr[idx]))
+            if score > best_score:
+                best_score = score
+                best_ct = ct
+        cluster_labels[c] = best_ct
+
+    preds = np.array([cluster_labels.get(c, "Unknown") for c in clusters],
+                     dtype=object)
+    return {"predictions": preds, "confidence": np.ones(len(preds)),
+            "method": f"banksy_sctype_l{lam}_r{resolution}"}
+
+
+def run_methods_on_slide(adata_pp, adata_raw, methods_to_run):
     """Run each method, return {method_name: {raw_preds, conf}}."""
     out = {}
     for kind, args in methods_to_run:
         try:
             if kind == "celltypist":
                 model = args
-                logger.info(f"  CellTypist {model}")
-                r = run_celltypist(adata_pp, model)
+                logger.info(f"  CellTypist no-MV {model}")
+                r = run_celltypist_no_mv(adata_pp, model)
             elif kind == "sctype":
                 markers, marker_name = args
                 logger.info(f"  scType {marker_name}")
@@ -160,6 +284,10 @@ def run_methods_on_slide(adata_pp, methods_to_run):
                 ref = args
                 logger.info(f"  SingleR {ref}")
                 r = run_singler(adata_pp, ref)
+            elif kind == "banksy_sctype":
+                markers, marker_name = args
+                logger.info(f"  BANKSY+scType {marker_name}")
+                r = run_banksy_sctype(adata_raw, markers)
             else:
                 continue
             if r.get("predictions") is None:
@@ -171,6 +299,7 @@ def run_methods_on_slide(adata_pp, methods_to_run):
             }
         except Exception as e:
             logger.error(f"  {kind}/{args}: {type(e).__name__}: {e}")
+            import traceback; traceback.print_exc()
     return out
 
 
@@ -191,17 +320,16 @@ def main():
         except Exception as e:
             logger.warning(f"sctype {name} markers unavailable: {e}")
 
-    # 5 methods (1 from each family + alternates)
+    # 4 methods (1 per family) + BANKSY+scType (spatial-aware family)
     methods_to_run = []
     methods_to_run.append(("celltypist", "Cells_Adult_Breast.pkl"))
     if "custom_default" in sctype_markers:
         methods_to_run.append(("sctype",
                                (sctype_markers["custom_default"], "custom_default")))
-    if "cellmarker2" in sctype_markers:
-        methods_to_run.append(("sctype",
-                               (sctype_markers["cellmarker2"], "cellmarker2")))
     methods_to_run.append(("singler", "blueprint"))
-    methods_to_run.append(("singler", "hpca"))
+    if "custom_default" in sctype_markers:
+        methods_to_run.append(("banksy_sctype",
+                               (sctype_markers["custom_default"], "custom_default")))
 
     coarse_rows = []
     medium_rows = []
@@ -213,9 +341,13 @@ def main():
             logger.info(f"=== {slide}: already done, loading ===")
             with open(out_path) as f:
                 slide_results = json.load(f)
-            # Convert lists back to arrays
+            # Convert lists back to arrays (handle old caches without conf)
             for m in slide_results:
-                slide_results[m]["raw_preds"] = np.array(slide_results[m]["raw_preds"], dtype=object)
+                slide_results[m]["raw_preds"] = np.array(
+                    slide_results[m]["raw_preds"], dtype=object)
+                if slide_results[m].get("conf") is not None:
+                    slide_results[m]["conf"] = np.array(
+                        slide_results[m]["conf"], dtype=np.float32)
             adata_pp = None
             gt_coarse_path = PER_SLIDE_DIR / f"{slide}_gt.json"
             if gt_coarse_path.exists():
@@ -247,9 +379,12 @@ def main():
                 with open(PER_SLIDE_DIR / f"{slide}_gt.json", "w") as f:
                     json.dump({"coarse": gt_coarse.tolist(),
                                "medium": gt_medium.tolist()}, f)
-                slide_results = run_methods_on_slide(adata_pp, methods_to_run)
-                # Save raw preds (truncate to manageable size for json)
-                save = {m: {"raw_preds": v["raw_preds"].tolist()}
+                slide_results = run_methods_on_slide(adata_pp, adata_raw, methods_to_run)
+                # Save raw preds + confidence (json-friendly)
+                save = {m: {"raw_preds": v["raw_preds"].tolist(),
+                            "conf": (v["conf"].tolist()
+                                     if v.get("conf") is not None
+                                     else None)}
                         for m, v in slide_results.items()}
                 with open(out_path, "w") as f:
                     json.dump(save, f)
@@ -274,16 +409,17 @@ def main():
                      "n_eval": int(np.isin(gt_medium, MEDIUM_NAMES).sum())}
             medium_rows.append(row_m)
 
-        # Consensus combinations (2-method + 3-method)
+        # Consensus combinations (2-method + 3-method) — confidence-weighted
         method_list = sorted(slide_results.keys())
         for k in [2, 3]:
             for combo in combinations(method_list, k):
                 preds_raw_list = [map_to_tier(slide_results[m]["raw_preds"],
                                               "coarse", mapper) for m in combo]
-                cons_c = consensus_majority(preds_raw_list)
+                conf_list = [slide_results[m].get("conf") for m in combo]
+                cons_c = consensus_confidence_weighted(preds_raw_list, conf_list)
                 preds_med_list = [map_to_tier(slide_results[m]["raw_preds"],
                                               "medium", mapper) for m in combo]
-                cons_m = consensus_majority(preds_med_list)
+                cons_m = consensus_confidence_weighted(preds_med_list, conf_list)
                 consensus_rows.append({
                     "slide": slide, "n_methods": k, "combo": "+".join(combo),
                     "tier": "coarse",
