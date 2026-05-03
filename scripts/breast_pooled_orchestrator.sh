@@ -72,18 +72,40 @@ run_training "A_janesick_to_sthelar" \
     "xenium_rep1,xenium_rep2" \
     "sthelar_breast_s0,sthelar_breast_s1,sthelar_breast_s3,sthelar_breast_s6"
 
+# For B/C/D: tighter epoch budget so we fit more pairs in the deck window.
+# Override via run_training_short.
+run_training_short() {
+    local NAME=$1
+    local TRAIN=$2
+    local TEST=$3
+    local OUT="$OUT_BASE/$NAME"
+    echo ""
+    echo "============================================================"
+    echo "[$(date)] $NAME (short): train=$TRAIN  test=$TEST"
+    echo "============================================================"
+    if [ -f "$OUT/summary.json" ]; then
+        echo "[$(date)] $NAME: summary.json already exists, skipping"
+        return
+    fi
+    mkdir -p "$OUT"
+    uv run python scripts/breast_pooled_train.py \
+        --train-sources "$TRAIN" --test-sources "$TEST" \
+        --output "$OUT" --epochs 18 --patience 5 \
+        2>&1 | tee "$LOG_BASE/${NAME}.log"
+}
+
 # B: STHELAR standard → Janesick + Prime (train s0+s1+s3, test rep1/rep2/s6)
-run_training "B_sthelar_std_to_janesick_prime" \
+run_training_short "B_sthelar_std_to_janesick_prime" \
     "sthelar_breast_s0,sthelar_breast_s1,sthelar_breast_s3" \
     "xenium_rep1,xenium_rep2,sthelar_breast_s6"
 
 # C: STHELAR Prime alone → everything else (train s6, test rep1/rep2/s0/s1/s3)
-run_training "C_sthelar_prime_to_all" \
+run_training_short "C_sthelar_prime_to_all" \
     "sthelar_breast_s6" \
     "xenium_rep1,xenium_rep2,sthelar_breast_s0,sthelar_breast_s1,sthelar_breast_s3"
 
 # D: All STHELAR → Janesick (train s0+s1+s3+s6, test rep1+rep2)
-run_training "D_all_sthelar_to_janesick" \
+run_training_short "D_all_sthelar_to_janesick" \
     "sthelar_breast_s0,sthelar_breast_s1,sthelar_breast_s3,sthelar_breast_s6" \
     "xenium_rep1,xenium_rep2"
 
