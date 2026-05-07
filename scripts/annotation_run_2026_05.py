@@ -192,8 +192,8 @@ def run_banksy_sctype(adata_raw, markers, k_nbr=15, lam=0.5, resolution=1.0):
     import scanpy as sc
     from banksy.initialize_banksy import initialize_banksy
     from banksy.embed_banksy import generate_banksy_matrix
-    from banksy_utils.umap_pca import pca_umap
     from scipy.sparse import issparse
+    from sklearn.decomposition import PCA
 
     a = adata_raw.copy()
     if issparse(a.X):
@@ -224,15 +224,26 @@ def run_banksy_sctype(adata_raw, markers, k_nbr=15, lam=0.5, resolution=1.0):
         adata=a_hvg, banksy_dict=banksy_dict, lambda_list=[lam],
         max_m=1, plot_std=False, verbose=False,
     )
-    pca_umap(banksy_dict=banksy_dict, pca_dims=[20],
-             plt_remaining_var=False, add_umap=False)
 
-    # Find the inner key (lambda_0.5 -> nbr -> ... varies; iterate to find PCs)
+    # Skip banksy_py's pca_umap helper — its internal dict layout varies across
+    # versions and the result was unreachable on banksy-py 0.2.x (pca_dict
+    # keys = []). Run PCA directly on the BANKSY matrix; the output is an
+    # ndarray we can store in obsm immediately.
     nbr_key = list(banksy_dict.keys())[0]
-    inner = banksy_dict[nbr_key][lam]
-    pca_arr = inner["pca"]["20"] if "20" in inner.get("pca", {}) else None
-    if pca_arr is None:
-        return {"predictions": None, "error": "BANKSY PCA missing"}
+    bm = banksy_matrix
+    if isinstance(bm, dict):
+        # generate_banksy_matrix may return {lambda: matrix} on some versions
+        bm = bm.get(lam) or bm.get(str(lam)) or next(iter(bm.values()))
+    if hasattr(bm, "X"):  # AnnData-like
+        bm = bm.X
+    if issparse(bm):
+        bm = bm.toarray()
+    if bm.shape[0] != a_hvg.n_obs:
+        return {"predictions": None,
+                "error": f"BANKSY matrix shape {bm.shape} doesn't match "
+                         f"n_obs {a_hvg.n_obs}"}
+    n_pcs = min(20, bm.shape[1] - 1, bm.shape[0] - 1)
+    pca_arr = PCA(n_components=n_pcs, random_state=42).fit_transform(bm)
 
     a_hvg.obsm["X_banksy_pca"] = pca_arr
     sc.pp.neighbors(a_hvg, use_rep="X_banksy_pca", n_neighbors=15)
@@ -270,6 +281,14 @@ def run_banksy_sctype(adata_raw, markers, k_nbr=15, lam=0.5, resolution=1.0):
 def run_methods_on_slide(adata_pp, adata_raw, methods_to_run):
     """Run each method, return {method_name: {raw_preds, conf}}."""
     out = {}
+    n_cells = len(adata_pp)
+    n_genes = adata_pp.n_vars
+    # SingleR loads dense matrix to R — OOM danger if cells*genes > 2.5e9.
+    # Xenium Prime breast_s6: 530k * 8232 = 4.4e9 → killed at ~58GB RSS.
+    skip_singler = (n_cells * n_genes) > 2_500_000_000
+    if skip_singler:
+        logger.warning(f"  Skipping SingleR — slide too large "
+                       f"({n_cells:,} cells × {n_genes} genes = {n_cells*n_genes/1e9:.1f}e9)")
     for kind, args in methods_to_run:
         try:
             if kind == "celltypist":
@@ -281,6 +300,9 @@ def run_methods_on_slide(adata_pp, adata_raw, methods_to_run):
                 logger.info(f"  scType {marker_name}")
                 r = run_sctype(adata_pp, markers, marker_name)
             elif kind == "singler":
+                if skip_singler:
+                    logger.info(f"  Skipping singler/{args} (too large)")
+                    continue
                 ref = args
                 logger.info(f"  SingleR {ref}")
                 r = run_singler(adata_pp, ref)
@@ -320,16 +342,14 @@ def main():
         except Exception as e:
             logger.warning(f"sctype {name} markers unavailable: {e}")
 
-    # 4 methods (1 per family) + BANKSY+scType (spatial-aware family)
+    # 3 stable methods (BANKSY died silently in initialize_banksy — see /tmp/dapidl_logs/annotation_full.log
+    # at 00:52 — pulled out for now, will run separately with subprocess isolation)
     methods_to_run = []
     methods_to_run.append(("celltypist", "Cells_Adult_Breast.pkl"))
     if "custom_default" in sctype_markers:
         methods_to_run.append(("sctype",
                                (sctype_markers["custom_default"], "custom_default")))
     methods_to_run.append(("singler", "blueprint"))
-    if "custom_default" in sctype_markers:
-        methods_to_run.append(("banksy_sctype",
-                               (sctype_markers["custom_default"], "custom_default")))
 
     coarse_rows = []
     medium_rows = []
@@ -372,6 +392,14 @@ def main():
                     adata_raw = load_xenium_adata(slide)
                 else:
                     adata_raw = load_sthelar_adata(slide)
+                # Subsample if too big (memory protection — Xenium Prime s6 is
+                # 530k × 8232 = 4.4 GB raw, 17 GB dense, 34 GB after .copy)
+                if (len(adata_raw) * adata_raw.n_vars) > 1_000_000_000:
+                    n_target = 100_000
+                    logger.warning(f"  {slide}: subsampling {len(adata_raw):,} → {n_target:,} cells (memory protection)")
+                    rng = np.random.default_rng(42)
+                    idx = rng.choice(len(adata_raw), size=n_target, replace=False)
+                    adata_raw = adata_raw[idx].copy()
                 adata_pp = preprocess_adata(adata_raw)
                 logger.info(f"  {slide}: {len(adata_pp):,} cells × {adata_pp.n_vars} genes")
                 gt_coarse, gt_medium = get_gt_for_slide(adata_pp, slide)
