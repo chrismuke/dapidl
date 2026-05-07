@@ -32,18 +32,22 @@ METHOD_SHORT = {
     "celltypist_noMV_Cells_Adult_Breast": "CellTypist\n(gene-expr)",
     "sctype_custom_default": "scType\n(marker DB)",
     "singler_blueprint": "SingleR\n(ref atlas)",
+    "banksy_sctype_l0.5_r1.0": "BANKSY+scType\n(spatial-aware)",
 }
 METHOD_COLOR = {
     "celltypist_noMV_Cells_Adult_Breast": "#3D5A80",  # navy = ML / gene expr
     "sctype_custom_default": "#BC8D5A",                # warm = marker DB
     "singler_blueprint": "#4A9D9C",                    # teal = ref atlas
+    "banksy_sctype_l0.5_r1.0": "#D97757",             # coral = spatial-aware
 }
 
 
 def grouped_bar(ax, df, title: str, ymax: float = 0.9):
     methods = list(METHOD_SHORT.keys())
+    n_methods = len(methods)
     x = np.arange(len(SLIDES))
-    width = 0.26
+    # Total bar-group width = 0.84, divided across N methods with thin gaps.
+    width = 0.84 / n_methods
     for k, m in enumerate(methods):
         vals = [
             float(df.filter((pl.col("slide") == s) & (pl.col("method") == m))["f1_macro"][0])
@@ -51,13 +55,14 @@ def grouped_bar(ax, df, title: str, ymax: float = 0.9):
             else 0.0
             for s in SLIDES
         ]
-        bars = ax.bar(x + (k - 1) * width, vals, width,
+        offset = (k - (n_methods - 1) / 2) * width
+        bars = ax.bar(x + offset, vals, width,
                       color=METHOD_COLOR[m], edgecolor="white", lw=1.0,
                       label=METHOD_SHORT[m])
         for bar, v in zip(bars, vals):
             if v > 0.03:
                 ax.text(bar.get_x() + bar.get_width() / 2, v + 0.005,
-                        f"{v:.2f}", ha="center", va="bottom", fontsize=8)
+                        f"{v:.2f}", ha="center", va="bottom", fontsize=7.5)
     ax.set_xticks(x, [SLIDE_LBL[s] for s in SLIDES], fontsize=9.5)
     ax.set_ylim(0, ymax)
     ax.set_ylabel("macro F1")
@@ -99,7 +104,8 @@ def main() -> None:
         # Shorten combo name
         short = combo.replace("celltypist_noMV_Cells_Adult_Breast", "CT") \
                      .replace("sctype_custom_default", "scType") \
-                     .replace("singler_blueprint", "SR")
+                     .replace("singler_blueprint", "SR") \
+                     .replace("banksy_sctype_l0.5_r1.0", "BANKSY")
         n_methods = combo.count("+") + 1
         rows.append({"label": short, "mean_f1": float(mean),
                      "kind": f"consensus ({n_methods}-way)"})
@@ -109,6 +115,7 @@ def main() -> None:
         "single": "#888",
         "consensus (2-way)": "#6F4C9C",
         "consensus (3-way)": "#3A2F6E",
+        "consensus (4-way)": "#1F1448",
     }
     bars = ax3.barh(np.arange(len(df)), df["mean_f1"].to_list(),
                     color=[KIND_COLOR.get(k, "#444") for k in df["kind"].to_list()],
@@ -133,7 +140,9 @@ def main() -> None:
     )
     fig.text(0.99, 0.005,
              "Ground truth: STHELAR cells_label2 → COARSE/MEDIUM (slides s0-s6); "
-             "Janesick supervised 17→4 (rep1/rep2). 3 methods, 1 per family. "
+             "Janesick supervised 17→4 (rep1/rep2). 4 methods, 1 per family "
+             "(gene-expr / marker DB / ref atlas / spatial-aware). "
+             "BANKSY missing on s1 (cell-count drift) and s6 (Prime panel subsample). "
              "Consensus = per-cell confidence-weighted vote.",
              ha="right", va="bottom", fontsize=8.5, color="#666")
 

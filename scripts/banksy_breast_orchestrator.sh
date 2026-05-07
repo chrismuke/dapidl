@@ -30,18 +30,22 @@ mkdir -p "$LOG_BASE" "$PER_SLIDE"
 
 SLIDES=("rep1" "rep2" "breast_s0" "breast_s1" "breast_s3" "breast_s6")
 
-# Per-slide subsample target (only applied when worker's pre-flight estimate
-# exceeds --max-mem-gb). Two breast slides currently exceed the 25 GB budget:
-#   breast_s6  Xenium Prime, 692k cells × 8232 genes → est 53.9 GB
-#   breast_s1  STHELAR std,   893k cells ×  541 genes → est 36.6 GB
-# Trade-off: smaller subsample = safer RAM but worse spatial neighborhood
-# structure (BANKSY relies on local neighbors so subsampling can hurt clustering).
-#   breast_s6 → 200k cells (29%) → est 15.6 GB
-#   breast_s1 → 500k cells (56%) → est 20.5 GB (preserves more of the panel)
-declare -A MAX_CELLS=(
-    [breast_s1]=500000
-    [breast_s6]=200000
-)
+# BANKSY worker now mirrors the main annotation runner's subsample logic
+# (cells*genes > 1e9 → 100k cells, seed=42). This keeps cell IDs aligned with
+# the saved GT JSONs so the integrate step can join by row index.
+#
+# Post-mirror RAM estimates:
+#   rep1       158k×313  →  6.3 GB ✓
+#   rep2       114k×313  →  4.6 GB ✓
+#   breast_s0  577k×541  → 23.7 GB ✓ (just under 25 GB)
+#   breast_s1  893k×541  → 36.6 GB ✗ (main runner doesn't subsample → BANKSY won't either)
+#   breast_s3  366k×541  → 15.0 GB ✓
+#   breast_s6  100k×8232 →  7.8 GB ✓ (main runner subsamples)
+#
+# breast_s1 will pre-flight ABORT (exit 3). To force-run it, pass
+# `MAX_CELLS[breast_s1]=N` here — but the resulting predictions will NOT
+# align with GT and won't integrate into the metrics parquet.
+declare -A MAX_CELLS=()
 
 # Probe whether `systemd-run --user --scope` actually works in this session.
 # After an OOMD kill of init.scope, the user manager may be State=closing

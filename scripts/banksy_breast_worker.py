@@ -87,13 +87,38 @@ def estimate_banksy_ram_gb(n_cells: int, n_genes: int,
     return cells_x_genes_bytes * BANKSY_RAM_OVERHEAD / 1e9
 
 
-def maybe_subsample(adata, target: int, seed: int = 42):
-    """Return adata subsampled to target cells (deterministic, no replacement)."""
+def mirror_main_runner_subsample(adata):
+    """Apply the EXACT same subsample as annotation_run_2026_05.py:main.
+
+    The main runner does:
+        if cells * genes > 1e9: subsample to 100k cells, seed=42, no sort
+    We mirror this so the BANKSY worker's preprocessed cell set matches the
+    GT JSON's cell order — otherwise predictions can't be aligned with GT
+    by index in banksy_integrate_results.py.
+    """
+    n_cells, n_genes = len(adata), adata.n_vars
+    if n_cells * n_genes <= 1_000_000_000:
+        return adata
+    n_target = 100_000
+    rng = np.random.default_rng(42)
+    idx = rng.choice(n_cells, size=n_target, replace=False)  # NO sort, matches main runner
+    logger.info(f"  mirror main-runner subsample: {n_cells:,} → {n_target:,} cells (seed=42)")
+    sub = adata[idx].copy()
+    del adata
+    gc.collect()
+    return sub
+
+
+def fallback_subsample(adata, target: int, seed: int = 999):
+    """Aggressive fallback subsample when main-runner mirror still leaves us
+    over RAM budget. WARNING: breaks GT cell-ID alignment, so the resulting
+    BANKSY predictions can't be integrated into the metrics parquet."""
     if len(adata) <= target:
         return adata
     rng = np.random.default_rng(seed)
-    idx = np.sort(rng.choice(len(adata), size=target, replace=False))
-    logger.warning(f"  subsample: {len(adata):,} → {target:,} cells (seed={seed})")
+    idx = rng.choice(len(adata), size=target, replace=False)
+    logger.warning(f"  fallback subsample: {len(adata):,} → {target:,} cells "
+                   f"(seed={seed}) — GT alignment will break")
     sub = adata[idx].copy()
     del adata
     gc.collect()
@@ -127,25 +152,34 @@ def main():
     else:
         adata = load_sthelar_adata(args.slide)
 
+    raw_n = len(adata)
+    # Mirror the main annotation runner's subsample first so cell IDs align
+    # with the saved GT JSON. After this, all post-preprocess cells will be
+    # in the same order as the main runner's per-slide cache.
+    adata = mirror_main_runner_subsample(adata)
+    aligned_with_gt = True  # tracked so we can warn the user if we break it
+
     n_cells, n_genes = len(adata), adata.n_vars
     est_gb = estimate_banksy_ram_gb(n_cells, n_genes)
-    logger.info(f"  loaded: {n_cells:,} cells × {n_genes} genes  "
+    logger.info(f"  ready: {n_cells:,} cells × {n_genes} genes (raw {raw_n:,})  "
                 f"→ est. peak RAM = {est_gb:.1f} GB (budget {args.max_mem_gb} GB)")
 
     if est_gb > args.max_mem_gb:
         if args.max_cells and args.max_cells < n_cells:
-            adata = maybe_subsample(adata, args.max_cells)
+            adata = fallback_subsample(adata, args.max_cells)
+            aligned_with_gt = False
             new_est = estimate_banksy_ram_gb(len(adata), adata.n_vars)
-            logger.info(f"  post-subsample est. RAM = {new_est:.1f} GB")
+            logger.info(f"  post-fallback est. RAM = {new_est:.1f} GB")
             if new_est > args.max_mem_gb:
                 logger.warning(
-                    f"  even after subsample, est. {new_est:.1f} GB exceeds "
+                    f"  even after fallback, est. {new_est:.1f} GB exceeds "
                     f"budget {args.max_mem_gb} GB — proceeding anyway")
         else:
             logger.error(
                 f"BANKSY pre-flight ABORT: estimated {est_gb:.1f} GB > "
-                f"budget {args.max_mem_gb} GB and no --max-cells fallback set. "
-                f"Re-run with --max-cells N or BANKSY_MAX_CELLS=N to subsample.")
+                f"budget {args.max_mem_gb} GB. Either: bump --max-mem-gb if "
+                f"the host has the RAM, or set --max-cells N to fallback-"
+                f"subsample (will break GT alignment for integration).")
             out_json.write_text(json.dumps({
                 "slide": args.slide,
                 "method": "banksy_sctype",
@@ -193,12 +227,13 @@ def main():
         "raw_preds": [str(p) for p in result["predictions"]],
         "conf": [float(c) for c in result["confidence"]],
         "n_cells": int(len(result["predictions"])),
-        "subsampled_from": n_cells if len(result["predictions"]) < n_cells else None,
+        "raw_n_cells": int(raw_n),
+        "aligned_with_gt": bool(aligned_with_gt),
     }
     out_json.write_text(json.dumps(payload))
-    logger.info(f"BANKSY worker DONE: wrote {out_json} ({payload['n_cells']:,} cells"
-                + (f", subsampled from {n_cells:,}" if payload["subsampled_from"] else "")
-                + ")")
+    logger.info(f"BANKSY worker DONE: wrote {out_json} "
+                f"({payload['n_cells']:,} cells, raw_n={raw_n:,}, "
+                f"aligned_with_gt={aligned_with_gt})")
 
 
 if __name__ == "__main__":
