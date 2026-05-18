@@ -91,12 +91,14 @@ def add_takeaways_slide(prs):
          "Mammary luminal F1 0.65-0.70 across all slides. Adipocyte/Pericyte → 0."),
         ("DAPI is competitive on common compartments",
          "Per-class DAPI ≈ scType on Epi/Imm/Stromal. Endothelial hard for everyone."),
-        ("scType is the best annotation baseline",
-         "Mean F1 0.558 on COARSE-4. CT+scType consensus: 0.538. SingleR drags ensembles."),
+        ("BANKSY+scType is the best annotation baseline",
+         "Mean F1 0.568 on COARSE-4 (beats scType 0.558). Spatial-aware clustering helps; SingleR still drags ensembles."),
+        ("Multi-source pooling beats single-source training",
+         "STHELAR-Prime alone transfers 0.23 to Janesick rep1. Pooling all STHELAR sources lifts this to 0.62 (~3×)."),
         ("Confidence: STHELAR cells_label2 is solid",
          "Median per-cell confidence = 1.000 (q05 0.764). Equivalent to cells_final_label at COARSE."),
         ("What's next",
-         "B/C/D pairs in flight; skin LMDB ready; BANKSY + MEDIUM/FINE annotation deferred."),
+         "Skin tissue (Coarse F1 0.765, Medium 0.582) ready to fold in. CelloType instance-seg + breast_s1 BANKSY workaround deferred."),
     ]
     y = 1.3
     for title, sub in bullets:
@@ -125,6 +127,10 @@ def main() -> None:
     add_figure_slide(prs, "Granularity × cross-source generalization",
                      FIG_DIR / "fig_a1_headline.png",
                      "DAPI predicts COARSE-4 well in-domain (0.753); cross-source domain shift costs ~37 pp. MEDIUM-12 collapses to 0.13-0.19 on STHELAR.")
+
+    add_figure_slide(prs, "Cross-source matrix — A/B/C/D × per-slide test",
+                     FIG_DIR / "fig_a7_cross_source_matrix.png",
+                     "Pooling heterogeneous training data (D) turns Prime-only's 0.23 → 0.62 transfer on Janesick rep1 — a ~3× improvement at COARSE-4.")
 
     add_figure_slide(prs, "Per-class breakdown — what transfers and what doesn't",
                      FIG_DIR / "fig_a2_per_class_heatmap.png",
