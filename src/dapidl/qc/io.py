@@ -24,21 +24,41 @@ def read_patches(dataset_path: Path | str, indices) -> np.ndarray:
 
 
 def _read_lmdb(lmdb_path: Path, indices) -> np.ndarray:
+    import struct
+    from math import isqrt
+
     import lmdb
 
     env = lmdb.open(str(lmdb_path), readonly=True, lock=False)
     patches = []
     try:
         with env.begin() as txn:
+            # Format B (lmdb_creation.py): 8-byte big-endian key, value =
+            # int64 label + uint16 square patch, plus a __metadata__ key.
+            # Format A (legacy): str(idx) key, value = 4B H + 4B W + uint16.
+            format_b = txn.get(b"__metadata__") is not None
             for idx in indices:
-                data = txn.get(str(int(idx)).encode())
-                if data is None:
-                    raise KeyError(f"patch {idx} missing in {lmdb_path}")
-                h = struct.unpack("I", data[:4])[0]
-                w = struct.unpack("I", data[4:8])[0]
-                patches.append(
-                    np.frombuffer(data[8:], dtype=np.uint16).reshape(h, w)
-                )
+                i = int(idx)
+                if format_b:
+                    data = txn.get(struct.pack(">Q", i))
+                    if data is None:
+                        raise KeyError(f"patch {i} missing in {lmdb_path}")
+                    pix = np.frombuffer(data[8:], dtype=np.uint16)
+                    side = isqrt(len(pix))
+                    if side * side != len(pix):
+                        raise ValueError(
+                            f"patch {i}: {len(pix)} px not square in {lmdb_path}"
+                        )
+                    patches.append(pix.reshape(side, side))
+                else:
+                    data = txn.get(str(i).encode())
+                    if data is None:
+                        raise KeyError(f"patch {i} missing in {lmdb_path}")
+                    h = struct.unpack("I", data[:4])[0]
+                    w = struct.unpack("I", data[4:8])[0]
+                    patches.append(
+                        np.frombuffer(data[8:], dtype=np.uint16).reshape(h, w)
+                    )
     finally:
         env.close()
     return np.stack(patches)
