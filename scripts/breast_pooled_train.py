@@ -168,6 +168,12 @@ def main():
     ap.add_argument("--num-workers", type=int, default=6)
     ap.add_argument("--val-frac", type=float, default=0.15)
     ap.add_argument("--tier", choices=["coarse", "medium", "fine"], default="coarse")
+    ap.add_argument("--qc-scores", type=Path, default=None,
+                    help="qc_scores.parquet (defaults to LMDB_DIR/qc/qc_scores.parquet)")
+    ap.add_argument("--qc-threshold", type=float, default=None,
+                    help="Keep TRAIN patches with qc_score >= this (test set untouched)")
+    ap.add_argument("--random-keep-frac", type=float, default=None,
+                    help="Quantity control: keep a random fraction of TRAIN patches instead of QC filtering")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -190,6 +196,22 @@ def main():
     n_dropped = n_before - len(train_pool)
     if n_dropped:
         logger.info(f"Dropped {n_dropped:,} cells ({100*n_dropped/n_before:.1f}%) with label=-1 from train pool")
+
+    # Optional TRAIN-only filtering (test set is never filtered): QC threshold or random control.
+    if args.qc_threshold is not None:
+        import polars as pl
+        qc_path = args.qc_scores or (LMDB_DIR / "qc" / "qc_scores.parquet")
+        qc = pl.read_parquet(qc_path).sort("cell_id")["qc_score"].to_numpy()
+        nb = len(train_pool)
+        train_pool = train_pool[qc[train_pool] >= args.qc_threshold]
+        logger.info(f"QC filter qc>={args.qc_threshold}: kept {len(train_pool):,}/{nb:,} "
+                    f"({100*len(train_pool)/nb:.1f}%)")
+    elif args.random_keep_frac is not None:
+        nb = len(train_pool)
+        rng = np.random.default_rng(args.seed)
+        train_pool = train_pool[rng.random(nb) < args.random_keep_frac]
+        logger.info(f"Random keep {args.random_keep_frac}: kept {len(train_pool):,}/{nb:,} "
+                    f"({100*len(train_pool)/nb:.1f}%)")
 
     pool_labels = labels_full[train_pool]
     train_idx, val_idx = train_test_split(
