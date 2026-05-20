@@ -121,3 +121,31 @@ def test_run_on_lmdb_layout_without_metadata_parquet(tmp_path):
     # montages built per class name from class_mapping.json
     assert (tmp_path / "qc" / "montage_Epithelial.png").exists()
     assert (tmp_path / "qc" / "montage_Immune.png").exists()
+
+
+def test_unlabeled_minus_one_is_scored_not_crash(tmp_path):
+    import lmdb
+
+    yy, xx = np.mgrid[0:32, 0:32]
+    blob = (200 + 4000 * np.exp(-(((yy - 16) ** 2 + (xx - 16) ** 2) / (2 * 5.0**2)))).astype(np.uint16)
+    flat = np.full((32, 32), 200, dtype=np.uint16)
+    patches = [blob, blob, flat, flat]  # 4 patches
+
+    env = lmdb.open(str(tmp_path / "patches.lmdb"), map_size=10 * 1024 * 1024)
+    with env.begin(write=True) as txn:
+        for i, p in enumerate(patches):
+            buf = struct.pack("I", 32) + struct.pack("I", 32) + p.tobytes()
+            txn.put(str(i).encode(), buf)
+    env.close()
+
+    # label -1 = unlabeled/dropped; class_mapping only has the real classes
+    np.save(tmp_path / "labels.npy", np.array([0, -1, 1, -1], dtype=np.int64))
+    (tmp_path / "class_mapping.json").write_text(json.dumps({"Epithelial": 0, "Immune": 1}))
+    (tmp_path / "slide_stats.json").write_text(json.dumps([{"source": "slideA", "n_written": 4}]))
+
+    run_quality_control(tmp_path, use_clearml=False, montage_top_n=4)
+
+    df = pl.read_parquet(tmp_path / "qc" / "qc_scores.parquet")
+    assert df.height == 4  # all patches scored, including the -1 ones
+    # the two -1 patches are grouped under an "Unlabeled" montage
+    assert (tmp_path / "qc" / "montage_Unlabeled.png").exists()

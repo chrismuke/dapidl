@@ -39,7 +39,7 @@ def _load_patch_labels(dataset_path: Path):
         labels = np.load(labels_path)
         mapping = json.loads(mapping_path.read_text())
         inv = {int(v): k for k, v in mapping.items()}
-        class_names = np.array([inv[int(x)] for x in labels], dtype=object)
+        class_names = np.array([inv.get(int(x), "Unlabeled") for x in labels], dtype=object)
         return len(labels), list(range(len(labels))), class_names
     raise FileNotFoundError(
         f"{dataset_path} has neither metadata.parquet nor labels.npy+class_mapping.json"
@@ -127,7 +127,7 @@ def run_quality_control(
 
 
 def _atomic_write_parquet(df: pl.DataFrame, path: Path) -> None:
-    tmp = path.with_suffix(".parquet.tmp")
+    tmp = path.parent / (path.name + ".tmp")
     df.write_parquet(tmp)
     os.replace(tmp, path)
 
