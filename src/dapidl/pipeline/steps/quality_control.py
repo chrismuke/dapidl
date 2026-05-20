@@ -117,7 +117,11 @@ def _safe_name(name: str) -> str:
 
 
 def _build_montages(dataset_path, meta, qc, top_n, out_dir) -> dict:
-    """One worst-first montage PNG per cell type. Returns {cell_type: image}."""
+    """One worst-first montage PNG per cell type. Returns {cell_type: image}.
+
+    Selects the worst top_n patches by qc score BEFORE reading pixels, so we
+    never load a whole class into memory (a class can be >1M patches).
+    """
     label_col = "broad_category" if "broad_category" in meta.columns else "predicted_type"
     labels = meta[label_col].to_numpy()
     montages = {}
@@ -126,8 +130,9 @@ def _build_montages(dataset_path, meta, qc, top_n, out_dir) -> dict:
         idx = np.where(labels == cell_type)[0]
         if len(idx) == 0:
             continue
-        patches = read_patches(dataset_path, idx)
-        img = build_class_montage(patches, qc[idx], cell_type, top_n=top_n)
+        worst = idx[np.argsort(qc[idx])[:top_n]]  # worst top_n global indices
+        patches = read_patches(dataset_path, worst)
+        img = build_class_montage(patches, qc[worst], cell_type, top_n=top_n)
         mpimg.imsave(out_dir / f"montage_{_safe_name(cell_type)}.png", img)
         montages[cell_type] = img
     return montages

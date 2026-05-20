@@ -54,6 +54,25 @@ def test_provenance_written(tmp_path):
     assert "date" in meta
 
 
+def test_montage_reads_only_top_n(tmp_path, monkeypatch):
+    _build_dataset(tmp_path)  # 6 patches, all class "Epithelial"
+    captured = {}
+
+    import dapidl.pipeline.steps.quality_control as step
+
+    real = step.build_class_montage
+
+    def spy(patches, scores, cell_type, top_n=64, cols=8):
+        captured["n_patches"] = patches.shape[0]
+        captured["top_n"] = top_n
+        return real(patches, scores, cell_type, top_n=top_n, cols=cols)
+
+    monkeypatch.setattr(step, "build_class_montage", spy)
+    run_quality_control(tmp_path, use_clearml=False, montage_top_n=4)
+    # 6 patches in the class but only top_n=4 should be read into the montage
+    assert captured["n_patches"] <= 4
+
+
 from unittest.mock import MagicMock, patch as mock_patch
 
 
