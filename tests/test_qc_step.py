@@ -52,3 +52,21 @@ def test_provenance_written(tmp_path):
     meta = json.loads((tmp_path / "qc" / "qc_scores.meta.json").read_text())
     assert meta["scorer"] == "classical"
     assert "date" in meta
+
+
+from unittest.mock import MagicMock, patch as mock_patch
+
+
+def test_clearml_logging_called(tmp_path):
+    _build_dataset(tmp_path)
+    fake_task = MagicMock()
+    fake_logger = MagicMock()
+    fake_task.get_logger.return_value = fake_logger
+    with mock_patch("clearml.Task") as TaskCls:
+        TaskCls.current_task.return_value = None
+        TaskCls.init.return_value = fake_task
+        TaskCls.TaskTypes.qc = "qc"
+        run_quality_control(tmp_path, use_clearml=True, montage_top_n=4)
+    assert fake_logger.report_image.called
+    assert fake_logger.report_histogram.called
+    assert fake_task.upload_artifact.called
