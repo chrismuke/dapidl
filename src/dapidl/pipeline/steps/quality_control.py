@@ -22,6 +22,30 @@ from dapidl.qc.montage import build_class_montage
 REFERENCE_SAMPLE = 2000  # patches sampled per slide to fit the normalization ref
 
 
+def _load_patch_labels(dataset_path: Path):
+    """Return (n, cell_ids, class_names) supporting two dataset layouts.
+
+    - PatchExtractor/Zarr: metadata.parquet with cell_id + broad_category/predicted_type
+    - LMDB-derived: labels.npy (int) + class_mapping.json (name->int); cell_id = index
+    """
+    meta_path = dataset_path / "metadata.parquet"
+    if meta_path.exists():
+        meta = pl.read_parquet(meta_path)
+        label_col = "broad_category" if "broad_category" in meta.columns else "predicted_type"
+        return meta.height, meta["cell_id"].to_list(), meta[label_col].to_numpy()
+    labels_path = dataset_path / "labels.npy"
+    mapping_path = dataset_path / "class_mapping.json"
+    if labels_path.exists() and mapping_path.exists():
+        labels = np.load(labels_path)
+        mapping = json.loads(mapping_path.read_text())
+        inv = {int(v): k for k, v in mapping.items()}
+        class_names = np.array([inv[int(x)] for x in labels], dtype=object)
+        return len(labels), list(range(len(labels))), class_names
+    raise FileNotFoundError(
+        f"{dataset_path} has neither metadata.parquet nor labels.npy+class_mapping.json"
+    )
+
+
 def _slide_groups(dataset_path: Path, n: int) -> np.ndarray:
     """Per-patch slide labels, reconstructed from slide_stats.json (safe JSON).
 
@@ -50,11 +74,7 @@ def run_quality_control(
 ) -> Path:
     """Score a dataset, write the sidecar, build montages. Returns the qc/ dir."""
     dataset_path = Path(dataset_path)
-    meta_path = dataset_path / "metadata.parquet"
-    if not meta_path.exists():
-        raise FileNotFoundError(f"No metadata.parquet in {dataset_path}")
-    meta = pl.read_parquet(meta_path)
-    n = meta.height
+    n, cell_ids, class_names = _load_patch_labels(dataset_path)
 
     sources = _slide_groups(dataset_path, n)
     scorer = ClassicalQualityScorer()
@@ -82,7 +102,7 @@ def run_quality_control(
     out_dir.mkdir(exist_ok=True)
 
     scores_df = pl.DataFrame({
-        "cell_id": meta["cell_id"],
+        "cell_id": cell_ids,
         "focus_score": focus,
         "detection_score": detection,
         "qc_score": qc,
@@ -100,7 +120,7 @@ def run_quality_control(
         "date": date.today().isoformat(),
     }, indent=2))
 
-    montages = _build_montages(dataset_path, meta, qc, montage_top_n, out_dir)
+    montages = _build_montages(dataset_path, class_names, qc, montage_top_n, out_dir)
     if use_clearml:
         _log_to_clearml(dataset_path, scores_df, montages)
     return out_dir
@@ -116,21 +136,18 @@ def _safe_name(name: str) -> str:
     return "".join(c if c.isalnum() or c in "-_" else "_" for c in str(name))
 
 
-def _build_montages(dataset_path, meta, qc, top_n, out_dir) -> dict:
+def _build_montages(dataset_path, class_names, qc, top_n, out_dir) -> dict:
     """One worst-first montage PNG per cell type. Returns {cell_type: image}.
 
-    Selects the worst top_n patches by qc score BEFORE reading pixels, so we
-    never load a whole class into memory (a class can be >1M patches).
+    Selects the worst top_n patches by qc score BEFORE reading pixels.
     """
-    label_col = "broad_category" if "broad_category" in meta.columns else "predicted_type"
-    labels = meta[label_col].to_numpy()
     montages = {}
     import matplotlib.image as mpimg
-    for cell_type in sorted(set(labels.tolist())):
-        idx = np.where(labels == cell_type)[0]
+    for cell_type in sorted(set(class_names.tolist())):
+        idx = np.where(class_names == cell_type)[0]
         if len(idx) == 0:
             continue
-        worst = idx[np.argsort(qc[idx])[:top_n]]  # worst top_n global indices
+        worst = idx[np.argsort(qc[idx])[:top_n]]
         patches = read_patches(dataset_path, worst)
         img = build_class_montage(patches, qc[worst], cell_type, top_n=top_n)
         mpimg.imsave(out_dir / f"montage_{_safe_name(cell_type)}.png", img)

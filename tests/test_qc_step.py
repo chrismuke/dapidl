@@ -89,3 +89,35 @@ def test_clearml_logging_called(tmp_path):
     assert fake_logger.report_image.called
     assert fake_logger.report_histogram.called
     assert fake_task.upload_artifact.called
+
+
+def _build_lmdb_layout_dataset(path):
+    """LMDB-derived layout: labels.npy + class_mapping.json, NO metadata.parquet."""
+    import lmdb
+
+    yy, xx = np.mgrid[0:32, 0:32]
+    blob = (200 + 4000 * np.exp(-(((yy - 16) ** 2 + (xx - 16) ** 2) / (2 * 5.0**2)))).astype(np.uint16)
+    flat = np.full((32, 32), 200, dtype=np.uint16)
+    patches = [blob, blob, blob, flat, flat, flat]
+
+    env = lmdb.open(str(path / "patches.lmdb"), map_size=10 * 1024 * 1024)
+    with env.begin(write=True) as txn:
+        for i, p in enumerate(patches):
+            buf = struct.pack("I", 32) + struct.pack("I", 32) + p.tobytes()
+            txn.put(str(i).encode(), buf)
+    env.close()
+
+    np.save(path / "labels.npy", np.array([0, 0, 0, 1, 1, 1], dtype=np.int64))
+    (path / "class_mapping.json").write_text(json.dumps({"Epithelial": 0, "Immune": 1}))
+    (path / "slide_stats.json").write_text(json.dumps([{"source": "slideA", "n_written": 6}]))
+
+
+def test_run_on_lmdb_layout_without_metadata_parquet(tmp_path):
+    _build_lmdb_layout_dataset(tmp_path)
+    run_quality_control(tmp_path, use_clearml=False, montage_top_n=4)
+    df = pl.read_parquet(tmp_path / "qc" / "qc_scores.parquet")
+    assert df.height == 6
+    assert set(["cell_id", "focus_score", "detection_score", "qc_score"]).issubset(df.columns)
+    # montages built per class name from class_mapping.json
+    assert (tmp_path / "qc" / "montage_Epithelial.png").exists()
+    assert (tmp_path / "qc" / "montage_Immune.png").exists()
