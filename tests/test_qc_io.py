@@ -58,3 +58,22 @@ def test_read_patches_format_b_missing_index(tmp_path):
     _write_lmdb_format_b(tmp_path / "patches.lmdb", patches, [0, 1, 2])
     with pytest.raises(KeyError):
         read_patches(tmp_path, [99])
+
+
+def _write_lmdb_format_b_no_meta(path, patches, labels):
+    import lmdb
+    env = lmdb.open(str(path), map_size=10 * 1024 * 1024)
+    with env.begin(write=True) as txn:
+        for i, (p, lab) in enumerate(zip(patches, labels)):
+            label_bytes = np.array([lab], dtype=np.int64).tobytes()
+            txn.put(struct.pack(">Q", i), label_bytes + p.astype(np.uint16).tobytes())
+        # NOTE: deliberately no __metadata__ key (mirrors breast-6source)
+    env.close()
+
+
+def test_read_patches_format_b_without_metadata(tmp_path):
+    patches = [np.full((8, 8), i, dtype=np.uint16) for i in range(5)]
+    _write_lmdb_format_b_no_meta(tmp_path / "patches.lmdb", patches, [0, 1, 2, 3, -1])
+    out = read_patches(tmp_path, [0, 2, 4])
+    assert out.shape == (3, 8, 8)
+    assert out[1, 0, 0] == 2

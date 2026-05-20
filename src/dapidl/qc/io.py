@@ -24,7 +24,6 @@ def read_patches(dataset_path: Path | str, indices) -> np.ndarray:
 
 
 def _read_lmdb(lmdb_path: Path, indices) -> np.ndarray:
-    import struct
     from math import isqrt
 
     import lmdb
@@ -33,13 +32,32 @@ def _read_lmdb(lmdb_path: Path, indices) -> np.ndarray:
     patches = []
     try:
         with env.begin() as txn:
-            # Format B (lmdb_creation.py): 8-byte big-endian key, value =
-            # int64 label + uint16 square patch, plus a __metadata__ key.
-            # Format A (legacy): str(idx) key, value = 4B H + 4B W + uint16.
-            format_b = txn.get(b"__metadata__") is not None
+            # Detect key scheme from the smallest non-underscore key:
+            #   Format A (legacy/fixtures): ASCII-digit keys str(idx);
+            #     value = 4B H + 4B W + uint16 patch.
+            #   Format B (real datasets): 8-byte big-endian >Q keys;
+            #     value = 8B int64 label + uint16 SQUARE patch (no H/W header).
+            cur = txn.cursor()
+            if not cur.first():
+                raise KeyError(f"empty LMDB {lmdb_path}")
+            first_key = cur.key()
+            while first_key[:1] == b"_":  # skip __metadata__/special keys
+                if not cur.next():
+                    break
+                first_key = cur.key()
+            format_a = first_key.isdigit()
             for idx in indices:
                 i = int(idx)
-                if format_b:
+                if format_a:
+                    data = txn.get(str(i).encode())
+                    if data is None:
+                        raise KeyError(f"patch {i} missing in {lmdb_path}")
+                    h = struct.unpack("I", data[:4])[0]
+                    w = struct.unpack("I", data[4:8])[0]
+                    patches.append(
+                        np.frombuffer(data[8:], dtype=np.uint16).reshape(h, w)
+                    )
+                else:
                     data = txn.get(struct.pack(">Q", i))
                     if data is None:
                         raise KeyError(f"patch {i} missing in {lmdb_path}")
@@ -50,15 +68,6 @@ def _read_lmdb(lmdb_path: Path, indices) -> np.ndarray:
                             f"patch {i}: {len(pix)} px not square in {lmdb_path}"
                         )
                     patches.append(pix.reshape(side, side))
-                else:
-                    data = txn.get(str(i).encode())
-                    if data is None:
-                        raise KeyError(f"patch {i} missing in {lmdb_path}")
-                    h = struct.unpack("I", data[:4])[0]
-                    w = struct.unpack("I", data[4:8])[0]
-                    patches.append(
-                        np.frombuffer(data[8:], dtype=np.uint16).reshape(h, w)
-                    )
     finally:
         env.close()
     return np.stack(patches)
