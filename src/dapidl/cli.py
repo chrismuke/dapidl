@@ -3791,5 +3791,20 @@ def step_cl_standardize(target_level, fuzzy_threshold, input_artifacts, output_a
     _save_artifacts(combined, output_artifacts)
 
 
+@main.command(name="qc")
+@click.option("--dataset", "dataset", required=True, type=click.Path(), help="Path to a built dataset dir (with patches.lmdb/zarr + metadata.parquet)")
+@click.option("--montage-top-n", default=64, show_default=True, help="Worst-N patches per class in the montage")
+@click.option("--clearml/--no-clearml", default=True, help="Log montages + histograms to ClearML")
+def qc_cmd(dataset: str, montage_top_n: int, clearml: bool) -> None:
+    """Score patch quality (focus + detection) and build inspection montages."""
+    from dapidl.pipeline.steps.quality_control import run_quality_control
+
+    console.print(f"[bold blue]QC scoring[/bold blue] {dataset}")
+    out_dir = run_quality_control(
+        dataset, use_clearml=clearml, montage_top_n=montage_top_n
+    )
+    console.print(f"[green]Wrote[/green] {out_dir}/qc_scores.parquet + montages")
+
+
 if __name__ == "__main__":
     main()
