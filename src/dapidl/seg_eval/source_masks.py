@@ -144,3 +144,13 @@ def load_sthelar(zarr_path: str | Path):
         "transcripts": tx,
         "centroids": centroids,
     }
+
+
+SOURCES = {
+    "xenium_rep1": {"kind": "xenium", "root": "/mnt/work/datasets/raw/xenium/xenium-breast-tumor-rep1"},
+    "xenium_rep2": {"kind": "xenium", "root": "/mnt/work/datasets/raw/xenium/xenium-breast-tumor-rep2"},
+    "sthelar_breast_s0": {"kind": "sthelar", "zarr": "/mnt/work/datasets/STHELAR/sdata_slides/sdata_breast_s0.zarr/sdata_breast_s0.zarr"},
+    "sthelar_breast_s1": {"kind": "sthelar", "zarr": "/mnt/work/datasets/STHELAR/sdata_slides/sdata_breast_s1.zarr/sdata_breast_s1.zarr"},
+    "sthelar_breast_s3": {"kind": "sthelar", "zarr": "/mnt/work/datasets/STHELAR/sdata_slides/sdata_breast_s3.zarr/sdata_breast_s3.zarr"},
+    "sthelar_breast_s6": {"kind": "sthelar", "zarr": "/mnt/work/datasets/STHELAR/sdata_slides/sdata_breast_s6.zarr/sdata_breast_s6.zarr"},
+}
