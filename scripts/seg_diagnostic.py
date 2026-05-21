@@ -20,17 +20,23 @@ from starpose.types import ModalityBundle
 OUT = Path("pipeline_output/seg_diagnostic_2026_05")
 
 
-def _segment_fov(dapi_tile, transcripts_tile, pixel_size, expander):
+def _segment_fov(dapi_tile, transcripts_tile, pixel_size, expander,
+                 nucleus_method="cellpose_nuclei"):
     mb = ModalityBundle(dapi=dapi_tile, transcripts=transcripts_tile,
                         pixel_size=pixel_size, platform="diagnostic")
-    return segment_multimodal(mb, gpu=True, nucleus_method="adaptive",
+    return segment_multimodal(mb, gpu=True, nucleus_method=nucleus_method,
                               expansion_method=expander)
 
 
 def _crop_polys(polys, bbox):
+    """Keep only WHOLE cells all of whose vertices fall inside the bbox."""
     y0, x0, y1, x1 = bbox
-    return polys.filter((pl.col("px") >= x0) & (pl.col("px") < x1)
-                        & (pl.col("py") >= y0) & (pl.col("py") < y1))
+    inside = polys.filter((pl.col("px") >= x0) & (pl.col("px") < x1)
+                          & (pl.col("py") >= y0) & (pl.col("py") < y1))
+    full = (polys.group_by("cell_id").agg(pl.len().alias("total"))
+            .join(inside.group_by("cell_id").agg(pl.len().alias("kept")), on="cell_id")
+            .filter(pl.col("kept") == pl.col("total"))["cell_id"])
+    return inside.filter(pl.col("cell_id").is_in(full))
 
 
 def _local_centroids(centroids, bbox):
@@ -43,12 +49,15 @@ def _local_centroids(centroids, bbox):
 
 
 def diagnose_fov(source, fov_label, dapi_tile, src_nuc, src_cell, src_centroids_local,
-                 transcripts, pixel_size, expander="watershed"):
+                 transcripts, pixel_size, expander="watershed",
+                 nucleus_method="cellpose_nuclei"):
     """One FOV: segment, compare nucleus+cell masks, compare QC. Returns a row dict."""
-    res = _segment_fov(dapi_tile, transcripts, pixel_size, expander)
+    res = _segment_fov(dapi_tile, transcripts, pixel_size, expander,
+                       nucleus_method=nucleus_method)
     sp_nuc = res.nucleus_masks
     sp_cell = res.cell_masks if res.cell_masks is not None else res.nucleus_masks
-    sp_cen = np.asarray(res.nucleus_centroids)
+    sp_cen_raw = res.nucleus_centroids if res.nucleus_centroids is not None else res.cell_centroids
+    sp_cen = np.asarray(sp_cen_raw) if sp_cen_raw is not None else np.zeros((0, 2))
 
     nuc = detection_metrics(sp_nuc, src_nuc)
     cell = detection_metrics(sp_cell, src_cell)
@@ -72,7 +81,7 @@ def diagnose_fov(source, fov_label, dapi_tile, src_nuc, src_cell, src_centroids_
     }
 
 
-def run_source(name, n_fovs, tile, expander):
+def run_source(name, n_fovs, tile, expander, nucleus_method="cellpose_nuclei"):
     cfg = SOURCES[name]
     src = load_xenium(cfg["root"]) if cfg["kind"] == "xenium" else load_sthelar(cfg["zarr"])
     dapi = src["dapi"]()
@@ -87,14 +96,14 @@ def run_source(name, n_fovs, tile, expander):
         src_nuc = rasterize_polygons(_crop_polys(nuc_polys, fov.bbox), "cell_id", "px", "py", fov.bbox)
         src_cell = rasterize_polygons(_crop_polys(cell_polys, fov.bbox), "cell_id", "px", "py", fov.bbox)
         src_cen = _local_centroids(src["centroids"], fov.bbox)
-        tx = src["transcripts"]
-        tx_tile = tx.filter((pl.col("x") >= x0) & (pl.col("x") < x1)
-                            & (pl.col("y") >= y0) & (pl.col("y") < y1)
-                            ).with_columns((pl.col("x") - x0).alias("x"),
-                                           (pl.col("y") - y0).alias("y"))
+        tx_tile = src["transcripts_for_bbox"](fov.bbox).with_columns(
+            (pl.col("x") - x0).alias("x"),
+            (pl.col("y") - y0).alias("y"),
+        )
         try:
             rows.append(diagnose_fov(name, fov.label, tile_img, src_nuc, src_cell,
-                                     src_cen, tx_tile, px, expander))
+                                     src_cen, tx_tile, px, expander,
+                                     nucleus_method=nucleus_method))
         except Exception as e:
             logger.warning(f"{name}/{fov.label} failed: {e}")
     logger.info(f"{name}: {len(rows)} FOVs done")
@@ -107,14 +116,20 @@ def main():
     ap.add_argument("--n-fovs", type=int, default=8)
     ap.add_argument("--tile", type=int, default=2048)
     ap.add_argument("--expander", default="watershed", choices=["proseg", "watershed"])
+    ap.add_argument("--nucleus-method", default="cellpose_nuclei",
+                    choices=["adaptive", "cellpose_nuclei", "stardist"])
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     all_rows = []
     for name in args.sources.split(","):
-        all_rows.extend(run_source(name, args.n_fovs, args.tile, args.expander))
+        all_rows.extend(run_source(name, args.n_fovs, args.tile, args.expander,
+                                   nucleus_method=args.nucleus_method))
     df = pl.DataFrame(all_rows)
     df.write_parquet(OUT / "results.parquet")
     logger.info(f"wrote {OUT/'results.parquet'} ({df.height} rows)")
+    if df.height == 0:
+        logger.warning("no FOVs produced rows — check segmentation backend availability")
+        return
     print(df.group_by("source").agg(
         pl.col("nuc_f1").mean().round(3),
         pl.col("nuc_count_ratio").mean().round(3),

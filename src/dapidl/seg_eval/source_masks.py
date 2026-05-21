@@ -65,12 +65,20 @@ def load_xenium(root: str | Path):
         (pl.col("y_location") / XENIUM_PX).alias("y"),
         pl.col("feature_name").alias("gene"),
     )
+
+    def _tx_for_bbox(bbox):
+        y0, x0, y1, x1 = bbox
+        return tx.filter(
+            (pl.col("x") >= x0) & (pl.col("x") < x1)
+            & (pl.col("y") >= y0) & (pl.col("y") < y1)
+        )
+
     return {
         "dapi": _dapi,
         "pixel_size": XENIUM_PX,
         "nucleus_polys": lambda: _polys("nucleus_boundaries"),
         "cell_polys": lambda: _polys("cell_boundaries"),
-        "transcripts": tx,
+        "transcripts_for_bbox": _tx_for_bbox,
         "centroids": centroids,
     }
 
@@ -128,20 +136,33 @@ def load_sthelar(zarr_path: str | Path):
     ], axis=1)
 
     # ----------------------------------------------------------- transcripts
+    # Keep the Dask DataFrame lazy — do NOT .compute() at load time.
+    # Full table can be ~100M rows (~15-20 GB) and would OOM the 62 GB host.
     pts_dask = sdata.points["st"]
-    pts_pd = pts_dask.compute()          # pandas DataFrame
-    tx = pl.from_pandas(pts_pd.reset_index(drop=True)).select(
-        (pl.col("x") / STHELAR_PX).alias("x"),
-        (pl.col("y") / STHELAR_PX).alias("y"),
-        pl.col("feature_name").alias("gene"),
-    )
+
+    def _tx_for_bbox(bbox):
+        """Return polars DF with x, y (px), gene for transcripts inside bbox."""
+        y0, x0, y1, x1 = bbox
+        # pts_dask coords are in µm; convert bbox to µm for filtering
+        x0_um, x1_um = x0 * STHELAR_PX, x1 * STHELAR_PX
+        y0_um, y1_um = y0 * STHELAR_PX, y1 * STHELAR_PX
+        subset = pts_dask[
+            (pts_dask["x"] >= x0_um) & (pts_dask["x"] < x1_um)
+            & (pts_dask["y"] >= y0_um) & (pts_dask["y"] < y1_um)
+        ]
+        pts_pd = subset.compute()
+        return pl.from_pandas(pts_pd.reset_index(drop=True)).select(
+            (pl.col("x") / STHELAR_PX).alias("x"),
+            (pl.col("y") / STHELAR_PX).alias("y"),
+            pl.col("feature_name").alias("gene"),
+        )
 
     return {
         "dapi": _dapi,
         "pixel_size": STHELAR_PX,
         "nucleus_polys": lambda: _polys_from_shapes("nucleus_boundaries"),
         "cell_polys": lambda: _polys_from_shapes("cell_boundaries"),
-        "transcripts": tx,
+        "transcripts_for_bbox": _tx_for_bbox,
         "centroids": centroids,
     }
 
