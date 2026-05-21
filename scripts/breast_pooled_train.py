@@ -174,6 +174,10 @@ def main():
                     help="Keep TRAIN patches with qc_score >= this (test set untouched)")
     ap.add_argument("--random-keep-frac", type=float, default=None,
                     help="Quantity control: keep a random fraction of TRAIN patches instead of QC filtering")
+    ap.add_argument("--qc-weight", action="store_true",
+                    help="Weight the sampler by qc_score (keep all data, draw good patches more often); class balance preserved")
+    ap.add_argument("--qc-weight-floor", type=float, default=0.1,
+                    help="Min qc weight so low-QC patches keep a small sampling probability")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -222,6 +226,21 @@ def main():
     logger.info(f"Train class dist: {dict(zip(*np.unique(train_labels, return_counts=True)))}")
 
     weights_per_cell = class_weights(train_labels, len(class_names))[train_labels]
+    if args.qc_weight:
+        import polars as pl
+        qc_path = args.qc_scores or (LMDB_DIR / "qc" / "qc_scores.parquet")
+        qc_all = pl.read_parquet(qc_path).sort("cell_id")["qc_score"].to_numpy()
+        qc_tr = np.clip(qc_all[train_idx], args.qc_weight_floor, None)
+        # Normalize qc WITHIN each class so per-class sampling mass is unchanged
+        # (keeps the class-imbalance correction intact); only within-class quality
+        # is emphasized -> isolates the quality effect vs the unweighted baseline.
+        qc_factor = np.ones_like(qc_tr, dtype=np.float64)
+        for c in np.unique(train_labels):
+            m = train_labels == c
+            qc_factor[m] = qc_tr[m] / qc_tr[m].mean()
+        weights_per_cell = weights_per_cell * qc_factor
+        logger.info(f"QC sample-weighting ON (floor={args.qc_weight_floor}): "
+                    f"per-class mass preserved, within-class quality emphasized")
     sampler = WeightedRandomSampler(weights_per_cell, num_samples=len(train_idx), replacement=True)
     train_loader = DataLoader(DapiPatchDataset(train_idx, labels_full, augment=True),
                               batch_size=args.batch_size, sampler=sampler,
