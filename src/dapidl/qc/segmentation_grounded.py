@@ -7,12 +7,13 @@ the segmentation. Lives in dapidl; imports the starpose.qc.base ABC read-only.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
 from scipy import ndimage
 from skimage.measure import regionprops
-from starpose.qc.base import QualityScore
+from starpose.qc.base import NormRef, QualityScore, QualityScorer
 
 
 @dataclass(frozen=True)
@@ -233,3 +234,56 @@ def decide_broken(qs: QualityScore, cfg: SegQCConfig,
     if use_structure_cut and qs.focus_score < cfg.structure_min:
         return True, "no_structure"
     return False, "ok"
+
+
+class SegmentationGroundedScorer(QualityScorer):
+    """StarDist-grounded broken-patch rejector. v1: StarDist only."""
+
+    def __init__(self, cfg: SegQCConfig | None = None, gpu: bool = True,
+                 pixel_size: float = 0.2125):
+        self.cfg = cfg or SegQCConfig()
+        self.gpu = gpu
+        self.pixel_size = pixel_size
+        self._model = None
+
+    @property
+    def name(self) -> str:
+        return "segmentation_grounded"
+
+    def _get_model(self):
+        if self._model is None:
+            os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
+            from stardist.models import StarDist2D
+            self._model = StarDist2D.from_pretrained("2D_versatile_fluo")
+        return self._model
+
+    def _segment(self, patch: np.ndarray):
+        """Return (label mask int32, per-object prob array). Label k -> prob[k-1]."""
+        model = self._get_model()
+        p_low, p_high = np.percentile(patch, [1, 99.8])
+        if p_high - p_low < 1e-6:
+            return np.zeros(patch.shape, np.int32), np.array([])
+        img = ((patch.astype(np.float32) - p_low) / (p_high - p_low)).clip(0, 1)
+        labels, details = model.predict_instances(img)
+        return labels.astype(np.int32), np.asarray(details["prob"], dtype=float)
+
+    def fit_reference(self, patches: np.ndarray) -> NormRef:
+        """Per-slide structure reference: p90 of structure_raw over a sample."""
+        raws = []
+        for p in patches:
+            masks, probs = self._segment(p)
+            cn = select_center_nucleus(masks, probs, self.cfg)
+            if cn is not None:
+                raws.append(structure_raw(p, cn.mask, self.cfg))
+        p90 = float(np.percentile(raws, 90)) if raws else 1.0
+        return NormRef(varlap_p90=p90)  # field reused to hold structure-raw p90
+
+    def score_batch(self, patches: np.ndarray, ref: NormRef | None = None):
+        if ref is None:
+            ref = self.fit_reference(patches)
+        out = []
+        for p in patches:
+            masks, probs = self._segment(p)
+            out.append(score_from_segmentation(
+                p, masks, probs, ref.varlap_p90, self.pixel_size, self.cfg))
+        return out

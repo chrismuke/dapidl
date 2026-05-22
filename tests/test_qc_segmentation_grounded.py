@@ -157,3 +157,19 @@ def test_good_nucleus_not_broken_even_if_low_structure():
     broken, reason = decide_broken(qs, cfg)            # structure cut OFF by default
     assert not broken
     assert qs.focus_score < 0.5                        # structure IS reported as low
+
+
+from dapidl.qc.segmentation_grounded import SegmentationGroundedScorer
+
+
+def test_scorer_score_batch_uses_injected_segmentation(monkeypatch):
+    sc = SegmentationGroundedScorer()
+    # fake _segment: a centered disk + prob, independent of pixels
+    yy, xx = np.ogrid[:128, :128]
+    masks = np.zeros((128, 128), np.int32); masks[(yy - 64) ** 2 + (xx - 64) ** 2 < 16 ** 2] = 1
+    monkeypatch.setattr(sc, "_segment", lambda p: (masks, np.array([0.95])))
+    patch = np.full((1, 128, 128), 300.0, np.float64); patch[0][masks > 0] = 1500.0
+    from starpose.qc.base import NormRef
+    out = sc.score_batch(patch.astype(np.uint16), ref=NormRef(varlap_p90=2.0))
+    assert len(out) == 1 and out[0].metrics["has_nucleus"] == 1.0
+    assert sc.name == "segmentation_grounded"
