@@ -55,3 +55,35 @@ def test_structure_score_calibrates_with_floor():
     # raw below floor -> 0; raw == p90 -> 1
     assert structure_score(0.0, ref_p90=2.0, cfg=cfg) == 0.0
     assert structure_score(2.0 + cfg.structure_floor, ref_p90=2.0, cfg=cfg) == 1.0
+
+
+from dapidl.qc.segmentation_grounded import (
+    centeredness_score, touches_edge, area_um2, dominant_central_fraction,
+)
+
+
+def test_centeredness_high_at_center_low_at_offset():
+    cfg = SegQCConfig()
+    assert centeredness_score((64.0, 64.0), (128, 128), cfg) > 0.95
+    assert centeredness_score((110.0, 110.0), (128, 128), cfg) < 0.2
+
+
+def test_touches_edge():
+    cfg = SegQCConfig()
+    m = np.zeros((128, 128), bool); m[60:70, 0:5] = True   # touches left frame
+    assert touches_edge(m, cfg)
+    m2 = np.zeros((128, 128), bool); m2[60:70, 60:70] = True
+    assert not touches_edge(m2, cfg)
+
+
+def test_area_um2():
+    m = np.zeros((128, 128), bool); m[:10, :10] = True  # 100 px
+    assert abs(area_um2(m, pixel_size=0.2125) - 100 * 0.2125 ** 2) < 1e-6
+
+
+def test_dominant_central_fraction():
+    cfg = SegQCConfig()
+    big = np.zeros((128, 128), bool); big[48:80, 48:80] = True   # fills central box
+    small = np.zeros((128, 128), bool); small[48:52, 48:52] = True
+    f = dominant_central_fraction(target=big, all_masks=(big | small), cfg=cfg)
+    assert f > 0.9

@@ -121,3 +121,33 @@ def structure_score(raw: float, ref_p90: float, cfg: SegQCConfig) -> float:
     denom = max(ref_p90, 1e-6)
     val = round((raw - cfg.structure_floor) / denom, 15)
     return float(min(max(val, 0.0), 1.0))
+
+
+def centeredness_score(centroid, patch_shape, cfg: SegQCConfig) -> float:
+    h, w = patch_shape
+    cy, cx = (h - 1) / 2.0, (w - 1) / 2.0
+    dist = float(np.hypot(centroid[0] - cy, centroid[1] - cx))
+    return float(np.clip(1.0 - dist / (cfg.center_max_dist_frac * (h / 2.0)), 0.0, 1.0))
+
+
+def touches_edge(mask: np.ndarray, cfg: SegQCConfig) -> bool:
+    e = cfg.edge_px
+    return bool(mask[:e, :].any() or mask[-e:, :].any()
+                or mask[:, :e].any() or mask[:, -e:].any())
+
+
+def area_um2(mask: np.ndarray, pixel_size: float) -> float:
+    return float(mask.sum()) * pixel_size * pixel_size
+
+
+def dominant_central_fraction(target: np.ndarray, all_masks: np.ndarray,
+                              cfg: SegQCConfig) -> float:
+    """Share of the central-box foreground that belongs to the target nucleus."""
+    h, w = target.shape
+    bh, bw = int(h * cfg.central_box_frac), int(w * cfg.central_box_frac)
+    y0, x0 = (h - bh) // 2, (w - bw) // 2
+    box = (slice(y0, y0 + bh), slice(x0, x0 + bw))
+    fg = all_masks[box].sum()
+    if fg == 0:
+        return 0.0
+    return float(target[box].sum() / fg)
