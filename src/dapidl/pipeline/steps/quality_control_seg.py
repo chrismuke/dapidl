@@ -51,8 +51,9 @@ def run_quality_control_seg(dataset_path, use_structure_cut: bool = False,
     rng = np.random.default_rng(seed)
 
     cols = {k: np.zeros(n) for k in (
-        "structure_score", "centeredness", "dominant_central", "completeness",
-        "area_um2", "stardist_prob", "eccentricity", "solidity", "intensity_ratio")}
+        "structure_score", "objectness_score", "centeredness", "dominant_central",
+        "completeness", "area_um2", "stardist_prob", "eccentricity", "solidity",
+        "intensity_ratio")}
     broken = np.zeros(n, dtype=bool)
     reason = np.empty(n, dtype=object)
 
@@ -66,6 +67,7 @@ def run_quality_control_seg(dataset_path, use_structure_cut: bool = False,
             for j, gi in enumerate(chunk):
                 s = scores[j]
                 cols["structure_score"][gi] = s.focus_score
+                cols["objectness_score"][gi] = s.detection_score
                 cols["stardist_prob"][gi] = s.metrics.get("stardist_prob", 0.0)
                 for k in ("centeredness", "dominant_central", "completeness",
                           "area_um2", "eccentricity", "solidity", "intensity_ratio"):
