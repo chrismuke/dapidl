@@ -173,3 +173,13 @@ def test_scorer_score_batch_uses_injected_segmentation(monkeypatch):
     out = sc.score_batch(patch.astype(np.uint16), ref=NormRef(varlap_p90=2.0))
     assert len(out) == 1 and out[0].metrics["has_nucleus"] == 1.0
     assert sc.name == "segmentation_grounded"
+
+
+from dapidl.qc.montage import build_reason_montage
+
+
+def test_build_reason_montage_returns_rgb():
+    patches = (np.random.rand(20, 128, 128) * 1000).astype(np.uint16)
+    reasons = np.array(["off_center"] * 10 + ["cut_at_edge"] * 10, dtype=object)
+    img = build_reason_montage(patches, reasons, reason="off_center", top_n=8)
+    assert img.ndim == 3 and img.shape[2] == 3 and img.dtype == np.uint8
