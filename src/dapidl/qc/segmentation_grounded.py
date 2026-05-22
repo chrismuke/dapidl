@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage
 from skimage.measure import regionprops
+from starpose.qc.base import QualityScore
 
 
 @dataclass(frozen=True)
@@ -181,3 +182,54 @@ def objectness_metrics(patch: np.ndarray, mask: np.ndarray, prob: float,
         "morph_ok": morph_ok,
         "intensity_ok": intensity_ok,
     }
+
+
+def score_from_segmentation(patch, masks, probs, ref_p90, pixel_size,
+                            cfg: SegQCConfig) -> QualityScore:
+    """Compose sub-scores into a QualityScore (no GPU). All raw signals are
+    stored in metrics; broken/reason is decided separately by decide_broken."""
+    cn = select_center_nucleus(masks, probs, cfg)
+    if cn is None:
+        return QualityScore(focus_score=0.0, detection_score=0.0, qc_score=0.0,
+                            metrics={"has_nucleus": 0.0})
+    s_raw = structure_raw(patch, cn.mask, cfg)
+    struct = structure_score(s_raw, ref_p90, cfg)
+    cent = centeredness_score(cn.centroid, patch.shape, cfg)
+    a_um2 = area_um2(cn.mask, pixel_size)
+    edge = touches_edge(cn.mask, cfg)
+    dom = dominant_central_fraction(cn.mask, masks > 0, cfg)
+    obj = objectness_metrics(patch, cn.mask, cn.prob, cfg)
+    completeness = float(
+        (not edge) and (cfg.area_min_um2 <= a_um2 <= cfg.area_max_um2)
+    )
+    qc = min(struct, cent, obj["objectness_score"])  # combined headline (reporting)
+    return QualityScore(
+        focus_score=struct, detection_score=obj["objectness_score"], qc_score=qc,
+        metrics={
+            "has_nucleus": 1.0, "structure_raw": s_raw, "centeredness": cent,
+            "dominant_central": dom, "completeness": completeness,
+            "area_um2": a_um2, "edge_cut": float(edge),
+            "stardist_prob": cn.prob, "eccentricity": obj["eccentricity"],
+            "solidity": obj["solidity"], "intensity_ratio": obj["intensity_ratio"],
+            "morph_ok": float(obj["morph_ok"]), "intensity_ok": float(obj["intensity_ok"]),
+        },
+    )
+
+
+def decide_broken(qs: QualityScore, cfg: SegQCConfig,
+                  use_structure_cut: bool = False) -> tuple[bool, str]:
+    """High-specificity broken decision. Order = most severe first. structure is
+    never the sole reason unless use_structure_cut is explicitly enabled."""
+    m = qs.metrics
+    if m.get("has_nucleus", 0.0) < 1.0:
+        return True, "no_nucleus"
+    if m["edge_cut"] >= 1.0:
+        return True, "cut_at_edge"
+    if (m["centeredness"] <= 0.0) or (m["dominant_central"] < cfg.dominant_min_frac):
+        return True, "off_center"
+    if (m["stardist_prob"] < cfg.prob_min) or (m["morph_ok"] < 1.0) or (m["intensity_ok"] < 1.0) \
+            or not (cfg.area_min_um2 <= m["area_um2"] <= cfg.area_max_um2):
+        return True, "false_detection"   # low conf / weird morph / dim / sliver / merged-blob
+    if use_structure_cut and qs.focus_score < cfg.structure_min:
+        return True, "no_structure"
+    return False, "ok"

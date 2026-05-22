@@ -111,3 +111,49 @@ def test_objectness_low_prob_scores_low():
     patch = np.full((128, 128), 300.0); patch[mask] = 1500.0
     om = objectness_metrics(patch, mask, prob=0.05, cfg=cfg)
     assert om["objectness_score"] < 0.4
+
+
+from dapidl.qc.segmentation_grounded import score_from_segmentation, decide_broken
+
+
+def _one_disk(cy, cx, r, label=1):
+    yy, xx = np.ogrid[:128, :128]
+    m = np.zeros((128, 128), np.int32); m[(yy - cy) ** 2 + (xx - cx) ** 2 < r ** 2] = label
+    return m
+
+
+def test_decide_broken_no_nucleus():
+    cfg = SegQCConfig()
+    qs = score_from_segmentation(np.zeros((128, 128)), np.zeros((128, 128), np.int32),
+                                 np.array([]), ref_p90=2.0, pixel_size=0.2125, cfg=cfg)
+    broken, reason = decide_broken(qs, cfg)
+    assert broken and reason == "no_nucleus"
+
+
+def test_decide_broken_cut_at_edge():
+    cfg = SegQCConfig()
+    masks = _one_disk(64, 64, 70)             # large disk: covers centre AND touches frame
+    patch = np.full((128, 128), 300.0); patch[masks > 0] = 1500.0
+    qs = score_from_segmentation(patch, masks, np.array([0.9]), 2.0, 0.2125, cfg)
+    broken, reason = decide_broken(qs, cfg)
+    assert broken and reason == "cut_at_edge"
+
+
+def test_decide_broken_off_center():
+    cfg = SegQCConfig()
+    masks = _one_disk(60, 60, 6, 1)           # small, near but a neighbor dominates
+    masks += _one_disk(64, 80, 16, 2)
+    patch = np.full((128, 128), 300.0); patch[masks > 0] = 1500.0
+    qs = score_from_segmentation(patch, masks, np.array([0.9, 0.9]), 2.0, 0.2125, cfg)
+    broken, reason = decide_broken(qs, cfg)
+    assert broken and reason in ("off_center", "no_nucleus")
+
+
+def test_good_nucleus_not_broken_even_if_low_structure():
+    cfg = SegQCConfig()
+    masks = _one_disk(64, 64, 16, 1)
+    patch = np.full((128, 128), 300.0); patch[masks > 0] = 1500.0   # flat interior
+    qs = score_from_segmentation(patch, masks, np.array([0.95]), 2.0, 0.2125, cfg)
+    broken, reason = decide_broken(qs, cfg)            # structure cut OFF by default
+    assert not broken
+    assert qs.focus_score < 0.5                        # structure IS reported as low
