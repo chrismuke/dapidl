@@ -15,7 +15,11 @@ import numpy as np
 import polars as pl
 from loguru import logger
 
-from dapidl.pipeline.steps.quality_control import _load_patch_labels, _slide_groups
+from dapidl.pipeline.steps.quality_control import (
+    _atomic_write_parquet,
+    _load_patch_labels,
+    _slide_groups,
+)
 from dapidl.qc.io import read_patches
 from dapidl.qc.segmentation_grounded import SegmentationGroundedScorer, decide_broken
 
@@ -76,9 +80,9 @@ def run_quality_control_seg(dataset_path, use_structure_cut: bool = False,
     df = pl.DataFrame({"cell_id": cell_ids, "source": sources,
                        "cell_type": class_names, **cols,
                        "broken": broken, "broken_reason": list(reason)})
-    df.write_parquet(out_dir / "seg_scores.parquet")
+    _atomic_write_parquet(df, out_dir / "seg_scores.parquet")
     audit = stratified_audit(df)
-    audit.write_parquet(out_dir / "seg_broken_audit.parquet")
+    _atomic_write_parquet(audit, out_dir / "seg_broken_audit.parquet")
     (out_dir / "seg_scores.meta.json").write_text(json.dumps({
         "scorer": scorer.name, "cfg": scorer.cfg.__dict__,
         "use_structure_cut": use_structure_cut,
