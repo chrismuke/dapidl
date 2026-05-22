@@ -87,3 +87,27 @@ def test_dominant_central_fraction():
     small = np.zeros((128, 128), bool); small[48:52, 48:52] = True
     f = dominant_central_fraction(target=big, all_masks=(big | small), cfg=cfg)
     assert f > 0.9
+
+
+from dapidl.qc.segmentation_grounded import objectness_metrics
+
+
+def test_objectness_round_bright_blob_is_object_like():
+    cfg = SegQCConfig()
+    yy, xx = np.ogrid[:128, :128]
+    mask = (yy - 64) ** 2 + (xx - 64) ** 2 < 14 ** 2
+    patch = np.full((128, 128), 300.0); patch[mask] = 1500.0
+    om = objectness_metrics(patch, mask, prob=0.9, cfg=cfg)
+    assert om["solidity"] > cfg.solidity_min
+    assert om["eccentricity"] < cfg.eccentricity_max
+    assert om["intensity_ratio"] > cfg.intensity_ratio_min
+    assert om["objectness_score"] > 0.7
+
+
+def test_objectness_low_prob_scores_low():
+    cfg = SegQCConfig()
+    yy, xx = np.ogrid[:128, :128]
+    mask = (yy - 64) ** 2 + (xx - 64) ** 2 < 14 ** 2
+    patch = np.full((128, 128), 300.0); patch[mask] = 1500.0
+    om = objectness_metrics(patch, mask, prob=0.05, cfg=cfg)
+    assert om["objectness_score"] < 0.4

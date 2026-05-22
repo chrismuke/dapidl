@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import ndimage
+from skimage.measure import regionprops
 
 
 @dataclass(frozen=True)
@@ -151,3 +152,32 @@ def dominant_central_fraction(target: np.ndarray, all_masks: np.ndarray,
     if fg == 0:
         return 0.0
     return float(target[box].sum() / fg)
+
+
+def objectness_metrics(patch: np.ndarray, mask: np.ndarray, prob: float,
+                       cfg: SegQCConfig) -> dict:
+    """Real-nucleus evidence: StarDist prob, lenient morphology, intensity-above-bg.
+
+    Morphology is intentionally lenient (only extreme outliers count) so small or
+    elongated-but-valid nuclei are not penalized.
+    """
+    props = regionprops(mask.astype(np.int32))[0]
+    ecc = float(props.eccentricity)
+    solidity = float(props.solidity)
+    interior = patch[mask].astype(np.float64)
+    bg = patch[~mask].astype(np.float64)
+    bg_med = float(np.median(bg)) if bg.size else 0.0
+    intensity_ratio = float(np.median(interior) / (bg_med + 1e-6))
+    morph_ok = (solidity >= cfg.solidity_min) and (ecc <= cfg.eccentricity_max)
+    intensity_ok = intensity_ratio >= cfg.intensity_ratio_min
+    # objectness dominated by prob, gated by sanity checks
+    score = float(np.clip(prob, 0.0, 1.0)) * (1.0 if morph_ok else 0.3) \
+        * (1.0 if intensity_ok else 0.5)
+    return {
+        "objectness_score": float(np.clip(score, 0.0, 1.0)),
+        "eccentricity": ecc,
+        "solidity": solidity,
+        "intensity_ratio": intensity_ratio,
+        "morph_ok": morph_ok,
+        "intensity_ok": intensity_ok,
+    }
