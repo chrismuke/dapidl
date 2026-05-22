@@ -53,8 +53,10 @@ def select_center_nucleus(
     center_label = int(masks[round(cy), round(cx)])
     if center_label == 0:
         # nearest object centroid within radius = center_max_dist_frac * half-patch
-        radius = cfg.center_max_dist_frac * (h / 2.0)
+        # (min(h, w) keeps the radius symmetric for non-square patches)
+        radius = cfg.center_max_dist_frac * (min(h, w) / 2.0)
         best, best_d = 0, radius
+        # masks.max() == 0 for an all-zero (no-detection) patch -> empty range -> None
         for lab in range(1, int(masks.max()) + 1):
             m = masks == lab
             if not m.any():
@@ -66,6 +68,8 @@ def select_center_nucleus(
         center_label = best
     if center_label == 0:
         return None
+    if center_label - 1 >= len(probs):
+        return None  # label/probs length mismatch -> treat as no nucleus
     m = masks == center_label
     ys, xs = np.nonzero(m)
     return CenterNucleus(

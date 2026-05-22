@@ -23,3 +23,9 @@ def test_select_center_nucleus_none_when_center_empty_and_far():
     masks = _disk(128, 128, 15, 15, 6, 1)  # only a far corner object
     cn = select_center_nucleus(masks, np.array([0.9]), SegQCConfig())
     assert cn is None
+
+
+def test_select_center_nucleus_none_on_probs_underrun():
+    masks = _disk(128, 128, 64, 64, 12, 3)  # label 3 covers centre
+    cn = select_center_nucleus(masks, np.array([0.9]), SegQCConfig())  # only 1 prob
+    assert cn is None
