@@ -18,6 +18,7 @@ from starpose.core import segment_multimodal
 from starpose.types import ModalityBundle
 
 OUT = Path("pipeline_output/seg_diagnostic_2026_05")
+MIN_SOURCE_NUC = 100  # tissue-FOV threshold: sparse/edge crops have 0-2 cells -> detection metrics undefined
 
 
 def _segment_fov(dapi_tile, transcripts_tile, pixel_size, expander,
@@ -124,18 +125,31 @@ def main():
     for name in args.sources.split(","):
         all_rows.extend(run_source(name, args.n_fovs, args.tile, args.expander,
                                    nucleus_method=args.nucleus_method))
+    method = args.nucleus_method
     df = pl.DataFrame(all_rows)
-    df.write_parquet(OUT / "results.parquet")
-    logger.info(f"wrote {OUT/'results.parquet'} ({df.height} rows)")
+    res_path = OUT / f"results_{method}.parquet"
+    df.write_parquet(res_path)
+    logger.info(f"wrote {res_path} ({df.height} rows)")
     if df.height == 0:
         logger.warning("no FOVs produced rows — check segmentation backend availability")
         return
-    print(df.group_by("source").agg(
-        pl.col("nuc_f1").mean().round(3),
-        pl.col("nuc_count_ratio").mean().round(3),
-        pl.col("qc_own_mean").mean().round(3),
-        pl.col("qc_src_mean").mean().round(3),
-    ).sort("source"))
+    # Robust per-source summary: restrict to tissue-bearing FOVs (degenerate
+    # sparse/edge crops with 0-2 source cells give undefined ratios/IoU) and
+    # drop NaNs (one empty crop would otherwise poison a source via .mean()).
+    tissue = df.filter(pl.col("n_source_nuc") >= MIN_SOURCE_NUC)
+    summary = (tissue.group_by("source").agg(
+        pl.len().alias("n_fov"),
+        pl.col("nuc_f1").drop_nans().mean().round(3).alias("nuc_f1"),
+        pl.col("nuc_median_iou").drop_nans().mean().round(3).alias("med_iou"),
+        pl.col("nuc_count_ratio").drop_nans().mean().round(3).alias("count_ratio"),
+        pl.col("qc_own_mean").drop_nans().mean().round(3).alias("qc_own"),
+        pl.col("qc_src_mean").drop_nans().mean().round(3).alias("qc_src"),
+    ).with_columns((pl.col("qc_own") - pl.col("qc_src")).round(3).alias("qc_delta"))
+     .sort("source"))
+    summary.write_parquet(OUT / f"summary_{method}.parquet")
+    logger.info(f"wrote {OUT/f'summary_{method}.parquet'} (tissue FOVs, n_source>={MIN_SOURCE_NUC})")
+    with pl.Config(tbl_cols=20):
+        print(summary)
 
 
 if __name__ == "__main__":
