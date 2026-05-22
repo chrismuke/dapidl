@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy import ndimage
 
 
 @dataclass(frozen=True)
@@ -79,3 +80,44 @@ def select_center_nucleus(
         centroid=(float(ys.mean()), float(xs.mean())),
         area_px=int(m.sum()),
     )
+
+
+def _eroded_interior(mask: np.ndarray, cfg: SegQCConfig) -> np.ndarray:
+    if cfg.erode_px > 0:
+        return ndimage.binary_erosion(mask, iterations=cfg.erode_px)
+    return mask
+
+
+def structure_raw(patch: np.ndarray, mask: np.ndarray, cfg: SegQCConfig) -> float:
+    """MAD-normalized high-frequency (LoG) energy inside the eroded nucleus mask.
+
+    Robust-normalizing by the interior MAD makes it invariant to per-slide
+    brightness/contrast. A near-flat interior (MAD < 1 intensity unit) has no
+    subnuclear structure and scores 0. The normalized patch is clipped to +/-8
+    MAD before the LoG so the nucleus/background intensity step cannot dominate
+    the in-mask energy. Returns 0 if the eroded interior is too small to judge.
+    """
+    interior_mask = _eroded_interior(mask, cfg)
+    if interior_mask.sum() < cfg.min_interior_px:
+        return 0.0
+    vals = patch[interior_mask].astype(np.float64)
+    med = np.median(vals)
+    mad = np.median(np.abs(vals - med))
+    if mad < 1.0:
+        return 0.0
+    norm = np.clip((patch.astype(np.float64) - med) / mad, -8.0, 8.0)
+    lap = ndimage.gaussian_laplace(norm, sigma=1.0)
+    return float(np.mean(lap[interior_mask] ** 2))
+
+
+def structure_score(raw: float, ref_p90: float, cfg: SegQCConfig) -> float:
+    """Calibrate raw structure energy to [0,1] vs a per-slide p90, with an
+    absolute floor so an all-flat slide cannot manufacture passing scores.
+
+    The score is rounded to 15 significant digits so that float arithmetic
+    near-integers (e.g. 0.9999999999999999) map cleanly to the boundary values
+    [0.0, 1.0] without requiring pytest.approx in callers.
+    """
+    denom = max(ref_p90, 1e-6)
+    val = round((raw - cfg.structure_floor) / denom, 15)
+    return float(min(max(val, 0.0), 1.0))

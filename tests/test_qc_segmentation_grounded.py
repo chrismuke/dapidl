@@ -1,5 +1,6 @@
 import numpy as np
 from dapidl.qc.segmentation_grounded import SegQCConfig, select_center_nucleus
+from dapidl.qc.segmentation_grounded import structure_raw, structure_score
 
 
 def _disk(h, w, cy, cx, r, label):
@@ -29,3 +30,28 @@ def test_select_center_nucleus_none_on_probs_underrun():
     masks = _disk(128, 128, 64, 64, 12, 3)  # label 3 covers centre
     cn = select_center_nucleus(masks, np.array([0.9]), SegQCConfig())  # only 1 prob
     assert cn is None
+
+
+def test_structure_raw_textured_beats_flat_same_mean():
+    h = w = 128
+    yy, xx = np.ogrid[:h, :w]
+    mask = (yy - 64) ** 2 + (xx - 64) ** 2 < 18 ** 2
+    flat = np.full((h, w), 1000.0)
+    textured = flat.copy()
+    textured[mask] += ((np.indices((h, w)).sum(0) % 7) * 60.0)[mask]  # high-freq detail
+    cfg = SegQCConfig()
+    assert structure_raw(textured, mask, cfg) > 5 * structure_raw(flat, mask, cfg)
+
+
+def test_structure_raw_zero_when_interior_too_small():
+    cfg = SegQCConfig()
+    tiny = np.zeros((128, 128), bool)
+    tiny[64, 64] = True
+    assert structure_raw(np.random.rand(128, 128) * 1000, tiny, cfg) == 0.0
+
+
+def test_structure_score_calibrates_with_floor():
+    cfg = SegQCConfig()
+    # raw below floor -> 0; raw == p90 -> 1
+    assert structure_score(0.0, ref_p90=2.0, cfg=cfg) == 0.0
+    assert structure_score(2.0 + cfg.structure_floor, ref_p90=2.0, cfg=cfg) == 1.0
