@@ -192,6 +192,35 @@ class XeniumDataReader:
             [df["x_centroid"].to_numpy(), df["y_centroid"].to_numpy()]
         )
 
+    def get_nucleus_centroids_pixels(self) -> np.ndarray:
+        """Get nucleus polygon centroids in pixel coordinates.
+
+        Reads ``nucleus_boundaries.parquet`` and computes the per-cell mean of
+        vertex coordinates, then converts microns -> pixels via ``PIXEL_SIZE``.
+        Cells with no entry in ``nucleus_boundaries.parquet`` (a small minority,
+        typically DAPI-negative) fall back to the cell centroid so the returned
+        array stays index-aligned with :meth:`get_centroids_pixels` and
+        :meth:`get_cell_ids` — downstream patch indices and labels carry over
+        without re-keying.
+
+        Returns:
+            Array of shape (N, 2) with (x, y) pixel coordinates in
+            ``cells_df`` ``cell_id`` order.
+        """
+        nb_path = self._get_outs_path() / "nucleus_boundaries.parquet"
+        nb = pl.read_parquet(nb_path)
+        centroids = nb.group_by("cell_id").agg(
+            pl.col("vertex_x").mean().alias("xc"),
+            pl.col("vertex_y").mean().alias("yc"),
+        )
+        df = self.cells_df.join(centroids, on="cell_id", how="left").with_columns(
+            pl.col("xc").fill_null(pl.col("x_centroid")),
+            pl.col("yc").fill_null(pl.col("y_centroid")),
+        )
+        return np.column_stack(
+            [df["xc"].to_numpy() / self.PIXEL_SIZE, df["yc"].to_numpy() / self.PIXEL_SIZE]
+        )
+
     def get_cell_ids(self) -> np.ndarray:
         """Get array of cell IDs."""
         return self.cells_df["cell_id"].to_numpy()
