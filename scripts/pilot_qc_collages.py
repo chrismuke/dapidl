@@ -44,8 +44,12 @@ GROUP_DEFS = [
     ("04_Broken-geom", "Broken-geom"),
     ("05_Broken-quality", "Broken-quality"),
 ]
-GEOM_REASONS = {"off_center", "edge_cut", "merged_blob"}
-QUALITY_REASONS = {"false_detection", "flat_interior"}
+# Actual reason vocabulary observed from quality_control_seg:
+#   ok | off_center | cut_at_edge | false_detection | no_nucleus
+# (flat_interior / merged_blob never fire in the current decide_broken;
+# kept in the geom/quality split below in case the config changes.)
+GEOM_REASONS = {"off_center", "cut_at_edge", "edge_cut", "merged_blob"}
+QUALITY_REASONS = {"false_detection", "no_nucleus", "flat_interior"}
 
 
 def assign_groups(df: pl.DataFrame, p80: float, p40: float) -> pl.DataFrame:
