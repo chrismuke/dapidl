@@ -92,25 +92,31 @@ def _eroded_interior(mask: np.ndarray, cfg: SegQCConfig) -> np.ndarray:
 
 
 def structure_raw(patch: np.ndarray, mask: np.ndarray, cfg: SegQCConfig) -> float:
-    """MAD-normalized high-frequency (LoG) energy inside the eroded nucleus mask.
+    """Absolute variance of the Laplacian-of-Gaussian inside the eroded nucleus.
 
-    Robust-normalizing by the interior MAD makes it invariant to per-slide
-    brightness/contrast. A near-flat interior (MAD < 1 intensity unit) has no
-    subnuclear structure and scores 0. The normalized patch is clipped to +/-8
-    MAD before the LoG so the nucleus/background intensity step cannot dominate
-    the in-mask energy. Returns 0 if the eroded interior is too small to judge.
+    No MAD normalization: that previously rewarded dim/flat nuclei with one
+    bright speckle (high *relative* gradient over a near-flat background) and
+    flagged bright, in-focus, well-textured nuclei as merely middling (because
+    their large absolute gradient was divided by an equally large MAD). Using
+    var(LoG) on the raw patch makes both brightness AND sharpness contribute:
+    a dim or blurry nucleus has small absolute LoG values -> low variance;
+    a bright, sharp, textured nucleus has large absolute LoG values -> high
+    variance. The per-slide structure_score calibration (p90 + floor) then
+    maps that absolute scale to [0, 1].
     """
     interior_mask = _eroded_interior(mask, cfg)
     if interior_mask.sum() < cfg.min_interior_px:
         return 0.0
+    # Flat-interior guard: if the interior intensity itself has near-zero MAD
+    # the nucleus has no subnuclear structure (e.g. apical/basal Z-cap), even
+    # if the LoG picks up the nucleus/background boundary that leaks through
+    # the eroded mask. This zeros it out at the source without touching the
+    # absolute scale of the LoG variance.
     vals = patch[interior_mask].astype(np.float64)
-    med = np.median(vals)
-    mad = np.median(np.abs(vals - med))
-    if mad < 1.0:
+    if float(np.median(np.abs(vals - np.median(vals)))) < 1.0:
         return 0.0
-    norm = np.clip((patch.astype(np.float64) - med) / mad, -8.0, 8.0)
-    lap = ndimage.gaussian_laplace(norm, sigma=1.0)
-    return float(np.mean(lap[interior_mask] ** 2))
+    lap = ndimage.gaussian_laplace(patch.astype(np.float64), sigma=1.0)
+    return float(np.var(lap[interior_mask]))
 
 
 def structure_score(raw: float, ref_p90: float, cfg: SegQCConfig) -> float:
@@ -226,7 +232,13 @@ def decide_broken(qs: QualityScore, cfg: SegQCConfig,
         return True, "no_nucleus"
     if m["edge_cut"] >= 1.0:
         return True, "cut_at_edge"
-    if (m["centeredness"] <= 0.0) or (m["dominant_central"] < cfg.dominant_min_frac):
+    # off_center fires ONLY on a real centeredness defect (StarDist centroid >
+    # center_max_dist_frac * half-patch off centre). The previous version
+    # OR'd in `dominant_central < 0.5`, but that gated on a CROWDING signal
+    # (neighbors taking >50% of the inner-box foreground) and wrongly flagged
+    # well-centered nuclei in dense epithelial / immune fields. dominant_central
+    # is still computed and reported for diagnostics, just not a drop reason.
+    if m["centeredness"] <= 0.0:
         return True, "off_center"
     if (m["stardist_prob"] < cfg.prob_min) or (m["morph_ok"] < 1.0) or (m["intensity_ok"] < 1.0) \
             or not (cfg.area_min_um2 <= m["area_um2"] <= cfg.area_max_um2):

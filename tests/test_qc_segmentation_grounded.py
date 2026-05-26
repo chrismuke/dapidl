@@ -140,13 +140,35 @@ def test_decide_broken_cut_at_edge():
 
 
 def test_decide_broken_off_center():
+    """Genuine off-center: nucleus bulk far from patch centre with a thin bridge
+    over (64, 64) so select_center_nucleus picks it via the center pixel rule,
+    but its centroid is > 4.76 µm (22.4 px) off centre -> centeredness <= 0."""
     cfg = SegQCConfig()
-    masks = _one_disk(60, 60, 6, 1)           # small, near but a neighbor dominates
-    masks += _one_disk(64, 80, 16, 2)
+    yy, xx = np.ogrid[:128, :128]
+    bulk = (yy - 25) ** 2 + (xx - 25) ** 2 < 18 ** 2          # large mass top-left
+    bridge = (yy >= 60) & (yy <= 68) & (xx >= 60) & (xx <= 68)  # covers (64, 64)
+    masks = np.zeros((128, 128), np.int32)
+    masks[bulk | bridge] = 1
     patch = np.full((128, 128), 300.0); patch[masks > 0] = 1500.0
-    qs = score_from_segmentation(patch, masks, np.array([0.9, 0.9]), 2.0, 0.2125, cfg)
+    qs = score_from_segmentation(patch, masks, np.array([0.9]), 2.0, 0.2125, cfg)
     broken, reason = decide_broken(qs, cfg)
-    assert broken and reason in ("off_center", "no_nucleus")
+    assert broken and reason == "off_center"
+
+
+def test_dominant_central_no_longer_a_broken_reason():
+    """Dense field around a well-centered nucleus must NOT be flagged as
+    off_center (the old crowding-gate artifact). The neighbor is bright and big
+    enough to dominate the central box, but the target is dead-centered and
+    real -> should be 'ok'."""
+    cfg = SegQCConfig()
+    target = _one_disk(64, 64, 14, 1)
+    neighbor = _one_disk(64, 90, 18, 2)
+    masks = target + neighbor
+    patch = np.full((128, 128), 300.0); patch[masks > 0] = 1500.0
+    qs = score_from_segmentation(patch, masks, np.array([0.95, 0.95]), 2.0, 0.2125, cfg)
+    assert qs.metrics["dominant_central"] < 0.5  # neighbor dominates central box
+    broken, reason = decide_broken(qs, cfg)
+    assert not broken, f"unexpected broken={reason}"
 
 
 def test_good_nucleus_not_broken_even_if_low_structure():
