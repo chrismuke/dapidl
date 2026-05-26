@@ -116,7 +116,9 @@ def build_for_granularity(qc: pl.DataFrame, reg: pl.DataFrame, label_col: str,
                           size_px: int, rng: np.random.Generator,
                           counts_rows: list[dict]) -> None:
     # Join QC scores with the registry on cell_id (LMDB cell_id = row index).
+    # qc parquet uses 'source' for the slide name; rename to align with registry.
     joined = (qc.with_columns(pl.col("cell_id").cast(pl.Int64).alias("row_idx"))
+                .rename({"source": "slide"})
                 .join(reg.select(["row_idx", label_col, "slide"]),
                       on=["row_idx", "slide"], how="left")
                 .rename({label_col: "_cls"}))
@@ -125,8 +127,8 @@ def build_for_granularity(qc: pl.DataFrame, reg: pl.DataFrame, label_col: str,
     out_root = collage_root / f"p{size_px}" / granularity
     out_root.mkdir(parents=True, exist_ok=True)
 
-    for slide in sorted(joined["source"].unique().to_list()):
-        sub = joined.filter(pl.col("source") == slide)
+    for slide in sorted(joined["slide"].unique().to_list()):
+        sub = joined.filter(pl.col("slide") == slide)
         passing = sub.filter(~pl.col("broken"))["structure_score"].to_numpy()
         struct_all = sub["structure_score"].to_numpy()
         if len(passing) >= 2:
