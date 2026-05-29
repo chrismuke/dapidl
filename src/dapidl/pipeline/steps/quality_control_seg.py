@@ -42,6 +42,22 @@ def stratified_audit(df: pl.DataFrame, n_size_bins: int = 4) -> pl.DataFrame:
               .sort(["source", "cell_type", "size_bin"]))
 
 
+def reason_audit(df: pl.DataFrame) -> pl.DataFrame:
+    """Per source x cell_type x broken_reason breakdown (review B9, censoring guardrail).
+
+    The aggregate broken_rate hides WHICH reason concentrates in WHICH class. A
+    texture/intensity gate can preferentially drop faint immune/pyknotic nuclei
+    (the rare classes); this surfaces that as `frac_of_class` per reason so a
+    class-correlated drop is visible before any filtering is trusted.
+    """
+    per_class_n = df.group_by(["source", "cell_type"]).agg(pl.len().alias("n_class"))
+    return (df.group_by(["source", "cell_type", "broken_reason"])
+              .agg(pl.len().alias("n"))
+              .join(per_class_n, on=["source", "cell_type"])
+              .with_columns((pl.col("n") / pl.col("n_class")).alias("frac_of_class"))
+              .sort(["source", "cell_type", "broken_reason"]))
+
+
 def run_quality_control_seg(dataset_path, use_structure_cut: bool = False,
                             seed: int = 42) -> Path:
     dataset_path = Path(dataset_path)
@@ -85,6 +101,20 @@ def run_quality_control_seg(dataset_path, use_structure_cut: bool = False,
     _atomic_write_parquet(df, out_dir / "seg_scores.parquet")
     audit = stratified_audit(df)
     _atomic_write_parquet(audit, out_dir / "seg_broken_audit.parquet")
+    _atomic_write_parquet(reason_audit(df), out_dir / "seg_reason_audit.parquet")
+
+    # Per-class censoring canary (review B9 / gemini #3): a QC gate that drops a
+    # rare class far above the dataset mean biases the training set. Surface it.
+    overall = float(broken.mean())
+    per_class = (df.group_by("cell_type")
+                   .agg(pl.col("broken").cast(pl.Float64).mean().alias("rate"),
+                        pl.len().alias("n"))
+                   .sort("rate", descending=True))
+    for r in per_class.iter_rows(named=True):
+        flag = "  ⚠ CENSORING?" if r["rate"] > overall + 0.15 else ""
+        logger.info(f"  drop-rate {r['cell_type']:>14s}: {r['rate']:.1%} "
+                    f"(overall {overall:.1%}, n={r['n']:,}){flag}")
+
     (out_dir / "seg_scores.meta.json").write_text(json.dumps({
         "scorer": scorer.name, "cfg": scorer.cfg.__dict__,
         "use_structure_cut": use_structure_cut,

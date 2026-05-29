@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import struct
 import time
 from pathlib import Path
@@ -35,6 +36,44 @@ from dapidl.models.backbone import create_backbone
 
 DERIVED = Path("/mnt/work/datasets/derived")
 LMDB_DIR = DERIVED / "breast-6source-dapi-p128"
+
+
+def set_seed(seed: int) -> None:
+    """Full determinism so A/B/C deltas reflect the data change, not run noise
+    (review B5). cuDNN-deterministic + benchmark=False removes conv autotune
+    nondeterminism; per-worker seeding fixes the augmentation/ sampler streams."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def _seed_worker(worker_id: int) -> None:
+    """Seed each DataLoader worker deterministically from the base seed."""
+    ws = (torch.initial_seed() + worker_id) % 2**32
+    np.random.seed(ws)
+    random.seed(ws)
+
+
+def hash_split_by_cell_id(train_pool, pool_labels, cell_ids_full, val_frac):
+    """Deterministic, cell_id-keyed, class-stratified train/val split (review B2).
+
+    The same biological cell always lands in the same split regardless of LMDB
+    build order or OOB drift, so M_cell and M_nuc_full put identical cell_ids in
+    val -> the centering A/B is genuinely paired. (polars hash is deterministic
+    within a polars version; pair runs in the same env.)
+    """
+    import polars as pl
+    cids = cell_ids_full[train_pool].astype(str)
+    h = (pl.Series(cids).hash(seed=1234).to_numpy() % 10_000_000) / 10_000_000.0
+    is_val = np.zeros(len(train_pool), dtype=bool)
+    for c in np.unique(pool_labels):
+        m = pool_labels == c
+        is_val[m] = h[m] < val_frac      # val_frac of EACH class -> val (stratified)
+    return train_pool[~is_val], train_pool[is_val]
 
 DAPI_NORM_MEAN = 0.485
 DAPI_NORM_STD = 0.229
@@ -181,11 +220,16 @@ def main():
                     help="Weight the sampler by qc_score (keep all data, draw good patches more often); class balance preserved")
     ap.add_argument("--qc-weight-floor", type=float, default=0.1,
                     help="Min qc weight so low-QC patches keep a small sampling probability")
+    ap.add_argument("--split-by-cell-id", action="store_true",
+                    help="Derive the train/val split from hash(cell_id) (needs cell_ids.npy) "
+                         "so the same cells are val across LMDB rebuilds -> paired A/B (review B2)")
+    ap.add_argument("--fixed-class-weights", action="store_true",
+                    help="Compute class weights from the PRE-filter train pool so QC filtering "
+                         "changes only which patches are seen, not the imbalance correction (review B6)")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    set_seed(args.seed)
 
     train_sources = args.train_sources.split(",")
     test_sources = args.test_sources.split(",")
@@ -203,6 +247,10 @@ def main():
     n_dropped = n_before - len(train_pool)
     if n_dropped:
         logger.info(f"Dropped {n_dropped:,} cells ({100*n_dropped/n_before:.1f}%) with label=-1 from train pool")
+
+    # Snapshot the pre-filter pool labels for the fixed-class-weights option (B6):
+    # so QC filtering changes only WHICH patches train, not the imbalance prior.
+    prefilter_pool_labels = labels_full[train_pool].copy()
 
     # Optional TRAIN-only filtering (test set is never filtered): broken-flag,
     # QC threshold, or random control. The QC parquet is written one row per
@@ -247,14 +295,36 @@ def main():
                     f"({100*len(train_pool)/nb:.1f}%)")
 
     pool_labels = labels_full[train_pool]
-    train_idx, val_idx = train_test_split(
-        train_pool, test_size=args.val_frac, stratify=pool_labels, random_state=args.seed)
+    if args.split_by_cell_id:
+        import polars as pl
+        reg_path = LMDB_DIR / "patch_registry.parquet"
+        if not reg_path.exists():
+            raise SystemExit(f"--split-by-cell-id needs {reg_path}; rebuild the LMDB with the "
+                             "registry-enabled breast_dapi_lmdb.py")
+        # load cell_ids in global-row order from the registry parquet (no pickle)
+        reg = pl.read_parquet(reg_path, columns=["row_idx", "cell_id"]).sort("row_idx")
+        if len(reg) != len(labels_full):
+            raise SystemExit(f"registry rows ({len(reg):,}) != labels ({len(labels_full):,})")
+        cell_ids_full = reg["cell_id"].to_numpy()
+        train_idx, val_idx = hash_split_by_cell_id(
+            train_pool, pool_labels, cell_ids_full, args.val_frac)
+        logger.info("Split: cell_id-hash (paired across rebuilds, review B2)")
+    else:
+        train_idx, val_idx = train_test_split(
+            train_pool, test_size=args.val_frac, stratify=pool_labels, random_state=args.seed)
     train_labels = labels_full[train_idx]
 
     logger.info(f"Train sources: {train_sources}  ->  {len(train_idx):,} train + {len(val_idx):,} val")
     logger.info(f"Train class dist: {dict(zip(*np.unique(train_labels, return_counts=True)))}")
 
-    weights_per_cell = class_weights(train_labels, len(class_names))[train_labels]
+    # B6: derive the per-class weight vector ONCE from the reference population.
+    # With --fixed-class-weights it is the PRE-filter pool, so QC filtering changes
+    # only which patches train, not the imbalance correction (used for sampler+loss).
+    cw_ref_labels = prefilter_pool_labels if args.fixed_class_weights else train_labels
+    cw_vector = class_weights(cw_ref_labels, len(class_names))
+    if args.fixed_class_weights:
+        logger.info("Class weights: FIXED to pre-filter pool (review B6)")
+    weights_per_cell = cw_vector[train_labels]
     if args.qc_weight:
         import polars as pl
         qc_path = args.qc_scores or (LMDB_DIR / "qc" / "qc_scores.parquet")
@@ -275,17 +345,21 @@ def main():
         weights_per_cell = weights_per_cell * qc_factor
         logger.info(f"QC sample-weighting ON (floor={args.qc_weight_floor}): "
                     f"per-class mass preserved, within-class quality emphasized")
-    sampler = WeightedRandomSampler(weights_per_cell, num_samples=len(train_idx), replacement=True)
+    g = torch.Generator()
+    g.manual_seed(args.seed)
+    sampler = WeightedRandomSampler(weights_per_cell, num_samples=len(train_idx),
+                                    replacement=True, generator=g)
     train_loader = DataLoader(DapiPatchDataset(train_idx, labels_full, augment=True),
                               batch_size=args.batch_size, sampler=sampler,
-                              num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
+                              num_workers=args.num_workers, pin_memory=True, persistent_workers=True,
+                              worker_init_fn=_seed_worker, generator=g)
     val_loader = DataLoader(DapiPatchDataset(val_idx, labels_full, augment=False),
                             batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = DapiClassifier(len(class_names)).to(device)
-    cw = class_weights(train_labels, len(class_names)).to(device)
+    cw = cw_vector.to(device)  # B6: same vector as the sampler (fixed when --fixed-class-weights)
     crit = nn.CrossEntropyLoss(weight=cw)
     opt = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     sched = CosineAnnealingWarmRestarts(opt, T_0=5, T_mult=2)
