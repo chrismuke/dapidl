@@ -26,7 +26,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 from loguru import logger
-from sklearn.metrics import f1_score, precision_recall_fscore_support
+from sklearn.metrics import (
+    balanced_accuracy_score,
+    f1_score,
+    matthews_corrcoef,
+    precision_recall_fscore_support,
+)
 from sklearn.model_selection import train_test_split
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
@@ -185,13 +190,19 @@ def score_loader(model, loader, device, class_names):
     macro_f1 = f1_score(t, p, average="macro", zero_division=0)
     weighted_f1 = f1_score(t, p, average="weighted", zero_division=0)
     accuracy = (p == t).mean()
+    # imbalance-robust metrics (review Phase 2): macro-F1 alone misleads at 0.2% Stromal
+    mcc = matthews_corrcoef(t, p) if len(np.unique(t)) > 1 else 0.0
+    bal_acc = balanced_accuracy_score(t, p) if len(np.unique(t)) > 1 else accuracy
     pre, rec, f1, sup = precision_recall_fscore_support(
         t, p, labels=list(range(len(class_names))), zero_division=0)
     per_class = {class_names[k]: dict(precision=float(pre[k]), recall=float(rec[k]),
                                         f1=float(f1[k]), support=int(sup[k]))
                  for k in range(len(class_names))}
-    return dict(macro_f1=float(macro_f1), weighted_f1=float(weighted_f1),
-                accuracy=float(accuracy), per_class=per_class, n_eval=int(len(t)))
+    metrics = dict(macro_f1=float(macro_f1), weighted_f1=float(weighted_f1),
+                   accuracy=float(accuracy), mcc=float(mcc),
+                   balanced_accuracy=float(bal_acc),
+                   per_class=per_class, n_eval=int(len(t)))
+    return metrics, t, p   # t, p are per-cell, in loader (idx) order (shuffle=False)
 
 
 def main():
@@ -383,7 +394,7 @@ def main():
             running += loss.item() * x.size(0); n += x.size(0)
         sched.step()
         train_loss = running / n
-        val = score_loader(model, val_loader, device, class_names)
+        val, _, _ = score_loader(model, val_loader, device, class_names)
         history.append(dict(epoch=epoch, train_loss=train_loss, **val))
         logger.info(f"epoch {epoch:>2d}  train_loss={train_loss:.3f}  val_F1={val['macro_f1']:.3f}  val_acc={val['accuracy']:.3f}")
         if val["macro_f1"] > best_val_f1:
@@ -397,7 +408,23 @@ def main():
     train_time = time.time() - t0
 
     model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
+
+    # Per-cell predictions for paired A/B stats (review Phase 2). cell_id comes
+    # from the registry (so two arms can be paired on the SAME cells); if the LMDB
+    # predates the registry, fall back to the global index as the id.
+    import polars as pl
+    reg_path = LMDB_DIR / "patch_registry.parquet"
+    cell_id_by_idx = None
+    if reg_path.exists():
+        _reg = pl.read_parquet(reg_path, columns=["row_idx", "cell_id"]).sort("row_idx")
+        if len(_reg) == len(labels_full):
+            cell_id_by_idx = _reg["cell_id"].to_numpy()
+    if cell_id_by_idx is None:
+        logger.warning("no patch_registry.parquet aligned to this LMDB; preds.parquet "
+                       "will use the global index as cell_id (not paired across rebuilds)")
+
     per_test_results = {}
+    pred_rows = []
     for ts in test_sources:
         idx = load_indices_for_sources([ts])
         idx = idx[labels_full[idx] != -1]  # drop -1 cells from test too
@@ -407,9 +434,21 @@ def main():
         loader = DataLoader(DapiPatchDataset(idx, labels_full, augment=False),
                             batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True)
-        m = score_loader(model, loader, device, class_names)
+        m, t_cells, p_cells = score_loader(model, loader, device, class_names)
         per_test_results[ts] = m
-        logger.info(f"TEST {ts:35s} n={m['n_eval']:>7d}  macro_F1={m['macro_f1']:.3f}  acc={m['accuracy']:.3f}")
+        cids = (cell_id_by_idx[idx].astype(str) if cell_id_by_idx is not None
+                else idx.astype(str))
+        pred_rows.append(pl.DataFrame({
+            "source": np.full(len(idx), ts, dtype=object),
+            "cell_id": cids, "y_true": t_cells.astype(np.int64),
+            "y_pred": p_cells.astype(np.int64),
+        }))
+        logger.info(f"TEST {ts:35s} n={m['n_eval']:>7d}  macro_F1={m['macro_f1']:.3f}  "
+                    f"MCC={m['mcc']:.3f}  bal_acc={m['balanced_accuracy']:.3f}")
+
+    if pred_rows:
+        pl.concat(pred_rows).write_parquet(args.output / "preds.parquet")
+        logger.info(f"wrote {args.output / 'preds.parquet'} ({sum(len(d) for d in pred_rows):,} cells)")
 
     summary = dict(
         tier=args.tier,
