@@ -30,9 +30,14 @@ class SegQCConfig:
     dominant_min_frac: float = 0.5     # target's share of the central box
     central_box_frac: float = 0.5      # central box size as fraction of patch
     prob_min: float = 0.40             # StarDist objectness floor
-    solidity_min: float = 0.50         # below => debris-like
-    eccentricity_max: float = 0.98     # above => line-like
-    intensity_ratio_min: float = 1.10  # interior mean / background median
+    solidity_min: float = 0.50         # SOFT: below => objectness down-weighted
+    eccentricity_max: float = 0.98     # SOFT: above => objectness down-weighted
+    intensity_ratio_min: float = 1.10  # SOFT: interior mean / background median
+    # HARD morphology gate -- only GENUINELY degenerate shapes are dropped, so a
+    # moderately irregular / small / dim but real nucleus is never censored
+    # (the spec's #1 risk: class-correlated false drops of faint immune/pyknotic).
+    solidity_hard_min: float = 0.30    # below => debris/sliver (hard false_detection)
+    eccentricity_hard_max: float = 0.995  # above => degenerate line (hard false_detection)
     structure_min: float = 0.15        # for the OPTIONAL structure cut (off by default)
 
 
@@ -169,6 +174,12 @@ def objectness_metrics(patch: np.ndarray, mask: np.ndarray, prob: float,
     Morphology is intentionally lenient (only extreme outliers count) so small or
     elongated-but-valid nuclei are not penalized.
     """
+    if not mask.any():
+        # degenerate (empty) selection -- never crash the batch; zero objectness.
+        return {
+            "objectness_score": 0.0, "eccentricity": 1.0, "solidity": 0.0,
+            "intensity_ratio": 0.0, "morph_ok": False, "intensity_ok": False,
+        }
     props = regionprops(mask.astype(np.int32))[0]
     ecc = float(props.eccentricity)
     solidity = float(props.solidity)
@@ -240,9 +251,15 @@ def decide_broken(qs: QualityScore, cfg: SegQCConfig,
     # is still computed and reported for diagnostics, just not a drop reason.
     if m["centeredness"] <= 0.0:
         return True, "off_center"
-    if (m["stardist_prob"] < cfg.prob_min) or (m["morph_ok"] < 1.0) or (m["intensity_ok"] < 1.0) \
+    # HARD gate: StarDist confidence + area sanity + GENUINELY degenerate shape.
+    # morph_ok / intensity_ok stay SOFT (objectness-score multipliers in
+    # objectness_metrics) and are reported, but are NOT drop reasons -- so a dim
+    # or moderately irregular but real nucleus is never censored (spec's #1 risk).
+    if (m["stardist_prob"] < cfg.prob_min) \
+            or (m["solidity"] < cfg.solidity_hard_min) \
+            or (m["eccentricity"] > cfg.eccentricity_hard_max) \
             or not (cfg.area_min_um2 <= m["area_um2"] <= cfg.area_max_um2):
-        return True, "false_detection"   # low conf / weird morph / dim / sliver / merged-blob
+        return True, "false_detection"   # low conf / sliver / degenerate / merged-blob
     if use_structure_cut and qs.focus_score < cfg.structure_min:
         return True, "no_structure"
     return False, "ok"

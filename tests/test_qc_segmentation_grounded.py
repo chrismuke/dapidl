@@ -197,6 +197,64 @@ def test_scorer_score_batch_uses_injected_segmentation(monkeypatch):
     assert sc.name == "segmentation_grounded"
 
 
+def test_objectness_metrics_empty_mask_no_crash():
+    """B3: an all-False mask must not crash regionprops()[0] (IndexError).
+    Returns a neutral/zero objectness dict instead of detonating the batch."""
+    cfg = SegQCConfig()
+    patch = np.full((128, 128), 300.0)
+    empty = np.zeros((128, 128), bool)
+    om = objectness_metrics(patch, empty, prob=0.0, cfg=cfg)
+    assert om["objectness_score"] == 0.0
+
+
+def test_decide_broken_dim_real_nucleus_not_dropped():
+    """B4 (censoring guard): a dim but real, well-centered, in-bounds, high-prob
+    nucleus must NOT be hard-dropped as false_detection. Intensity is a SOFT
+    objectness signal, not a hard gate -- faint immune/pyknotic nuclei are real."""
+    cfg = SegQCConfig()
+    masks = _one_disk(64, 64, 14, 1)
+    patch = np.full((128, 128), 300.0)
+    patch[masks > 0] = 312.0   # interior ~1.04x background -> intensity_ok False
+    qs = score_from_segmentation(patch, masks, np.array([0.95]), 2.0, 0.2125, cfg)
+    assert qs.metrics["intensity_ratio"] < cfg.intensity_ratio_min  # old hard gate would drop
+    broken, reason = decide_broken(qs, cfg)
+    assert not broken, f"dim real nucleus wrongly dropped as {reason}"
+
+
+def test_decide_broken_irregular_real_nucleus_not_dropped():
+    """B4 (censoring guard): a moderately irregular (solidity in
+    [solidity_hard_min, solidity_min)) but high-prob, centered, in-bounds nucleus
+    must NOT be hard-dropped. Only TRULY degenerate shapes (< solidity_hard_min)
+    gate; moderate irregularity is a soft objectness multiplier only."""
+    cfg = SegQCConfig()
+    masks = np.zeros((128, 128), np.int32)
+    masks[60:69, 35:94] = 1   # horizontal bar (len 59, width 9)
+    masks[35:94, 60:69] = 1   # vertical bar -> a thin cross covering centre
+    patch = np.full((128, 128), 300.0); patch[masks > 0] = 1500.0
+    qs = score_from_segmentation(patch, masks, np.array([0.9]), 2.0, 0.2125, cfg)
+    assert qs.metrics["solidity"] < cfg.solidity_min        # moderate irregularity
+    assert qs.metrics["solidity"] >= cfg.solidity_hard_min  # but not degenerate
+    broken, reason = decide_broken(qs, cfg)
+    assert not broken, f"irregular real nucleus wrongly dropped as {reason}"
+
+
+def test_decide_broken_degenerate_shape_still_dropped():
+    """B4: a genuinely degenerate sliver (solidity < solidity_hard_min) with high
+    prob IS still dropped -- the extreme-shape hard gate is retained."""
+    cfg = SegQCConfig()
+    masks = np.zeros((128, 128), np.int32)
+    # thin spiral-ish bracket: low solidity, but big enough to be in area bounds
+    masks[20:110, 62:67] = 1
+    masks[20:25, 62:100] = 1
+    masks[105:110, 62:100] = 1
+    patch = np.full((128, 128), 300.0); patch[masks > 0] = 1500.0
+    qs = score_from_segmentation(patch, masks, np.array([0.9]), 2.0, 0.2125, cfg)
+    assert (qs.metrics["solidity"] < cfg.solidity_hard_min) \
+        or (qs.metrics["eccentricity"] > cfg.eccentricity_hard_max)  # genuinely degenerate
+    broken, reason = decide_broken(qs, cfg)
+    assert broken and reason == "false_detection"
+
+
 from dapidl.qc.montage import build_reason_montage
 
 

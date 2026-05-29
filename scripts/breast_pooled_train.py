@@ -172,6 +172,9 @@ def main():
                     help="qc_scores.parquet (defaults to LMDB_DIR/qc/qc_scores.parquet)")
     ap.add_argument("--qc-threshold", type=float, default=None,
                     help="Keep TRAIN patches with qc_score >= this (test set untouched)")
+    ap.add_argument("--filter-broken", action="store_true",
+                    help="Drop TRAIN patches flagged broken==True by the seg-QC scorer "
+                         "(reads --qc-scores or LMDB_DIR/qc/seg_scores.parquet; test set untouched)")
     ap.add_argument("--random-keep-frac", type=float, default=None,
                     help="Quantity control: keep a random fraction of TRAIN patches instead of QC filtering")
     ap.add_argument("--qc-weight", action="store_true",
@@ -201,11 +204,37 @@ def main():
     if n_dropped:
         logger.info(f"Dropped {n_dropped:,} cells ({100*n_dropped/n_before:.1f}%) with label=-1 from train pool")
 
-    # Optional TRAIN-only filtering (test set is never filtered): QC threshold or random control.
-    if args.qc_threshold is not None:
+    # Optional TRAIN-only filtering (test set is never filtered): broken-flag,
+    # QC threshold, or random control. The QC parquet is written one row per
+    # global LMDB index IN INDEX ORDER, so its arrays align positionally with
+    # global indices. Do NOT sort -- the cell_id column is the positional index,
+    # so a sort is a no-op at best and scrambles alignment if cell_id is ever
+    # non-positional (see review docs/superpowers/reviews/2026-05-29 B1).
+    if args.filter_broken:
+        import polars as pl
+        qc_path = args.qc_scores or (LMDB_DIR / "qc" / "seg_scores.parquet")
+        qdf = pl.read_parquet(qc_path)
+        if "broken" not in qdf.columns:
+            raise SystemExit(f"{qc_path} has no 'broken' column (cols={qdf.columns}); "
+                             "for a classical qc_scores.parquet use --qc-threshold instead")
+        if len(qdf) != len(labels_full):
+            raise SystemExit(f"QC rows ({len(qdf):,}) != LMDB patches ({len(labels_full):,}); "
+                             "the QC parquet is not aligned to this LMDB")
+        broken = qdf["broken"].to_numpy().astype(bool)
+        nb = len(train_pool)
+        train_pool = train_pool[~broken[train_pool]]
+        logger.info(f"QC --filter-broken: kept {len(train_pool):,}/{nb:,} "
+                    f"({100*len(train_pool)/nb:.1f}%; dropped {nb - len(train_pool):,} broken)")
+    elif args.qc_threshold is not None:
         import polars as pl
         qc_path = args.qc_scores or (LMDB_DIR / "qc" / "qc_scores.parquet")
-        qc = pl.read_parquet(qc_path).sort("cell_id")["qc_score"].to_numpy()
+        qdf = pl.read_parquet(qc_path)
+        if "qc_score" not in qdf.columns:
+            raise SystemExit(f"{qc_path} has no 'qc_score' column (cols={qdf.columns}); "
+                             "for seg-QC output use --filter-broken instead")
+        if len(qdf) != len(labels_full):
+            raise SystemExit(f"QC rows ({len(qdf):,}) != LMDB patches ({len(labels_full):,})")
+        qc = qdf["qc_score"].to_numpy()
         nb = len(train_pool)
         train_pool = train_pool[qc[train_pool] >= args.qc_threshold]
         logger.info(f"QC filter qc>={args.qc_threshold}: kept {len(train_pool):,}/{nb:,} "
@@ -229,7 +258,12 @@ def main():
     if args.qc_weight:
         import polars as pl
         qc_path = args.qc_scores or (LMDB_DIR / "qc" / "qc_scores.parquet")
-        qc_all = pl.read_parquet(qc_path).sort("cell_id")["qc_score"].to_numpy()
+        qdf = pl.read_parquet(qc_path)
+        if "qc_score" not in qdf.columns:
+            raise SystemExit(f"{qc_path} has no 'qc_score' column (cols={qdf.columns})")
+        if len(qdf) != len(labels_full):
+            raise SystemExit(f"QC rows ({len(qdf):,}) != LMDB patches ({len(labels_full):,})")
+        qc_all = qdf["qc_score"].to_numpy()  # index-order, no sort (see B1)
         qc_tr = np.clip(qc_all[train_idx], args.qc_weight_floor, None)
         # Normalize qc WITHIN each class so per-class sampling mass is unchanged
         # (keeps the class-imbalance correction intact); only within-class quality
