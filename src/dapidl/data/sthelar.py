@@ -430,6 +430,15 @@ class SthelarDataReader:
         )
         return dapi
 
+    @property
+    def dapi_lazy(self):
+        """Lazy (1, H, W) DAPI zarr array at the configured pyramid level (NO read).
+
+        Wrap in ``dapidl.data.lazy_mosaic.LazyMosaic`` for per-crop reads instead
+        of materializing the full ~5 GB level-0 DAPI (review B8).
+        """
+        return self.store["images"]["morpho"][str(self.dapi_level)]
+
     def load_dapi_region(self, y_start: int, y_end: int, x_start: int, x_end: int) -> np.ndarray:
         """Load a rectangular region of the DAPI image (tiled access).
 

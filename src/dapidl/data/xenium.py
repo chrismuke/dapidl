@@ -121,6 +121,22 @@ class XeniumDataReader:
         """Return (height, width) of DAPI image."""
         return self.image.shape
 
+    @property
+    def image_path(self) -> Path:
+        """Resolved morphology OME-TIFF path WITHOUT loading the image.
+
+        Lets callers open the (tiled/compressed) mosaic lazily — e.g. via
+        ``dapidl.data.lazy_mosaic.open_xenium_mosaic`` — instead of materializing
+        the full ~1-2 GB array (review B8). Old format first, then new.
+        """
+        outs_path = self._get_outs_path()
+        p = outs_path / "morphology_focus.ome.tif"
+        if not p.exists():
+            p = outs_path / "morphology.ome.tif"
+            if not p.exists():
+                raise FileNotFoundError(f"No morphology image found in {outs_path}")
+        return p
+
     def _load_image(self) -> np.ndarray:
         """Load DAPI morphology image from OME-TIFF.
 
@@ -128,16 +144,7 @@ class XeniumDataReader:
         - Old format: morphology_focus.ome.tif (single focused plane)
         - New format: morphology.ome.tif (combined image from all FOVs)
         """
-        outs_path = self._get_outs_path()
-
-        # Try old format first (morphology_focus.ome.tif), then new format
-        image_path = outs_path / "morphology_focus.ome.tif"
-        if not image_path.exists():
-            image_path = outs_path / "morphology.ome.tif"
-            if not image_path.exists():
-                raise FileNotFoundError(
-                    f"No morphology image found in {outs_path}"
-                )
+        image_path = self.image_path
 
         logger.info(f"Loading DAPI image from {image_path}")
 

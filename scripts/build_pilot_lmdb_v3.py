@@ -29,10 +29,12 @@ import numpy as np
 import polars as pl
 from loguru import logger
 
+from dapidl.data.lazy_mosaic import LazyMosaic, normalize_crop, open_xenium_mosaic
 from dapidl.data.sthelar import SthelarDataReader
 from dapidl.data.xenium import XeniumDataReader
 
 DERIVED = Path("/mnt/work/datasets/derived")
+LMDB_TXN_CHUNK = 5000  # commit write txn every N patches (review B8)
 XENIUM_BASE = Path("/mnt/work/datasets/raw/xenium")
 STHELAR_BASE = Path("/mnt/work/datasets/STHELAR/sdata_slides")
 GT_XLSX = XENIUM_BASE / "xenium-breast-tumor-rep1" / "Cell_Barcode_Type_Matrices.xlsx"
@@ -116,10 +118,6 @@ def extract_xenium(
     half = patch_size // 2
     raw_dir = XENIUM_BASE / f"xenium-breast-tumor-{rep_name}"
     reader = XeniumDataReader(raw_dir / "outs")
-    dapi = reader.image
-    h, w = dapi.shape
-    dapi_norm, norm = _normalize(dapi)
-
     gt = _load_supervised_gt(rep_name)
     centroids = reader.get_nucleus_centroids_pixels()
     cell_ids = reader.get_cell_ids()
@@ -138,26 +136,37 @@ def extract_xenium(
 
     slide = f"xenium_{rep_name}_nuc"
     n_written, n_oob = 0, 0
-    with env.begin(write=True) as txn:
-        idx = idx_start
-        for src_i, coarse_idx, cid in picked:
-            cx, cy = int(round(centroids[src_i, 0])), int(round(centroids[src_i, 1]))
-            y0, y1 = cy - half, cy + half
-            x0, x1 = cx - half, cx + half
-            if y0 < 0 or x0 < 0 or y1 > h or x1 > w:
-                n_oob += 1
-                continue
-            patch = dapi_norm[y0:y1, x0:x1]
-            if patch.shape != (patch_size, patch_size):
-                n_oob += 1
-                continue
-            patch_u16 = (patch * 65535).clip(0, 65535).astype(np.uint16)
-            _write_patch(txn, idx, patch_u16, coarse_idx)
-            all_labels.append(coarse_idx)
-            registry.append({"row_idx": idx, "slide": slide, "cell_id": cid,
-                             "coarse_idx": coarse_idx})
-            idx += 1
-            n_written += 1
+    idx = idx_start
+    with open_xenium_mosaic(reader.image_path) as mosaic:   # lazy crops, no full load (B8)
+        h, w = mosaic.shape
+        p_low, p_high = mosaic.subsample_percentiles(1.0, 99.5)
+        norm = {"p_low": p_low, "p_high": p_high}
+        txn = env.begin(write=True)
+        try:
+            for src_i, coarse_idx, cid in picked:
+                cx, cy = int(round(centroids[src_i, 0])), int(round(centroids[src_i, 1]))
+                y0, y1 = cy - half, cy + half
+                x0, x1 = cx - half, cx + half
+                if y0 < 0 or x0 < 0 or y1 > h or x1 > w:
+                    n_oob += 1
+                    continue
+                crop = mosaic.read(y0, y1, x0, x1)
+                if crop.shape != (patch_size, patch_size):
+                    n_oob += 1
+                    continue
+                _write_patch(txn, idx, normalize_crop(crop, p_low, p_high), coarse_idx)
+                all_labels.append(coarse_idx)
+                registry.append({"row_idx": idx, "slide": slide, "cell_id": cid,
+                                 "coarse_idx": coarse_idx})
+                idx += 1
+                n_written += 1
+                if n_written % LMDB_TXN_CHUNK == 0:
+                    txn.commit()
+                    txn = env.begin(write=True)
+            txn.commit()
+        except BaseException:
+            txn.abort()
+            raise
     logger.info(f"{slide}: wrote {n_written}, skipped {n_oob} OOB")
     return idx, {"source": slide, "n_written": n_written,
                  "n_candidates": len(picked), "norm": norm}
@@ -192,13 +201,15 @@ def extract_sthelar(
     centroids = reader.get_centroids_pixels()
     cmap = {str(cid): (centroids[i, 0], centroids[i, 1]) for i, cid in enumerate(all_cids)}
 
-    dapi = reader.image
-    h, w = dapi.shape
-    dapi_norm, norm = _normalize(dapi)
+    mosaic = LazyMosaic(reader.dapi_lazy)        # lazy (1,H,W) crops, no full load (B8)
+    h, w = mosaic.shape
+    p_low, p_high = mosaic.subsample_percentiles(1.0, 99.5)
+    norm = {"p_low": p_low, "p_high": p_high}
 
     n_written, n_oob, n_miss = 0, 0, 0
-    with env.begin(write=True) as txn:
-        idx = idx_start
+    idx = idx_start
+    txn = env.begin(write=True)
+    try:
         for _, coarse_idx, cid in picked:
             if cid not in cmap:
                 n_miss += 1
@@ -210,17 +221,23 @@ def extract_sthelar(
             if y0 < 0 or x0 < 0 or y1 > h or x1 > w:
                 n_oob += 1
                 continue
-            patch = dapi_norm[y0:y1, x0:x1]
-            if patch.shape != (patch_size, patch_size):
+            crop = mosaic.read(y0, y1, x0, x1)
+            if crop.shape != (patch_size, patch_size):
                 n_oob += 1
                 continue
-            patch_u16 = (patch * 65535).clip(0, 65535).astype(np.uint16)
-            _write_patch(txn, idx, patch_u16, coarse_idx)
+            _write_patch(txn, idx, normalize_crop(crop, p_low, p_high), coarse_idx)
             all_labels.append(coarse_idx)
             registry.append({"row_idx": idx, "slide": slide, "cell_id": cid,
                              "coarse_idx": coarse_idx})
             idx += 1
             n_written += 1
+            if n_written % LMDB_TXN_CHUNK == 0:
+                txn.commit()
+                txn = env.begin(write=True)
+        txn.commit()
+    except BaseException:
+        txn.abort()
+        raise
     logger.info(f"{slide}: wrote {n_written} (OOB {n_oob}, miss {n_miss})")
     return idx, {"source": slide, "n_written": n_written,
                  "n_candidates": len(picked), "norm": norm}
