@@ -202,6 +202,67 @@ def objectness_metrics(patch: np.ndarray, mask: np.ndarray, prob: float,
     }
 
 
+def interior_cov(patch: np.ndarray, interior_mask: np.ndarray) -> float:
+    """Coefficient of variation (std/mean) of the eroded interior.
+
+    Brightness-invariant heterogeneity (review Phase 3): low for a flat apical/
+    basal Z-cap, high for textured chromatin; robust to absolute intensity.
+    """
+    v = patch[interior_mask].astype(np.float64)
+    if v.size < 2 or v.mean() <= 0:
+        return 0.0
+    return float(v.std() / v.mean())
+
+
+def brenner_focus(patch: np.ndarray, interior_mask: np.ndarray) -> float:
+    """Brenner gradient inside the mask: mean squared 2-step horizontal difference.
+
+    A robust, noise-tolerant focus measure (Brenner 1976) — the Pertuz-2013
+    complement to LoG, which is the most noise-sensitive operator. Higher = sharper.
+    """
+    p = patch.astype(np.float64)
+    d2 = np.zeros_like(p)
+    d2[:, :-2] = (p[:, 2:] - p[:, :-2]) ** 2
+    valid = interior_mask.copy()
+    valid[:, -2:] = False                      # 2-step diff undefined at the last 2 cols
+    n = int(valid.sum())
+    return float(d2[valid].sum() / n) if n > 0 else 0.0
+
+
+def glcm_texture(patch: np.ndarray, interior_mask: np.ndarray, levels: int = 16) -> dict:
+    """Grey-level co-occurrence texture inside the eroded mask (review Phase 3).
+
+    The literature's actual Z-cap discriminator: a flat cap is *in focus* but has
+    no chromatin texture, which LoG energy cannot separate from a dim/noisy
+    nucleus. Quantizing over the PATCH dynamic range (p1..p99) — NOT per-interior —
+    makes a uniform interior collapse to ~one grey level (high ASM / low entropy)
+    regardless of its absolute brightness, while heterogeneous chromatin spreads
+    across levels (low ASM / high entropy). Background is excluded via the level-0
+    trick (masked pixels -> level 0, dropped from the GLCM).
+
+    Returns {glcm_entropy, glcm_asm}. Degenerate input -> {0.0, 1.0} ("smooth").
+    """
+    if int(interior_mask.sum()) < 8:
+        return {"glcm_entropy": 0.0, "glcm_asm": 1.0}
+    p = patch.astype(np.float64)
+    lo, hi = np.percentile(p, [1.0, 99.0])
+    if hi <= lo:
+        return {"glcm_entropy": 0.0, "glcm_asm": 1.0}
+    q = np.clip((p - lo) / (hi - lo), 0.0, 1.0)
+    qg = ((q * (levels - 1)).astype(np.uint8) + 1)         # interior -> levels 1..levels
+    qg[~interior_mask] = 0                                  # masked-out -> level 0
+    from skimage.feature import graycomatrix
+    glcm = graycomatrix(qg, distances=[1], angles=[0.0, np.pi / 2.0],
+                        levels=levels + 1, symmetric=True)
+    glcm = glcm[1:, 1:, :, :].astype(np.float64)           # drop the masked level-0 row/col
+    tot = glcm.sum(axis=(0, 1), keepdims=True)
+    tot[tot == 0] = 1.0
+    pr = glcm / tot
+    asm = float((pr ** 2).sum(axis=(0, 1)).mean())
+    ent = float((-pr * np.log2(pr + 1e-12)).sum(axis=(0, 1)).mean())
+    return {"glcm_entropy": ent, "glcm_asm": asm}
+
+
 def score_from_segmentation(patch, masks, probs, ref_p90, pixel_size,
                             cfg: SegQCConfig) -> QualityScore:
     """Compose sub-scores into a QualityScore (no GPU). All raw signals are
@@ -217,6 +278,12 @@ def score_from_segmentation(patch, masks, probs, ref_p90, pixel_size,
     edge = touches_edge(cn.mask, cfg)
     dom = dominant_central_fraction(cn.mask, masks > 0, cfg)
     obj = objectness_metrics(patch, cn.mask, cn.prob, cfg)
+    # Brightness-invariant texture signals (review Phase 3) — diagnostic only;
+    # NOT yet a drop reason. Ladder these to validate them before any gate change.
+    interior = _eroded_interior(cn.mask, cfg)
+    tex = glcm_texture(patch, interior)
+    cov = interior_cov(patch, interior)
+    bren = brenner_focus(patch, interior)
     completeness = float(
         (not edge) and (cfg.area_min_um2 <= a_um2 <= cfg.area_max_um2)
     )
@@ -230,6 +297,8 @@ def score_from_segmentation(patch, masks, probs, ref_p90, pixel_size,
             "stardist_prob": cn.prob, "eccentricity": obj["eccentricity"],
             "solidity": obj["solidity"], "intensity_ratio": obj["intensity_ratio"],
             "morph_ok": float(obj["morph_ok"]), "intensity_ok": float(obj["intensity_ok"]),
+            "glcm_entropy": tex["glcm_entropy"], "glcm_asm": tex["glcm_asm"],
+            "interior_cov": cov, "brenner": bren,
         },
     )
 

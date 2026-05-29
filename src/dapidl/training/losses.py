@@ -14,6 +14,48 @@ import torch.nn.functional as F
 import numpy as np
 
 
+class GeneralizedCrossEntropy(nn.Module):
+    """Noise-robust classification loss for weak / auto-generated labels.
+
+    L = (1 - p_y^q) / q, where p_y is the softmax probability of the labelled
+    class and q in (0, 1]. q -> 0 recovers cross-entropy (noise-sensitive); q = 1
+    is mean-absolute-error (most robust). The key property: a confidently-WRONG
+    label contributes at most 1/q (bounded), whereas CE -> infinity — so the
+    model is not dragged toward mislabelled cells. This is the recommended loss
+    for DAPIDL's CellTypist/transcriptomic pseudo-labels (review 2026-05-29 §3.2;
+    Zhang & Sabuncu, "Generalized Cross Entropy ...", NeurIPS 2018).
+
+    Args:
+        q: robustness parameter in (0, 1]; 0.7 is the paper default.
+        weight: optional per-class relative multiplier (shape [num_classes]).
+        ignore_index: target value to exclude from the loss (default -100).
+    """
+
+    def __init__(self, q: float = 0.7, weight: torch.Tensor | None = None,
+                 ignore_index: int = -100) -> None:
+        super().__init__()
+        if not (0.0 < q <= 1.0):
+            raise ValueError(f"q must be in (0, 1], got {q}")
+        self.q = float(q)
+        self.ignore_index = int(ignore_index)
+        if weight is not None:
+            self.register_buffer("weight", weight)
+        else:
+            self.weight = None
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        probs = torch.softmax(logits, dim=1)
+        valid = target != self.ignore_index
+        t = target.clamp_min(0)                                  # safe gather index
+        p_y = probs.gather(1, t.unsqueeze(1)).squeeze(1).clamp_min(1e-7)
+        loss = (1.0 - p_y ** self.q) / self.q
+        if self.weight is not None:
+            loss = loss * self.weight[t]
+        loss = loss * valid.to(loss.dtype)
+        denom = valid.sum().clamp_min(1).to(loss.dtype)
+        return loss.sum() / denom
+
+
 class FocalLoss(nn.Module):
     """Focal Loss for handling class imbalance.
 

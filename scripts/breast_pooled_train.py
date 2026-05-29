@@ -237,6 +237,11 @@ def main():
     ap.add_argument("--fixed-class-weights", action="store_true",
                     help="Compute class weights from the PRE-filter train pool so QC filtering "
                          "changes only which patches are seen, not the imbalance correction (review B6)")
+    ap.add_argument("--loss", choices=["ce", "gce"], default="ce",
+                    help="ce = weighted cross-entropy (default); gce = noise-robust Generalized "
+                         "Cross-Entropy for the weak transcriptomic labels (review §3.2)")
+    ap.add_argument("--gce-q", type=float, default=0.7,
+                    help="GCE robustness in (0,1]; higher = more tolerant of label noise")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -371,7 +376,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = DapiClassifier(len(class_names)).to(device)
     cw = cw_vector.to(device)  # B6: same vector as the sampler (fixed when --fixed-class-weights)
-    crit = nn.CrossEntropyLoss(weight=cw)
+    if args.loss == "gce":
+        from dapidl.training.losses import GeneralizedCrossEntropy
+        crit = GeneralizedCrossEntropy(q=args.gce_q, weight=cw)
+        logger.info(f"Loss: Generalized Cross-Entropy (q={args.gce_q}, noise-robust; review §3.2)")
+    else:
+        crit = nn.CrossEntropyLoss(weight=cw)
     opt = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     sched = CosineAnnealingWarmRestarts(opt, T_0=5, T_mult=2)
 

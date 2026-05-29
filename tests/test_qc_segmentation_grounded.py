@@ -255,6 +255,60 @@ def test_decide_broken_degenerate_shape_still_dropped():
     assert broken and reason == "false_detection"
 
 
+from dapidl.qc.segmentation_grounded import brenner_focus, glcm_texture, interior_cov
+
+
+def _disk_mask(cy, cx, r, h=128, w=128):
+    yy, xx = np.ogrid[:h, :w]
+    return (yy - cy) ** 2 + (xx - cx) ** 2 < r ** 2
+
+
+def test_glcm_separates_flat_cap_from_textured_and_is_brightness_invariant():
+    """A flat Z-cap (smooth interior) -> high ASM / low entropy; textured
+    chromatin -> low ASM / high entropy. Must hold regardless of brightness."""
+    m = _disk_mask(64, 64, 18)
+    rng = np.random.RandomState(0)
+    flat_dim = np.full((128, 128), 300.0); flat_dim[m] = 600.0
+    flat_dim[m] += rng.normal(0, 3, int(m.sum()))          # in-focus but no chromatin
+    flat_bright = np.full((128, 128), 300.0); flat_bright[m] = 6000.0
+    flat_bright[m] += rng.normal(0, 30, int(m.sum()))      # same shape, 10x brighter
+    textured = np.full((128, 128), 300.0); textured[m] = 600.0
+    yy, xx = np.indices((128, 128))
+    textured[m] += (((yy + xx) % 5) * 130.0)[m]            # strong chromatin-like texture
+    g_dim, g_bright, g_tex = (glcm_texture(p, m) for p in (flat_dim, flat_bright, textured))
+    assert g_dim["glcm_asm"] > g_tex["glcm_asm"]           # flat smoother than textured
+    assert g_tex["glcm_entropy"] > g_dim["glcm_entropy"]
+    assert abs(g_dim["glcm_asm"] - g_bright["glcm_asm"]) < 0.20   # brightness-invariant
+
+
+def test_interior_cov_low_for_flat_high_for_textured_brightness_invariant():
+    m = _disk_mask(64, 64, 18)
+    flat = np.full((128, 128), 300.0); flat[m] = 600.0
+    bright_flat = np.full((128, 128), 300.0); bright_flat[m] = 6000.0
+    textured = np.full((128, 128), 300.0)
+    yy, xx = np.indices((128, 128)); textured[m] = 600.0 + (((yy + xx) % 5) * 130.0)[m]
+    assert interior_cov(textured, m) > interior_cov(flat, m)
+    assert abs(interior_cov(flat, m) - interior_cov(bright_flat, m)) < 1e-9  # CoV scale-free
+
+
+def test_brenner_focus_higher_for_sharp_than_blurred():
+    from scipy.ndimage import gaussian_filter
+    m = _disk_mask(64, 64, 16)
+    yy, xx = np.indices((128, 128))
+    sharp = np.full((128, 128), 300.0); sharp[m] = 600.0 + (((yy + xx) % 4) * 200.0)[m]
+    blurred = gaussian_filter(sharp, 2.0)
+    assert brenner_focus(sharp, m) > brenner_focus(blurred, m)
+
+
+def test_texture_metrics_degenerate_inputs_safe():
+    empty = np.zeros((128, 128), bool)
+    patch = np.full((128, 128), 300.0)
+    g = glcm_texture(patch, empty)
+    assert g["glcm_asm"] == 1.0 and g["glcm_entropy"] == 0.0   # nothing -> "smooth"
+    assert interior_cov(patch, empty) == 0.0
+    assert brenner_focus(patch, empty) == 0.0
+
+
 from dapidl.qc.montage import build_reason_montage
 
 

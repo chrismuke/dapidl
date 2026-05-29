@@ -69,7 +69,9 @@ def run_quality_control_seg(dataset_path, use_structure_cut: bool = False,
     cols = {k: np.zeros(n) for k in (
         "structure_score", "objectness_score", "centeredness", "dominant_central",
         "completeness", "area_um2", "stardist_prob", "eccentricity", "solidity",
-        "intensity_ratio")}
+        "intensity_ratio",
+        # Phase 3 brightness-invariant texture/focus signals (diagnostic, laddered)
+        "glcm_entropy", "glcm_asm", "interior_cov", "brenner")}
     broken = np.zeros(n, dtype=bool)
     reason = np.empty(n, dtype=object)
 
@@ -86,7 +88,8 @@ def run_quality_control_seg(dataset_path, use_structure_cut: bool = False,
                 cols["objectness_score"][gi] = s.detection_score
                 cols["stardist_prob"][gi] = s.metrics.get("stardist_prob", 0.0)
                 for k in ("centeredness", "dominant_central", "completeness",
-                          "area_um2", "eccentricity", "solidity", "intensity_ratio"):
+                          "area_um2", "eccentricity", "solidity", "intensity_ratio",
+                          "glcm_entropy", "glcm_asm", "interior_cov", "brenner"):
                     cols[k][gi] = s.metrics.get(k, 0.0)
                 b, r = decide_broken(s, scorer.cfg, use_structure_cut=use_structure_cut)
                 broken[gi] = b
