@@ -15,7 +15,7 @@
 4. **QC `structure_score` (LoG-in-mask) is defensible but weak alone** — LoG is the *most noise-sensitive* focus operator and conflates "flat Z-cap" with "dim/noisy". Add a **GLCM entropy/ASM** texture term (the literature's actual Z-cap discriminator) + Brenner; optionally cross-check with the **Yang-2018** Hoechst-trained focus CNN.
 5. **The eval protocol needs cheap rigor upgrades.** A single seed + a flat "2% macro-F1" threshold is **not defensible** (run-to-run noise is 1–5%). Add — all nearly free — **McNemar on paired predictions + paired-bootstrap CIs on the difference + ≥3 seeds on the winner**, plus **MCC/balanced-accuracy** alongside macro-F1.
 
-**Status of this review's own fixes:** **Phase 0 + Phase 1 are landed** on `feat/nucleus-qc-scorer` (commits 26327a1, c6af2b4, 0508e03) — all P0s and the P1 experiment-correctness items are fixed with tests (35 QC/centroid tests pass; the §5 re-centering gate ran green on real data). Remaining: Phase 2 readout rigor (McNemar/bootstrap/MCC/3-seed), Phase 3 method upgrades, Phase 4 repo hygiene, and the two P2 robustness items (B8 memmap, B10 format tag). The experiment is now correctness-ready but still gated on the user's pilot visual-validation review before the rebuild + A/B/C runs.
+**Status of this review's own fixes:** **Phase 0 + Phase 1 + Phase 2 are landed** on `feat/nucleus-qc-scorer` (commits 26327a1, c6af2b4, 0508e03, 1db8b28) — all P0s, the P1 experiment-correctness items, and the Phase-2 readout-rigor harness are done with tests (38 QC/centroid/ab-stats tests pass; the §5 re-centering gate ran green on real data; the A/B readout was smoke-tested end-to-end). Remaining: the ≥3-seed *runtime* runs (code ready), Phase 3 method upgrades, Phase 4 repo hygiene, and the two P2 robustness items (B8 memmap, B10 format tag). The experiment is now correctness- AND readout-ready, still gated on the user's pilot visual-validation review before the rebuild + A/B/C runs.
 
 ---
 
@@ -133,7 +133,11 @@ Critical path for gnp-v1 is **tiny** (~8 src modules + 4 scripts) and bypasses t
 
 **Phase 1 runtime steps still owed by the operator (no code left):** (a) rebuild BOTH `breast-6source-dapi-p128` (cell) and `…-p128-nuc` with the registry builder so cell_ids align; (b) run `pairing_audit.py` + `recentering_audit.py` as gates; (c) gated on the user's pilot visual-validation review.
 
-**Phase 2 — readout rigor (cheap, high-trust):** McNemar + paired-bootstrap CIs + MCC/balanced-acc in the A/B/C readout; ≥3 seeds on the winner; reframe STHELAR as canary; dump per-cell predictions + assert cell_id-set equality across the two LMDBs at eval time.
+**Phase 2 — DONE (1db8b28): readout rigor.**
+- `src/dapidl/evaluation/ab_stats.py` (+7 tests): `mcnemar` (exact/chi2), `bootstrap_macro_f1_diff` (paired CI), `per_class_f1_ci`, `macro_f1_fast`.
+- `breast_pooled_train.py`: per-cell `preds.parquet` (source, cell_id, y_true, y_pred) + MCC/balanced-accuracy.
+- `scripts/gnp_ab_readout.py`: pairs arms on shared (source,cell_id) with a y_true-consistency check; McNemar + bootstrap-CI per source & pooled-Xenium; per-class F1 CIs; multi-seed mean±SD. Smoke-tested end-to-end.
+- **Still owed at runtime:** ≥3-seed runs per arm (just run `breast_pooled_train.py` 3× with different `--seed`, then pass all three `preds.parquet` to the readout's `--preds-*`).
 
 **Phase 3 — method upgrades (research-backed, after v1 baseline lands):**
 - QC: add in-mask **GLCM entropy/ASM** + Brenner to `structure`; optional Yang-2018 audit channel.
