@@ -209,17 +209,49 @@ class XeniumDataReader:
         """
         nb_path = self._get_outs_path() / "nucleus_boundaries.parquet"
         nb = pl.read_parquet(nb_path)
-        centroids = nb.group_by("cell_id").agg(
+        arr, n_fallback = self._nucleus_centroids_from_boundaries(
+            self.cells_df, nb, self.PIXEL_SIZE
+        )
+        frac = n_fallback / max(1, len(arr))
+        msg = (f"nucleus-centroid fallback to cell centroid for "
+               f"{n_fallback:,}/{len(arr):,} cells ({frac:.1%})")
+        if frac > 0.10:
+            logger.warning(msg + " — >10%: check cell_id dtype/coverage in "
+                                 "nucleus_boundaries.parquet")
+        else:
+            logger.info(msg)
+        return arr
+
+    @staticmethod
+    def _nucleus_centroids_from_boundaries(
+        cells_df: pl.DataFrame, nb: pl.DataFrame, pixel_size: float
+    ) -> tuple[np.ndarray, int]:
+        """Pure: per-cell mean-of-vertices nucleus centroid (px), aligned to
+        ``cells_df`` cell_id order; cells absent from ``nb`` fall back to the cell
+        centroid. Returns ``(array (N, 2), n_fallback)``.
+
+        The ``nb`` join key is cast to the ``cells_df`` cell_id dtype FIRST: a
+        Categorical-vs-Utf8 (etc.) mismatch otherwise yields an all-null join =
+        100% silent fallback = a nucleus-centered LMDB byte-identical to the
+        cell-centered one (a no-op that looks like it ran). See review B7.
+        """
+        centroids = nb.group_by("cell_id", maintain_order=True).agg(
             pl.col("vertex_x").mean().alias("xc"),
             pl.col("vertex_y").mean().alias("yc"),
         )
-        df = self.cells_df.join(centroids, on="cell_id", how="left").with_columns(
+        target_dtype = cells_df.schema["cell_id"]
+        if centroids.schema["cell_id"] != target_dtype:
+            centroids = centroids.with_columns(pl.col("cell_id").cast(target_dtype))
+        df = cells_df.join(centroids, on="cell_id", how="left")
+        n_fallback = int(df["xc"].null_count())
+        df = df.with_columns(
             pl.col("xc").fill_null(pl.col("x_centroid")),
             pl.col("yc").fill_null(pl.col("y_centroid")),
         )
-        return np.column_stack(
-            [df["xc"].to_numpy() / self.PIXEL_SIZE, df["yc"].to_numpy() / self.PIXEL_SIZE]
+        arr = np.column_stack(
+            [df["xc"].to_numpy() / pixel_size, df["yc"].to_numpy() / pixel_size]
         )
+        return arr, n_fallback
 
     def get_cell_ids(self) -> np.ndarray:
         """Get array of cell IDs."""

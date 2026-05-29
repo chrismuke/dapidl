@@ -72,3 +72,39 @@ def test_shape_matches_cells_df(synthetic_outs):
     reader = XeniumDataReader(synthetic_outs)
     centroids = reader.get_nucleus_centroids_pixels()
     assert centroids.shape == (reader.cells_df.height, 2)
+
+
+# --- Pure-helper tests (review 2026-05-29 B7): dtype guard + fallback count ---
+
+def _cells_df(ids, xs, ys):
+    return pl.DataFrame({"cell_id": ids, "x_centroid": xs, "y_centroid": ys})
+
+
+def _nb_df(rows):
+    return pl.DataFrame({"cell_id": [r[0] for r in rows],
+                         "vertex_x": [r[1] for r in rows],
+                         "vertex_y": [r[2] for r in rows]})
+
+
+def test_helper_reports_fallback_count():
+    px = XeniumDataReader.PIXEL_SIZE
+    cells = _cells_df(["A", "B"], [7.0, 99.0], [7.0, 99.0])
+    nb = _nb_df([("A", 10.0, 10.0), ("A", 20.0, 20.0)])   # B absent -> fallback
+    arr, n_fb = XeniumDataReader._nucleus_centroids_from_boundaries(cells, nb, px)
+    assert n_fb == 1
+    np.testing.assert_allclose(arr[0], [15.0 / px, 15.0 / px])   # A from nucleus
+    np.testing.assert_allclose(arr[1], [99.0 / px, 99.0 / px])   # B fell back to cell
+
+
+def test_helper_dtype_mismatch_no_silent_total_fallback():
+    """B7: nucleus_boundaries.cell_id Categorical vs cells.cell_id Utf8 must NOT
+    produce an all-null join (100% fallback -> nuc-LMDB == cell-LMDB, a silent
+    no-op that looks like the experiment ran)."""
+    px = XeniumDataReader.PIXEL_SIZE
+    cells = _cells_df(["A", "B"], [0.0, 0.0], [0.0, 0.0])
+    nb = _nb_df([("A", 10.0, 10.0), ("B", 30.0, 30.0)]).with_columns(
+        pl.col("cell_id").cast(pl.Categorical))
+    arr, n_fb = XeniumDataReader._nucleus_centroids_from_boundaries(cells, nb, px)
+    assert n_fb == 0, "dtype mismatch caused a silent total fallback (B7)"
+    np.testing.assert_allclose(arr[0], [10.0 / px, 10.0 / px])
+    np.testing.assert_allclose(arr[1], [30.0 / px, 30.0 / px])
