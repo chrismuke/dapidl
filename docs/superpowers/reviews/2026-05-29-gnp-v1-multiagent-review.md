@@ -15,7 +15,7 @@
 4. **QC `structure_score` (LoG-in-mask) is defensible but weak alone** — LoG is the *most noise-sensitive* focus operator and conflates "flat Z-cap" with "dim/noisy". Add a **GLCM entropy/ASM** texture term (the literature's actual Z-cap discriminator) + Brenner; optionally cross-check with the **Yang-2018** Hoechst-trained focus CNN.
 5. **The eval protocol needs cheap rigor upgrades.** A single seed + a flat "2% macro-F1" threshold is **not defensible** (run-to-run noise is 1–5%). Add — all nearly free — **McNemar on paired predictions + paired-bootstrap CIs on the difference + ≥3 seeds on the winner**, plus **MCC/balanced-accuracy** alongside macro-F1.
 
-**Status of this review's own fixes:** **Phase 0 + Phase 1 + Phase 2 are landed** on `feat/nucleus-qc-scorer` (commits 26327a1, c6af2b4, 0508e03, 1db8b28) — all P0s, the P1 experiment-correctness items, and the Phase-2 readout-rigor harness are done with tests (38 QC/centroid/ab-stats tests pass; the §5 re-centering gate ran green on real data; the A/B readout was smoke-tested end-to-end). Remaining: the ≥3-seed *runtime* runs (code ready), Phase 3 method upgrades, Phase 4 repo hygiene, and the two P2 robustness items (B8 memmap, B10 format tag). The experiment is now correctness- AND readout-ready, still gated on the user's pilot visual-validation review before the rebuild + A/B/C runs.
+**Status of this review's own fixes:** **Phases 0, 1, 2, and the code-only part of Phase 3 are landed** on `feat/nucleus-qc-scorer` (commits 26327a1, c6af2b4, 0508e03, 1db8b28, 83fb76b) — all P0s, the P1 experiment-correctness items, the Phase-2 readout-rigor harness, and the Phase-3 QC texture metrics + noise-robust GCE loss are done with tests (**48 QC/centroid/ab-stats/loss tests pass**; the §5 re-centering gate ran green on real data; the A/B readout was smoke-tested end-to-end). Remaining: the ≥3-seed *runtime* runs (code ready), the heavy Phase-3 items needing a model download + GPU (NuSPIRe encoder, two-stream, test-time BN — recipe in §3.2/§5), Phase 4 repo hygiene, and the two P2 robustness items (B8 memmap, B10 format tag). The experiment is correctness- and readout-ready, still gated on the user's pilot visual-validation review before the rebuild + A/B/C runs.
 
 ---
 
@@ -139,10 +139,13 @@ Critical path for gnp-v1 is **tiny** (~8 src modules + 4 scripts) and bypasses t
 - `scripts/gnp_ab_readout.py`: pairs arms on shared (source,cell_id) with a y_true-consistency check; McNemar + bootstrap-CI per source & pooled-Xenium; per-class F1 CIs; multi-seed mean±SD. Smoke-tested end-to-end.
 - **Still owed at runtime:** ≥3-seed runs per arm (just run `breast_pooled_train.py` 3× with different `--seed`, then pass all three `preds.parquet` to the readout's `--preds-*`).
 
-**Phase 3 — method upgrades (research-backed, after v1 baseline lands):**
-- QC: add in-mask **GLCM entropy/ASM** + Brenner to `structure`; optional Yang-2018 audit channel.
-- Classifier: prototype **NuSPIRe** encoder + **two-stream nucleus+context**; abstain-on-low-confidence + symmetric/GCE loss; test-time BN for cross-platform.
-- Manage expectations: coarse ceiling ~0.62–0.72 (near-current), medium ~0.40–0.50.
+**Phase 3 — method upgrades (research-backed).**
+- **DONE (83fb76b):** QC texture metrics — `glcm_texture` (entropy+ASM, patch-range quantized → brightness-invariant Z-cap discriminator), `interior_cov`, `brenner` — written to `seg_scores.parquet` for laddering (diagnostic, not yet a gate; +5 tests). Noise-robust **GCE loss** (`GeneralizedCrossEntropy`, Zhang & Sabuncu 2018) in `training/losses.py` + `breast_pooled_train.py --loss gce` (+6 tests). Abstain-on-low-confidence already handled (label=-1 drop + `--filter-broken`).
+- **TODO (needs model download + GPU, separate spike):**
+  - **NuSPIRe encoder** — `from transformers import ViTModel; ViTModel.from_pretrained("TongjiZhanglab/NuSPIRe")` (MIT, 112² DAPI-native, 15.5M-nuclei MIM pretrain); `pooler_output` → linear probe, or LoRA fine-tune. Add a lazy `--backbone nuspire` branch in `models/backbone.py`; validate on GPU first.
+  - **Two-stream** (NuClass): NuSPIRe on the tight nucleus crop + a context encoder (ConvNeXt/DINOv3) on a ~1024px FOV, gated fuse. Biggest win on context-dependent classes (T-cell).
+  - **Test-time BN** for cross-platform transfer — keep it OUT of the gnp-v1 A/B (would change two things at once); belongs to the separate transfer goal.
+- **Manage expectations:** coarse ceiling ~0.62–0.72 (near-current), medium ~0.40–0.50; report per-class F1, not just macro.
 
 **Phase 4 — repo hygiene (independent):** controller consolidation, retire `harmonization`, quarantine `heist`, dead-script cleanup.
 
