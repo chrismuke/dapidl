@@ -5,6 +5,13 @@ from pathlib import Path
 
 import numpy as np
 
+# Self-describing LMDB serialization tag (review 2026-05-29 B10). Builders stamp
+# one of these under FORMAT_KEY so the reader no longer has to *guess* the layout
+# from the first key's bytes. Untagged (legacy) LMDBs fall back to the heuristic.
+FORMAT_KEY = b"__patch_format__"
+FORMAT_STRKEY_HW = b"strkey-hwheader"     # str(idx) keys; value = u32 H + u32 W + uint16 patch
+FORMAT_U64KEY_SQUARE = b"u64key-square"   # >Q idx keys; value = int64 label + square uint16 patch
+
 
 def read_patches(dataset_path: Path | str, indices) -> np.ndarray:
     """Return an (N, H, W) uint16 array of patches for the given indices.
@@ -32,20 +39,31 @@ def _read_lmdb(lmdb_path: Path, indices) -> np.ndarray:
     patches = []
     try:
         with env.begin() as txn:
-            # Detect key scheme from the smallest non-underscore key:
+            # Prefer the explicit, self-describing format tag (B10). The two
+            # layouts are:
             #   Format A (legacy/fixtures): ASCII-digit keys str(idx);
             #     value = 4B H + 4B W + uint16 patch.
             #   Format B (real datasets): 8-byte big-endian >Q keys;
             #     value = 8B int64 label + uint16 SQUARE patch (no H/W header).
-            cur = txn.cursor()
-            if not cur.first():
-                raise KeyError(f"empty LMDB {lmdb_path}")
-            first_key = cur.key()
-            while first_key[:1] == b"_":  # skip __metadata__/special keys
-                if not cur.next():
-                    break
+            tag = txn.get(FORMAT_KEY)
+            if tag == FORMAT_STRKEY_HW:
+                format_a = True
+            elif tag == FORMAT_U64KEY_SQUARE:
+                format_a = False
+            elif tag is not None:
+                raise ValueError(f"unknown patch format tag {tag!r} in {lmdb_path}")
+            else:
+                # Untagged legacy LMDB: guess the scheme from the smallest
+                # non-underscore key (digit keys -> Format A).
+                cur = txn.cursor()
+                if not cur.first():
+                    raise KeyError(f"empty LMDB {lmdb_path}")
                 first_key = cur.key()
-            format_a = first_key.isdigit()
+                while first_key[:1] == b"_":  # skip __metadata__/__patch_format__
+                    if not cur.next():
+                        break
+                    first_key = cur.key()
+                format_a = first_key.isdigit()
             for idx in indices:
                 i = int(idx)
                 if format_a:

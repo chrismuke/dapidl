@@ -32,6 +32,7 @@ from loguru import logger
 from dapidl.data.lazy_mosaic import LazyMosaic, normalize_crop, open_xenium_mosaic
 from dapidl.data.sthelar import SthelarDataReader
 from dapidl.data.xenium import XeniumDataReader
+from dapidl.qc.io import FORMAT_KEY, FORMAT_U64KEY_SQUARE
 
 DERIVED = Path("/mnt/work/datasets/derived")
 LMDB_TXN_CHUNK = 5000  # commit write txn every N patches (review B8)
@@ -277,6 +278,10 @@ def main() -> None:
         if st:
             slide_stats.append(st)
 
+    # Stamp the self-describing format tag (B10) so the QC reader never has to
+    # guess the layout from key bytes (Format B: >Q keys, int64 label + square).
+    with env.begin(write=True) as txn:
+        txn.put(FORMAT_KEY, FORMAT_U64KEY_SQUARE)
     env.close()
 
     labels_arr = np.array(all_labels, dtype=np.int64)
