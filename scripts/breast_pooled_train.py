@@ -38,6 +38,7 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 from dapidl.models.backbone import create_backbone
+from dapidl.models.nuspire import NUSPIRE_NORM_MEAN, NUSPIRE_NORM_STD
 
 DERIVED = Path("/mnt/work/datasets/derived")
 LMDB_DIR = DERIVED / "breast-6source-dapi-p128"
@@ -82,6 +83,17 @@ def hash_split_by_cell_id(train_pool, pool_labels, cell_ids_full, val_frac):
 
 DAPI_NORM_MEAN = 0.485
 DAPI_NORM_STD = 0.229
+
+
+def backbone_norm(backbone: str) -> tuple[float, float]:
+    """(mean, std) for input normalization. NuSPIRe must get its pretraining
+    stats (~0.219/0.181); feeding it the default DAPI norm (0.485/0.229) handicaps
+    the encoder and would bias an EfficientNet-vs-NuSPIRe comparison (review F1)."""
+    if backbone == "nuspire":
+        return NUSPIRE_NORM_MEAN, NUSPIRE_NORM_STD
+    return DAPI_NORM_MEAN, DAPI_NORM_STD
+
+
 COARSE_NAMES = ["Endothelial", "Epithelial", "Immune", "Stromal"]
 
 
@@ -118,10 +130,13 @@ class DapiPatchDataset(Dataset):
     label written at LMDB build time) are skipped.
     """
 
-    def __init__(self, indices, labels, augment=False):
+    def __init__(self, indices, labels, augment=False,
+                 norm_mean=DAPI_NORM_MEAN, norm_std=DAPI_NORM_STD):
         self.indices = indices
         self.labels = labels  # external label per global LMDB index
         self.augment = augment
+        self.norm_mean = norm_mean
+        self.norm_std = norm_std
         self.env = None
 
     def _open(self):
@@ -149,7 +164,7 @@ class DapiPatchDataset(Dataset):
             k = np.random.randint(0, 4)
             if k:
                 img = np.rot90(img, k=k).copy()
-        img = (img - DAPI_NORM_MEAN) / DAPI_NORM_STD
+        img = (img - self.norm_mean) / self.norm_std
         return torch.from_numpy(img).unsqueeze(0), int(label)
 
 
@@ -255,6 +270,7 @@ def main():
     ap.add_argument("--gce-q", type=float, default=0.7,
                     help="GCE robustness in (0,1]; higher = more tolerant of label noise")
     args = ap.parse_args()
+    norm_mean, norm_std = backbone_norm(args.backbone)  # F1: match NuSPIRe's input stats
 
     args.output.mkdir(parents=True, exist_ok=True)
     set_seed(args.seed)
@@ -377,11 +393,13 @@ def main():
     g.manual_seed(args.seed)
     sampler = WeightedRandomSampler(weights_per_cell, num_samples=len(train_idx),
                                     replacement=True, generator=g)
-    train_loader = DataLoader(DapiPatchDataset(train_idx, labels_full, augment=True),
+    train_loader = DataLoader(DapiPatchDataset(train_idx, labels_full, augment=True,
+                                               norm_mean=norm_mean, norm_std=norm_std),
                               batch_size=args.batch_size, sampler=sampler,
                               num_workers=args.num_workers, pin_memory=True, persistent_workers=True,
                               worker_init_fn=_seed_worker, generator=g)
-    val_loader = DataLoader(DapiPatchDataset(val_idx, labels_full, augment=False),
+    val_loader = DataLoader(DapiPatchDataset(val_idx, labels_full, augment=False,
+                                             norm_mean=norm_mean, norm_std=norm_std),
                             batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
 
@@ -453,7 +471,8 @@ def main():
         if len(idx) == 0:
             logger.warning(f"  {ts}: no cells")
             continue
-        loader = DataLoader(DapiPatchDataset(idx, labels_full, augment=False),
+        loader = DataLoader(DapiPatchDataset(idx, labels_full, augment=False,
+                                             norm_mean=norm_mean, norm_std=norm_std),
                             batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True)
         m, t_cells, p_cells = score_loader(model, loader, device, class_names)
