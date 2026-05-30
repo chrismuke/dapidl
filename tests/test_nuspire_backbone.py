@@ -75,3 +75,31 @@ def test_gradients_reach_encoder():
     out.sum().backward()
     grads = [p.grad is not None for p in bb.encoder.parameters() if p.requires_grad]
     assert any(grads)  # fine-tunable end-to-end
+
+
+def test_force_no_masking_neutralizes_injected_mask_ratio():
+    # Coverage for the _force_no_masking guard (ultracode review P2): every other
+    # fixture hardcodes mask_ratio=0.0, so the branch that neutralizes a >0 ratio
+    # was never asserted. Inject mask_ratio=0.5 and prove the guard pins it to 0 so
+    # ALL patch tokens (1 CLS + _n_patches) reach the mean-pool — not a masked 50%.
+    from transformers import ViTMAEConfig, ViTMAEModel
+
+    cfg = ViTMAEConfig(
+        image_size=112, patch_size=8, num_channels=1, hidden_size=32,
+        num_hidden_layers=2, num_attention_heads=2, intermediate_size=64,
+        mask_ratio=0.5,  # deliberately > 0
+    )
+    enc = ViTMAEModel(cfg)
+    assert enc.config.mask_ratio == 0.5  # precondition: guard has not run yet
+
+    bb = NuSPIReBackbone(encoder=enc)
+    assert bb.encoder.config.mask_ratio == 0.0  # guard pinned it back
+
+    # behavioral proof: no patches dropped -> full token set is returned
+    n = bb._n_patches
+    noise = torch.arange(n, dtype=torch.float32).unsqueeze(0)
+    tokens = bb.encoder(pixel_values=torch.randn(1, 1, 112, 112), noise=noise).last_hidden_state
+    assert tokens.shape[1] == n + 1  # 1 CLS + every patch (would be ~n/2+1 if masked)
+
+    out = bb(torch.randn(2, 1, 112, 112))
+    assert out.shape == (2, 32) and torch.isfinite(out).all()
