@@ -154,15 +154,24 @@ class DapiPatchDataset(Dataset):
 
 
 class DapiClassifier(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, backbone="efficientnetv2_rw_s"):
         super().__init__()
-        backbone, feat_dim = create_backbone("efficientnetv2_rw_s", pretrained=True, in_channels=3)
-        self.backbone = backbone
+        self.backbone_name = backbone
+        if backbone == "nuspire":
+            # DAPI-native single-channel ViT-MAE: no 3-channel expansion, the
+            # wrapper resizes 128->112 internally.
+            bb, feat_dim = create_backbone("nuspire", pretrained=True, in_channels=1)
+            self._expand3 = False
+        else:
+            bb, feat_dim = create_backbone(backbone, pretrained=True, in_channels=3)
+            self._expand3 = True
+        self.backbone = bb
         self.dropout = nn.Dropout(0.3)
         self.head = nn.Linear(feat_dim, num_classes)
 
     def forward(self, x):
-        x = x.expand(-1, 3, -1, -1)
+        if self._expand3:
+            x = x.expand(-1, 3, -1, -1)
         feat = self.backbone(x)
         return self.head(self.dropout(feat))
 
@@ -240,6 +249,9 @@ def main():
     ap.add_argument("--loss", choices=["ce", "gce"], default="ce",
                     help="ce = weighted cross-entropy (default); gce = noise-robust Generalized "
                          "Cross-Entropy for the weak transcriptomic labels (review §3.2)")
+    ap.add_argument("--backbone", default="efficientnetv2_rw_s",
+                    help="Backbone preset (e.g. efficientnetv2_rw_s, nuspire). "
+                         "nuspire = DAPI-native ViT-MAE foundation model.")
     ap.add_argument("--gce-q", type=float, default=0.7,
                     help="GCE robustness in (0,1]; higher = more tolerant of label noise")
     args = ap.parse_args()
@@ -374,7 +386,7 @@ def main():
                             num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = DapiClassifier(len(class_names)).to(device)
+    model = DapiClassifier(len(class_names), backbone=args.backbone).to(device)
     cw = cw_vector.to(device)  # B6: same vector as the sampler (fixed when --fixed-class-weights)
     if args.loss == "gce":
         from dapidl.training.losses import GeneralizedCrossEntropy
