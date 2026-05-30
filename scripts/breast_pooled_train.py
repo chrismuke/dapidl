@@ -89,7 +89,7 @@ def backbone_norm(backbone: str) -> tuple[float, float]:
     """(mean, std) for input normalization. NuSPIRe must get its pretraining
     stats (~0.219/0.181); feeding it the default DAPI norm (0.485/0.229) handicaps
     the encoder and would bias an EfficientNet-vs-NuSPIRe comparison (review F1)."""
-    if backbone == "nuspire":
+    if backbone in ("nuspire", "nuclass"):  # nuclass's nucleus stream is NuSPIRe
         return NUSPIRE_NORM_MEAN, NUSPIRE_NORM_STD
     return DAPI_NORM_MEAN, DAPI_NORM_STD
 
@@ -172,10 +172,10 @@ class DapiClassifier(nn.Module):
     def __init__(self, num_classes, backbone="efficientnetv2_rw_s"):
         super().__init__()
         self.backbone_name = backbone
-        if backbone == "nuspire":
-            # DAPI-native single-channel ViT-MAE: no 3-channel expansion, the
-            # wrapper resizes 128->112 internally.
-            bb, feat_dim = create_backbone("nuspire", pretrained=True, in_channels=1)
+        if backbone in ("nuspire", "nuclass"):
+            # DAPI-native single-channel models (NuSPIRe; NuClass two-stream): no
+            # 3-channel expansion, the backbones handle any resizing internally.
+            bb, feat_dim = create_backbone(backbone, pretrained=True, in_channels=1)
             self._expand3 = False
         else:
             bb, feat_dim = create_backbone(backbone, pretrained=True, in_channels=3)
@@ -265,8 +265,8 @@ def main():
                     help="ce = weighted cross-entropy (default); gce = noise-robust Generalized "
                          "Cross-Entropy for the weak transcriptomic labels (review §3.2)")
     ap.add_argument("--backbone", default="efficientnetv2_rw_s",
-                    help="Backbone preset (e.g. efficientnetv2_rw_s, nuspire). "
-                         "nuspire = DAPI-native ViT-MAE foundation model.")
+                    help="Backbone preset (e.g. efficientnetv2_rw_s, nuspire, nuclass). "
+                         "nuspire = DAPI-native ViT-MAE FM; nuclass = two-stream nucleus+context.")
     ap.add_argument("--gce-q", type=float, default=0.7,
                     help="GCE robustness in (0,1]; higher = more tolerant of label noise")
     args = ap.parse_args()

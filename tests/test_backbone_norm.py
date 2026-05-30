@@ -24,6 +24,11 @@ def test_nuspire_uses_its_pretraining_norm():
     assert mean != DAPI_NORM_MEAN  # the F1 bug: would have been the default
 
 
+def test_nuclass_uses_nuspire_norm():
+    # NuClass's nucleus stream IS NuSPIRe, so it needs NuSPIRe's input stats too.
+    assert backbone_norm("nuclass") == (NUSPIRE_NORM_MEAN, NUSPIRE_NORM_STD)
+
+
 def test_default_backbone_keeps_dapi_norm():
     assert backbone_norm("efficientnetv2_rw_s") == (DAPI_NORM_MEAN, DAPI_NORM_STD)
 
