@@ -269,6 +269,9 @@ def main():
                          "nuspire = DAPI-native ViT-MAE FM; nuclass = two-stream nucleus+context.")
     ap.add_argument("--gce-q", type=float, default=0.7,
                     help="GCE robustness in (0,1]; higher = more tolerant of label noise")
+    ap.add_argument("--samples-per-epoch", type=int, default=None,
+                    help="Cap WeightedRandomSampler draws per epoch (default: full train pool). "
+                         "Bounds epoch wall-clock for fair fixed-compute backbone comparisons.")
     args = ap.parse_args()
     norm_mean, norm_std = backbone_norm(args.backbone)  # F1: match NuSPIRe's input stats
 
@@ -391,7 +394,8 @@ def main():
                     f"per-class mass preserved, within-class quality emphasized")
     g = torch.Generator()
     g.manual_seed(args.seed)
-    sampler = WeightedRandomSampler(weights_per_cell, num_samples=len(train_idx),
+    n_draw = args.samples_per_epoch or len(train_idx)
+    sampler = WeightedRandomSampler(weights_per_cell, num_samples=n_draw,
                                     replacement=True, generator=g)
     train_loader = DataLoader(DapiPatchDataset(train_idx, labels_full, augment=True,
                                                norm_mean=norm_mean, norm_std=norm_std),
