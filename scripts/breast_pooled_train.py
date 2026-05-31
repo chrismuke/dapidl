@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import struct
 import time
@@ -42,6 +43,31 @@ from dapidl.models.nuspire import NUSPIRE_NORM_MEAN, NUSPIRE_NORM_STD
 
 DERIVED = Path("/mnt/work/datasets/derived")
 LMDB_DIR = DERIVED / "breast-6source-dapi-p128"
+
+
+def warmup_cosine_lr(step, warmup_steps, total_steps, peak_lr, min_lr=0.0):
+    """LR for a linear-warmup -> single-cosine-decay schedule (the standard
+    ViT-MAE fine-tuning recipe). Linearly ramps 0 -> peak_lr over the first
+    ``warmup_steps`` optimizer steps, then anneals peak_lr -> min_lr with a
+    single half-cosine over the remaining steps. Monotonic after warmup — no
+    warm restarts (unlike CosineAnnealingWarmRestarts, whose epoch-5 LR spike
+    drove the NuSPIRe val-F1 oscillation in the h2h). ``step`` is 0-indexed and
+    clamped, so step >= total_steps returns min_lr."""
+    if warmup_steps > 0 and step < warmup_steps:
+        return peak_lr * (step + 1) / warmup_steps
+    if total_steps <= warmup_steps:
+        return peak_lr
+    progress = (step - warmup_steps) / (total_steps - warmup_steps)
+    progress = min(max(progress, 0.0), 1.0)
+    return min_lr + 0.5 * (peak_lr - min_lr) * (1.0 + math.cos(math.pi * progress))
+
+
+def set_backbone_trainable(model, trainable: bool) -> None:
+    """Freeze/unfreeze the backbone for a frozen-head warmup. Toggling
+    requires_grad is sufficient for NuSPIRe (a ViT-MAE: LayerNorm, no BN
+    running stats to leak); AdamW skips params whose grad is None."""
+    for p in model.backbone.parameters():
+        p.requires_grad_(trainable)
 
 
 def set_seed(seed: int) -> None:
@@ -272,6 +298,19 @@ def main():
     ap.add_argument("--samples-per-epoch", type=int, default=None,
                     help="Cap WeightedRandomSampler draws per epoch (default: full train pool). "
                          "Bounds epoch wall-clock for fair fixed-compute backbone comparisons.")
+    ap.add_argument("--lr-schedule", choices=["warmrestart", "warmup-cosine"],
+                    default="warmrestart",
+                    help="warmrestart = CosineAnnealingWarmRestarts (legacy default). "
+                         "warmup-cosine = linear warmup -> single monotonic cosine, the "
+                         "ViT-MAE fine-tuning recipe (recommended for --backbone nuspire).")
+    ap.add_argument("--warmup-frac", type=float, default=0.1,
+                    help="Fraction of total optimizer steps spent in linear warmup "
+                         "(warmup-cosine only).")
+    ap.add_argument("--min-lr", type=float, default=0.0,
+                    help="Floor the cosine anneal at this LR (warmup-cosine only).")
+    ap.add_argument("--freeze-backbone-epochs", type=int, default=0,
+                    help="Train only the head for the first N epochs (frozen-backbone "
+                         "warmup), then unfreeze. Stabilises ViT fine-tunes.")
     args = ap.parse_args()
     norm_mean, norm_std = backbone_norm(args.backbone)  # F1: match NuSPIRe's input stats
 
@@ -417,7 +456,20 @@ def main():
     else:
         crit = nn.CrossEntropyLoss(weight=cw)
     opt = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    sched = CosineAnnealingWarmRestarts(opt, T_0=5, T_mult=2)
+    use_warmup_cosine = args.lr_schedule == "warmup-cosine"
+    if use_warmup_cosine:
+        # Per-step linear-warmup -> single cosine. No warm restarts (the epoch-5
+        # LR spike that made NuSPIRe's val-F1 oscillate in the h2h).
+        steps_per_epoch = len(train_loader)
+        total_steps = steps_per_epoch * args.epochs
+        warmup_steps = int(args.warmup_frac * total_steps)
+        sched = None
+        logger.info(f"LR schedule: warmup-cosine  peak={args.lr:.1e} min={args.min_lr:.1e} "
+                    f"warmup={warmup_steps}/{total_steps} steps (~{args.warmup_frac:.0%}); "
+                    f"freeze_backbone_epochs={args.freeze_backbone_epochs}")
+    else:
+        sched = CosineAnnealingWarmRestarts(opt, T_0=5, T_mult=2)
+    global_step = 0
 
     best_val_f1 = -1.0
     best_epoch = -1
@@ -426,9 +478,22 @@ def main():
     ckpt_path = args.output / "best_model.pt"
     t0 = time.time()
     for epoch in range(args.epochs):
+        if args.freeze_backbone_epochs > 0:
+            trainable = epoch >= args.freeze_backbone_epochs
+            set_backbone_trainable(model, trainable)
+            if epoch == 0:
+                logger.info(f"backbone FROZEN for first {args.freeze_backbone_epochs} epoch(s)")
+            elif epoch == args.freeze_backbone_epochs:
+                logger.info("backbone UNFROZEN — full fine-tune resumes")
         model.train(True)
         running = 0.0; n = 0
         for x, y in train_loader:
+            if use_warmup_cosine:
+                lr_now = warmup_cosine_lr(global_step, warmup_steps, total_steps,
+                                          args.lr, args.min_lr)
+                for g in opt.param_groups:
+                    g["lr"] = lr_now
+                global_step += 1
             x = x.to(device, non_blocking=True); y = y.to(device, non_blocking=True)
             opt.zero_grad(set_to_none=True)
             logits = model(x)
@@ -436,11 +501,14 @@ def main():
             loss.backward()
             opt.step()
             running += loss.item() * x.size(0); n += x.size(0)
-        sched.step()
+        if sched is not None:
+            sched.step()
         train_loss = running / n
+        cur_lr = opt.param_groups[0]["lr"]
         val, _, _ = score_loader(model, val_loader, device, class_names)
-        history.append(dict(epoch=epoch, train_loss=train_loss, **val))
-        logger.info(f"epoch {epoch:>2d}  train_loss={train_loss:.3f}  val_F1={val['macro_f1']:.3f}  val_acc={val['accuracy']:.3f}")
+        history.append(dict(epoch=epoch, train_loss=train_loss, lr=cur_lr, **val))
+        logger.info(f"epoch {epoch:>2d}  lr={cur_lr:.2e}  train_loss={train_loss:.3f}  "
+                    f"val_F1={val['macro_f1']:.3f}  val_acc={val['accuracy']:.3f}")
         if val["macro_f1"] > best_val_f1:
             best_val_f1 = val["macro_f1"]; best_epoch = epoch; epochs_since_improve = 0
             torch.save(model.state_dict(), ckpt_path)
