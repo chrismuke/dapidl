@@ -20,7 +20,7 @@ The interface across the seam is `starpose.types.SegmentationResult` + the QC fe
 
 1. **A real fork exists.** dapidl's pipeline routes segmentation through starpose, **but** the newer QC scorer `dapidl/src/dapidl/qc/segmentation_grounded.py` calls `from stardist.models import StarDist2D` **directly**, and the consensus code is **duplicated** (`dapidl/src/dapidl/benchmark/consensus/topological_voting.py` ≡ `starpose/src/starpose/consensus/topological.py`). The original QC spec (`2026-05-22-nucleus-qc-scorer`) even placed the scorer in `starpose/qc/` — it drifted into dapidl. This spec restores that intent.
 2. **The default is under-validated.** `dispatch.py` hardcodes `return "topological"` citing "60.4% recovery" — but that MERSCOPE benchmark used a **"recovery" proxy, not PQ/F1**, the **InstanSeg arm was broken** (0.260, 2 cells in a dense FOV; dismissed as "designed for H&E" — false), and **Xenium showed no ensemble benefit**. See `project_starpose_seg_benchmark`.
-3. **License risk.** The H&E SOTA (CellViT/CellViT++) and Mesmer/DeepCell are **non-commercial** (Commons Clause / academic-only). For sonora.ai, the hub must not silently route to them.
+3. **License visibility (not a blocker — academic use).** The H&E SOTA (CellViT/CellViT++), Mesmer/DeepCell, and CelloType's PanNuke weights carry **non-commercial** terms (Commons Clause / CC BY-NC-SA / academic-only). Under **academic use these are all usable**, so the hub records license as *informational metadata* (future-proofing if usage ever becomes commercial) — it does **not** gate or skip backends. This also unblocks **CellViT++** as the H&E SOTA default.
 4. **2025–2026 evidence** (see research synthesis): nothing cleanly beats StarDist for round DAPI nuclei; its only real weakness is crowding; **InstanSeg** (Apache-2.0, TorchScript) is the permissive modern generalist worth fixing/promoting.
 
 ## 3. Scope
@@ -72,7 +72,7 @@ Primary call sites updated to import starpose directly; shims cover the long tai
 ## 6. Phase 2 — Backend hygiene
 
 - **InstanSeg fix.** Replace the 53-line stub: select the **fluorescence/DAPI** InstanSeg model variant, correct input normalization, TorchScript inference. Acceptance: a smoke test on a known DAPI tile yields a sane cell count (the "2 cells in dense" pathology must fail the test).
-- **License gating.** Extend the registry signature `register(name, cls, description, install_hint="", license=None, commercial_ok=None)`. `list_methods()` and `starpose methods` surface `license`/`commercial_ok`. The dispatcher **skips `commercial_ok is False` backends unless `allow_noncommercial=True`**, emitting a warning. Set: stardist/cellpose/instanseg/topological = commercial-OK (BSD-3/Apache-2.0/MIT, verified); cellvit = `commercial_ok=False` (Commons Clause, verified); cellotype + any future Mesmer/DeepCell = `commercial_ok` left `None` until each upstream license is verified at implementation, and treated as non-commercial (skipped) while unknown.
+- **License metadata (informational, not gating — academic use).** Add a `license` string to the registry: `register(name, cls, description, install_hint="", license=None)`. `list_methods()` and `starpose methods` surface it. **No skipping/gating** — the project is academic, so non-commercial backends (CellViT, Mesmer, CelloType's PanNuke weights) are usable. The field exists purely for visibility and to make a future commercial-gating switch trivial if ever needed. Recorded values: stardist/cellpose/instanseg/topological = BSD-3/Apache-2.0/MIT; cellvit = Apache-2.0 + Commons-Clause (NC); cellotype = Apache-2.0 code, PanNuke weights NC; mesmer/deepcell (if added) = academic-only.
 - **Density-aware dispatch.** Replace hardcoded `return "topological"` with a rule: estimate density (e.g. StarDist/Cellpose count ratio or nuclei/area); **low density (Xenium-like, ratio<2×) → single fast method (`stardist`)**; **high density → `cellpose_nuclei`/`instanseg`/`topological`**. Default becomes evidence-driven; `_force_nucleus` override preserved.
 
 ## 7. Phase 3 — Benchmark refresh
@@ -89,7 +89,7 @@ TDD throughout (starpose has `tests/`). Moved QC code brings its tests (syntheti
 
 ## 9. Constraints
 
-- starpose stays **MIT**; commercial gating protects sonora.ai from non-commercial backends.
+- starpose stays **MIT**. License recorded as informational metadata only (academic use — non-commercial backends usable); no commercial gating.
 - `uv run`; polars-first (pandas only at external-lib boundaries); per-backend optional-deps preserved.
 - **Do NOT touch** the cellotype/joint instance-seg WIP (`starpose/methods/{cellotype,joint}.py`, dapidl `training/instance/*`).
 - Version bump starpose v0.2.0 → **v0.3.0**; update dapidl's editable dep; keep `dapidl` test suite green via shims.
