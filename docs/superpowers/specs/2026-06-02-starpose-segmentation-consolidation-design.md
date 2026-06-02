@@ -26,9 +26,9 @@ The interface across the seam is `starpose.types.SegmentationResult` + the QC fe
 ## 3. Scope
 
 **In scope** — one spec, three sequenced phases:
-- **Phase 1 — Plumbing:** starpose becomes the single entry point; move QC + de-dup consensus; dapidl consumes via thin shims.
+- **Phase 1 — Plumbing:** starpose becomes the single entry point; move the QC scorer into `starpose.qc`; dapidl consumes via thin shims. (Consensus/benchmark de-dup moved to Phase 3 — discovered during planning that the two impls use incompatible result types and dapidl's is entangled with its own benchmark framework.)
 - **Phase 2 — Backend hygiene:** fix InstanSeg adapter; license metadata + commercial gating; density-aware dispatch.
-- **Phase 3 — Benchmark refresh:** proper PQ/F1/Jaccard/AP vs STHELAR masks + a hand-annotated Xenium spot-check; confirm or revise the default.
+- **Phase 3 — Benchmark refresh:** consolidate the benchmark framework into starpose (incl. the consensus de-dup deferred from Phase 1); proper PQ/F1/Jaccard/AP vs STHELAR masks + a hand-annotated Xenium spot-check; confirm or revise the default.
 
 **Out of scope:** SONORA's own adoption (separate); the subnuclear-triangulation *build* (parked — **resumes on `starpose.qc` after Phase 1**); any change to the cellotype/joint instance-seg WIP in either repo.
 
@@ -56,7 +56,7 @@ Stability: `starpose.segment`, `starpose.qc.*`, `starpose.methods.create/list_me
 |---|---|---|
 | `qc/segmentation_grounded.py` (SegmentationGroundedScorer, SegQCConfig, scorers) | `starpose/qc/segmentation_grounded.py` | `_segment` swapped to `starpose.create("stardist").segment` — one StarDist path |
 | planned `qc/patch_features.py` (subnuclear features) | `starpose/qc/patch_features.py` | segmentation-grounded ⇒ lives here |
-| `benchmark/consensus/topological_voting.py` (+ majority/iou dup) | *delete* | `starpose/consensus/*` is canonical |
+| `benchmark/consensus/topological_voting.py` (+ majority/iou) | *(deferred to Phase 3)* | different result type (`SegmentationOutput`) + entangled with dapidl's benchmark framework — consolidated with the benchmark |
 | `benchmark/runner.py` (segmentation parts) | folded into `starpose benchmark` | port dapidl-only FOV/metric logic |
 
 dapidl keeps: classifier, LMDB, training, the IG **attribution** (model-level, not segmentation), and `quality_control*.py` *steps* (now thin wrappers over `starpose.qc`).
