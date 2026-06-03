@@ -21,7 +21,7 @@ from dapidl.pipeline.steps.quality_control import (
     _slide_groups,
 )
 from dapidl.qc.io import read_patches
-from dapidl.qc.segmentation_grounded import SegmentationGroundedScorer, decide_broken
+from starpose.qc import SegmentationGroundedScorer, decide_broken
 
 REFERENCE_SAMPLE = 2000
 
