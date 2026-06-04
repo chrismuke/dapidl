@@ -12,6 +12,8 @@
 
 **Do NOT touch:** `starpose/methods/{cellotype,joint}.py`, `dapidl/training/instance/*`, the joint WIP.
 
+> **⚠️ REVISION (2026-06-04, during execution):** starpose **already has** `starpose/benchmark/` with its own `fov_selector.py` (`select_fovs`/`extract_tile` on `starpose.types.FOVTile`), `reporting.py`, **and `runner.py`**. So **Tasks 3 and 4 below are CUT** — those are duplicate parallel implementations (different APIs), and reconciling them belongs with the framework de-dup in **Phase 3b-2**, not a one-way move. **3b-1 = Tasks 1 & 2 only** (instance_metrics + biological — the modules starpose genuinely lacked). Both are done and committed.
+
 ---
 
 ## Task 1: Move instance metrics into `starpose.evaluate`
