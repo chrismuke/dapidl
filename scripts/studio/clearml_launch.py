@@ -29,7 +29,7 @@ class ClearMLClient:
 
     # -- construction -----------------------------------------------------------
     @classmethod
-    def from_config(cls, config_path: Path = CLEARML_CONFIG_PATH) -> "ClearMLClient":
+    def from_config(cls, config_path: Path = CLEARML_CONFIG_PATH) -> ClearMLClient:
         """Parse a HOCON-style ClearML config file."""
         text = config_path.read_text()
         client = cls()
@@ -46,7 +46,7 @@ class ClearMLClient:
         return client
 
     @classmethod
-    def from_env_or_config(cls) -> "ClearMLClient":
+    def from_env_or_config(cls) -> ClearMLClient:
         """Create from environment variables, falling back to the config file."""
         if os.environ.get("CLEARML_API_HOST"):
             return cls(

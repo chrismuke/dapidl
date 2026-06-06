@@ -142,7 +142,7 @@ def expand_sweep(
     keys = list(axes)
     runs: list[dict] = []
     for combo_values in itertools.product(*(axes[k] for k in keys)):
-        combo = dict(zip(keys, combo_values))
+        combo = dict(zip(keys, combo_values, strict=True))
         params = build_param_overrides(
             {**base_selections, **combo}, datasets, compute_targets, services_queue
         )

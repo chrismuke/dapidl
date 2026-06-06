@@ -13,6 +13,7 @@ controller template task (see configs/studio.json / create-controller-task).
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 from datetime import datetime
@@ -39,10 +40,7 @@ STATUS_COLORS = {
 # ---------------------------------------------------------------------------
 def load_studio_config() -> dict:
     """Load configs/studio.json (compute targets, template id, services queue)."""
-    if STUDIO_CONFIG_PATH.exists():
-        cfg = json.loads(STUDIO_CONFIG_PATH.read_text())
-    else:
-        cfg = {}
+    cfg = json.loads(STUDIO_CONFIG_PATH.read_text()) if STUDIO_CONFIG_PATH.exists() else {}
     cfg.setdefault("compute_targets", {"Local 3090": "gpu-local", "AWS (scales)": "gpu-cloud"})
     cfg.setdefault("services_queue", "services")
     cfg.setdefault("template_task_id", "")
@@ -266,12 +264,10 @@ def results_tab(client: ClearMLClient) -> None:
         rows = []
         for t in tasks:
             row = {"run": (t.get("name") or "")[-40:], "status": t.get("status", "")}
-            try:
+            with contextlib.suppress(Exception):
                 for k, v in client.get_task_scalars(t["id"]).items():
                     if isinstance(v, (int, float)) and ("f1" in k.lower() or "acc" in k.lower()):
                         row[k] = round(float(v), 3)
-            except Exception:  # noqa: BLE001
-                pass
             rows.append(row)
         st.dataframe(rows, use_container_width=True)
         web = client.web_server or "https://clearml.chrism.io"
@@ -295,10 +291,8 @@ def pipeline_monitor(client: ClearMLClient) -> None:
         status = STATUS_COLORS.get(pipe["status"], pipe["status"])
         last = pipe.get("last_update", "")
         if last:
-            try:
+            with contextlib.suppress(ValueError, AttributeError):
                 last = datetime.fromisoformat(last.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
-            except (ValueError, AttributeError):
-                pass
         with st.expander(f"{pipe['name']} — {status} ({last})", expanded=pipe["status"] == "in_progress"):
             web = client.web_server or "https://clearml.chrism.io"
             st.markdown(f"[Open in ClearML]({web}/projects/*/experiments/{pipe['id']})")
