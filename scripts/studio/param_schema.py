@@ -9,6 +9,7 @@ ClearML controller script uses.
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import pathlib
 import sys
 from typing import Any
@@ -116,3 +117,51 @@ def build_param_overrides(
             )
 
     return config.to_clearml_parameters()
+
+
+def expand_sweep(
+    base_selections: dict[str, Any],
+    sweep_axes: dict[str, list],
+    datasets: list[tuple],
+    compute_targets: dict[str, str],
+    sweep_id: str,
+    services_queue: str = "services",
+) -> list[dict]:
+    """Cartesian-expand the chosen sweep axes into one run spec per combination.
+
+    Returns a list of ``{"name", "tag", "params"}`` dicts. Each ``params`` is a
+    full ClearML override dict; all runs share the tag ``sweep-<sweep_id>`` so the
+    Results view can group and compare them. With no axes, returns a single run.
+    """
+    axes = {k: list(v) for k, v in (sweep_axes or {}).items() if v}
+    tag = f"sweep-{sweep_id}"
+    if not axes:
+        params = build_param_overrides(base_selections, datasets, compute_targets, services_queue)
+        return [{"name": tag, "tag": tag, "params": params}]
+
+    keys = list(axes)
+    runs: list[dict] = []
+    for combo_values in itertools.product(*(axes[k] for k in keys)):
+        combo = dict(zip(keys, combo_values))
+        params = build_param_overrides(
+            {**base_selections, **combo}, datasets, compute_targets, services_queue
+        )
+        label = ",".join(f"{k}={combo[k]}" for k in keys)
+        runs.append({"name": f"{tag}/{label}", "tag": tag, "params": params})
+    return runs
+
+
+def validate(
+    selections: dict[str, Any],
+    datasets: list[tuple],
+    sweep_axes: dict[str, list] | None = None,
+) -> list[str]:
+    """Return human-readable problems that should block a launch (empty list = OK)."""
+    errors: list[str] = []
+    if not datasets:
+        errors.append("Add at least one dataset before launching.")
+    if sweep_axes:
+        for axis, values in sweep_axes.items():
+            if not values:
+                errors.append(f"Sweep axis '{axis}' has no values selected.")
+    return errors
