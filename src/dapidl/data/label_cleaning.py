@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 
-def cv_pred_probs(X, y, n_folds: int = 5, seed: int = 42) -> np.ndarray:
+def cv_pred_probs(x, y, n_folds: int = 5, seed: int = 42) -> np.ndarray:
     """Out-of-sample class probabilities for (X, y) via k-fold cross-validation.
 
     Columns are ordered by ``np.unique(y)``. Folds are reduced if the rarest class
@@ -25,7 +25,7 @@ def cv_pred_probs(X, y, n_folds: int = 5, seed: int = 42) -> np.ndarray:
     cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
     enc = {c: i for i, c in enumerate(classes)}
     y_enc = np.array([enc[v] for v in y])
-    return cross_val_predict(clf, X, y_enc, cv=cv, method="predict_proba")
+    return cross_val_predict(clf, x, y_enc, cv=cv, method="predict_proba")
 
 
 def find_label_issues(y, pred_probs) -> tuple[np.ndarray, np.ndarray]:
