@@ -1,10 +1,10 @@
 {
-  "_comment": "Biologist Pipeline Studio config. template_task_id is the ClearML controller template task to clone for each run. Leave empty to auto-discover the most recent draft 'dapidl-pipeline-controller' task, or set explicitly. Create one with: uv run dapidl clearml-pipeline create-controller-task -t breast <dataset_id> xenium 2",
+  "_comment": "Biologist Pipeline Studio config. template_task_id = the ClearML controller template task to clone per run; leave empty to auto-discover the latest draft 'dapidl-pipeline-controller'. Create one with: uv run dapidl clearml-pipeline create-controller-task -t breast <dataset_id> xenium 2",
+  "_compute_note": "compute_targets maps a friendly label to a ClearML queue. ONLY queues with a running agent actually run jobs (live queues: gpu-local, gpu-cloud, services). To add DigitalOcean, start a ClearML agent on a DO GPU droplet listening on a 'gpu-do' queue, then add {\"DigitalOcean\": \"gpu-do\"} below.",
   "template_task_id": "",
   "compute_targets": {
     "Local 3090": "gpu-local",
-    "AWS (scales)": "gpu-cloud",
-    "DigitalOcean": "gpu-do"
+    "AWS (scales)": "gpu-cloud"
   },
   "services_queue": "services"
 }
