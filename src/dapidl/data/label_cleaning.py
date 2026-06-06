@@ -44,3 +44,21 @@ def find_label_issues(y, pred_probs) -> tuple[np.ndarray, np.ndarray]:
     is_issue = _find(labels=y_enc, pred_probs=pred_probs, return_indices_ranked_by=None)
     quality = _quality(labels=y_enc, pred_probs=pred_probs)
     return np.asarray(is_issue, dtype=bool), np.asarray(quality, dtype=float)
+
+
+def write_label_issues(out_path, row_idx, cell_ids, sources, labels, is_issue, label_quality):
+    """Write a label-issues parquet. The ``broken`` column (== ``is_issue``) lets
+    ``breast_pooled_train.py --filter-broken --qc-scores <this>`` consume it unchanged
+    (index-aligned by ``row_idx``)."""
+    import polars as pl
+
+    df = pl.DataFrame({
+        "row_idx": list(row_idx),
+        "cell_id": [str(c) for c in cell_ids],
+        "source": list(sources),
+        "label": list(labels),
+        "label_quality": [float(q) for q in label_quality],
+        "broken": [bool(b) for b in is_issue],
+    })
+    df.write_parquet(out_path)
+    return out_path

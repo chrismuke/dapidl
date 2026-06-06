@@ -36,3 +36,19 @@ def test_find_label_issues_recovers_injected_flips():
     assert precision >= 0.6, f"precision={precision:.2f}"
     assert quality.shape == (len(y_noisy),)
     assert quality.min() >= 0.0 and quality.max() <= 1.0
+
+
+def test_write_label_issues_roundtrip(tmp_path):
+    import polars as pl
+    out = tmp_path / "label_issues.parquet"
+    n = 5
+    lc.write_label_issues(
+        out, row_idx=list(range(n)), cell_ids=[f"c{i}" for i in range(n)],
+        sources=["xenium_rep1"] * n, labels=[0, 1, 2, 0, 1],
+        is_issue=np.array([True, False, False, True, False]),
+        label_quality=np.array([0.1, 0.9, 0.8, 0.2, 0.7]),
+    )
+    df = pl.read_parquet(out)
+    assert df.columns == ["row_idx", "cell_id", "source", "label", "label_quality", "broken"]
+    assert df["broken"].to_list() == [True, False, False, True, False]
+    assert df["row_idx"].to_list() == list(range(n))
