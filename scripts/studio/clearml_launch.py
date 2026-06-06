@@ -140,9 +140,13 @@ class ClearMLClient:
         return data["tasks"]
 
     # -- launch: clone template -> override params -> enqueue -------------------
-    def clone_task(self, template_id: str, name: str) -> str:
-        """Clone a (template) task; return the new task id."""
-        return self._post("tasks.clone", {"task": template_id, "new_task_name": name})["id"]
+    def clone_task(self, template_id: str, name: str, tags: list[str] | None = None) -> str:
+        """Clone a (template) task; return the new task id. Optional user tags let a
+        sweep's runs be grouped/queried together later."""
+        payload: dict = {"task": template_id, "new_task_name": name}
+        if tags:
+            payload["new_task_tags"] = list(tags)
+        return self._post("tasks.clone", payload)["id"]
 
     def set_task_params(self, task_id: str, params: dict[str, str]) -> dict:
         """Set hyperparameters on a task. Slash keys ("training/backbone") become

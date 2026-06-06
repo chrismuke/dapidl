@@ -66,3 +66,10 @@ def test_get_task_scalars_flattens_last_metrics():
     )
     scalars = c.get_task_scalars("t1")
     assert scalars["val/macro_f1"] == 0.71
+
+
+def test_clone_task_with_tags_attaches_new_task_tags():
+    calls = []
+    c = _client_capturing(calls, {"id": "n2"})
+    c.clone_task("tmpl", "run-B", tags=["sweep-9"])
+    assert calls[-1][1]["new_task_tags"] == ["sweep-9"]
