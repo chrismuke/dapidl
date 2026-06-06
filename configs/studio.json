@@ -1,0 +1,10 @@
+{
+  "_comment": "Biologist Pipeline Studio config. template_task_id is the ClearML controller template task to clone for each run. Leave empty to auto-discover the most recent draft 'dapidl-pipeline-controller' task, or set explicitly. Create one with: uv run dapidl clearml-pipeline create-controller-task -t breast <dataset_id> xenium 2",
+  "template_task_id": "",
+  "compute_targets": {
+    "Local 3090": "gpu-local",
+    "AWS (scales)": "gpu-cloud",
+    "DigitalOcean": "gpu-do"
+  },
+  "services_queue": "services"
+}
