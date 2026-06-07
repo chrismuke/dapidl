@@ -142,7 +142,8 @@ def main() -> None:
              "Ground truth: STHELAR cells_label2 → COARSE/MEDIUM (slides s0-s6); "
              "Janesick supervised 17→4 (rep1/rep2). 4 methods, 1 per family "
              "(gene-expr / marker DB / ref atlas / spatial-aware). "
-             "BANKSY missing on s1 (cell-count drift) and s6 (Prime panel subsample). "
+             "BANKSY on all 6 slides (s1 added via big-RAM cloud run). macro F1 over "
+             "GT-present classes — STHELAR s1/s3/s6 Tangram GT lacks Endothelial (N/A, not 0). "
              "Consensus = per-cell confidence-weighted vote.",
              ha="right", va="bottom", fontsize=8.5, color="#666")
 
