@@ -29,6 +29,7 @@ from annotation_run_2026_05 import (
 )
 from dapidl.ontology.cl_mapper import get_mapper
 from dapidl.ontology.training_tiers import COARSE_NAMES, MEDIUM_NAMES
+from tier_macro import present_class_macro  # GT-present-class macro (absent -> N/A)
 
 OUT_DIR = Path("/mnt/work/git/dapidl/pipeline_output/annotation_run_2026_05")
 PER_SLIDE = OUT_DIR / "per_slide"
@@ -73,13 +74,24 @@ def load_banksy_preds(slide):
 
 
 def eval_method(method_name, raw_preds, gt_coarse, gt_medium, mapper):
-    """Compute coarse + medium F1 + per-class for one method."""
+    """Compute present-class macro + per-class F1 for one method.
+
+    Macro averages over GT-present classes only (absent classes -> N/A), so a
+    method isn't penalized for a class the GT can't measure (e.g. STHELAR
+    Tangram GT lacks Endothelial on s1/s3/s6). The full coarse-4 macro is kept
+    as ``coarse_f1_all`` for reference."""
     pc = map_to_tier(raw_preds, "coarse", mapper)
     pm = map_to_tier(raw_preds, "medium", mapper)
+    coarse_pc = per_class_f1(gt_coarse, pc, COARSE_4)
+    medium_pc = per_class_f1(gt_medium, pm, MEDIUM_12)
+    c_macro, c_per_na, c_present = present_class_macro(gt_coarse, coarse_pc, COARSE_4)
+    m_macro, _, _ = present_class_macro(gt_medium, medium_pc, MEDIUM_12)
     return {
-        "coarse_f1": macro_f1(gt_coarse, pc, COARSE_4),
-        "medium_f1": macro_f1(gt_medium, pm, MEDIUM_12),
-        "coarse_per_class": per_class_f1(gt_coarse, pc, COARSE_4),
+        "coarse_f1": c_macro,
+        "coarse_f1_all": macro_f1(gt_coarse, pc, COARSE_4),
+        "medium_f1": m_macro,
+        "coarse_per_class": c_per_na,
+        "n_present": len(c_present),
         "n_eval": len(gt_coarse),
     }
 
@@ -119,6 +131,8 @@ def main():
             ev = eval_method(m_name, m_data["raw_preds"], gt_coarse, gt_medium, mapper)
             coarse_rows.append({"slide": slide, "method": m_name,
                                 "f1_macro": ev["coarse_f1"],
+                                "f1_macro_all4": ev["coarse_f1_all"],
+                                "n_present": ev["n_present"],
                                 "n_eval": ev["n_eval"],
                                 **{f"f1_{k}": v for k, v in ev["coarse_per_class"].items()}})
             medium_rows.append({"slide": slide, "method": m_name,
@@ -144,12 +158,14 @@ def main():
                 consensus_rows.append({
                     "slide": slide, "n_methods": len(combo),
                     "combo": combo_str, "tier": "coarse",
-                    "f1_macro": macro_f1(gt_coarse, cc, COARSE_4),
+                    "f1_macro": present_class_macro(
+                        gt_coarse, per_class_f1(gt_coarse, cc, COARSE_4), COARSE_4)[0],
                 })
                 consensus_rows.append({
                     "slide": slide, "n_methods": len(combo),
                     "combo": combo_str, "tier": "medium",
-                    "f1_macro": macro_f1(gt_medium, cm, MEDIUM_12),
+                    "f1_macro": present_class_macro(
+                        gt_medium, per_class_f1(gt_medium, cm, MEDIUM_12), MEDIUM_12)[0],
                 })
 
     # Write fresh parquets (full rebuild, not append). Use diagonal_relaxed in
