@@ -281,7 +281,7 @@ class ScTypeAnnotator:
             # Load from ScTypeDB
             try:
                 from dapidl.pipeline.components.annotators.sctype_db import (
-                    AVAILABLE_TISSUES,
+                    AVAILABLE_TISSUES,  # noqa: F401
                     get_tissue_markers,
                 )
                 self.markers = get_tissue_markers(tissue, include_immune=include_immune)

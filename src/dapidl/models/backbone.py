@@ -461,7 +461,7 @@ class PathologyFoundationModel(nn.Module):
         Visit https://huggingface.co/MahmoodLab/UNI to request access.
         """
         try:
-            from huggingface_hub import login
+            from huggingface_hub import login  # noqa: F401
         except ImportError:
             raise ImportError(
                 "huggingface_hub library required for UNI. "

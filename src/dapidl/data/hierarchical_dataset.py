@@ -78,7 +78,7 @@ class HierarchicalLabels:
             from dapidl.ontology import (
                 get_broad_category,
                 get_coarse_category,
-                get_term_by_name,
+                get_term_by_name,  # noqa: F401
                 map_label,
             )
             has_ontology = True

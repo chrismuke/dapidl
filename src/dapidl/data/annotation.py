@@ -122,7 +122,7 @@ def download_model(model_name: str, force_update: bool = False) -> None:
 def is_popv_available() -> bool:
     """Check if popV is installed and available."""
     try:
-        import popv
+        import popv  # noqa: F401
         return True
     except ImportError:
         return False

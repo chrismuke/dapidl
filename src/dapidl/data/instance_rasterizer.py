@@ -23,7 +23,7 @@ def rasterize_instances(
     *,
     bbox_px: tuple[float, float, float, float],
     out_size: tuple[int, int],
-    dtype: np.dtype = np.dtype(np.uint16),
+    dtype: np.dtype = np.dtype(np.uint16),  # noqa: B008
 ) -> np.ndarray:
     """Rasterize a list of polygons into a single instance-id array.
 
@@ -88,7 +88,7 @@ def rasterize_tile(
     y0: int,
     tile_size: int,
     pad: int = 0,
-    dtype: np.dtype = np.dtype(np.uint16),
+    dtype: np.dtype = np.dtype(np.uint16),  # noqa: B008
     centroids_px: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Rasterize one tile from a GeoDataFrame.

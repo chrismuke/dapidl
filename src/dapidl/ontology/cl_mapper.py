@@ -154,7 +154,7 @@ class CLMapper:
             )
             self._fuzzy_available = False
 
-    @lru_cache(maxsize=10000)
+    @lru_cache(maxsize=10000)  # noqa: B019
     def map(self, label: str) -> str:
         """Map a label to a CL ID.
 

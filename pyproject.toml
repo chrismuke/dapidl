@@ -150,6 +150,9 @@ ignore = [
 "src/dapidl/pipeline/components/annotators/ground_truth.py" = ["TID251"]
 "src/dapidl/pipeline/components/annotators/azimuth.py" = ["TID251"]
 "src/dapidl/pipeline/components/annotators/sctype_db.py" = ["TID251"]  # pd.read_excel (polars Excel support limited)
+# Re-export hub: __all__ is built dynamically via try/except + .extend(), so ruff
+# can't see these imports are re-exported.
+"src/dapidl/pipeline/components/annotators/__init__.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"

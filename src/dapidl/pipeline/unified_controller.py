@@ -113,7 +113,7 @@ def _install_cache_hash_callback():
     ClearmlJob._dapidl_patched = True
     logger.info("Installed per-step cache hash patch")
 
-from dapidl.pipeline.unified_config import (
+from dapidl.pipeline.unified_config import (  # noqa: E402
     DAPIDLPipelineConfig,
     TrainingMode,
 )
