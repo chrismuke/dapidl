@@ -25,7 +25,9 @@ def select_pass_indices(sources, labels, keep_sources, max_per_source=None,
             if len(si) > max_per_source:
                 si = rng.choice(si, size=max_per_source, replace=False)
             picked.append(si)
-        idx = np.concatenate(picked) if picked else idx
+        # picked is empty only when keep_sources is empty (then idx is already
+        # empty); return an explicit empty array rather than the uncapped idx.
+        idx = np.concatenate(picked) if picked else np.array([], dtype=int)
     idx = np.sort(idx)
     if limit is not None:
         idx = idx[:limit]
