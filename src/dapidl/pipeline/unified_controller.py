@@ -114,9 +114,7 @@ def _install_cache_hash_callback():
     logger.info("Installed per-step cache hash patch")
 
 from dapidl.pipeline.unified_config import (
-    AnnotationStrategy,
     DAPIDLPipelineConfig,
-    Platform,
     TrainingMode,
 )
 
@@ -748,7 +746,10 @@ class UnifiedPipelineController:
             SegmentationStep,
         )
         from dapidl.pipeline.steps.annotation import AnnotationStepConfig
-        from dapidl.pipeline.steps.cross_validation import CrossValidationConfig, CrossValidationStep
+        from dapidl.pipeline.steps.cross_validation import (
+            CrossValidationConfig,
+            CrossValidationStep,
+        )
         from dapidl.pipeline.steps.data_loader import DataLoaderConfig
         from dapidl.pipeline.steps.ensemble_annotation import (
             EnsembleAnnotationConfig,
@@ -847,6 +848,8 @@ class UnifiedPipelineController:
                     logger.info(f"  Step 3.5: Confidence Filtering ({tissue_name})")
                     from dapidl.pipeline.steps.confidence_filtering import (
                         ConfidenceFilteringConfig as CFStepConfig,
+                    )
+                    from dapidl.pipeline.steps.confidence_filtering import (
                         ConfidenceFilteringStep,
                     )
                     cf_config = CFStepConfig(

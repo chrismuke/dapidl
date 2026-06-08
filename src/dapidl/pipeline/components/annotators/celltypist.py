@@ -18,7 +18,6 @@ import polars as pl
 
 from dapidl.pipeline.base import AnnotationConfig, AnnotationResult
 from dapidl.pipeline.components.annotators.mapping import (
-    BROAD_CATEGORY_MAPPING,
     get_class_names,
     map_to_broad_category,
 )

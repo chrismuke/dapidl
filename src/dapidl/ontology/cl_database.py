@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class HierarchyLevel(Enum):
@@ -40,7 +39,7 @@ class CLTerm:
     cl_id: str  # e.g., "CL:0000624"
     name: str  # Canonical name, e.g., "CD4-positive, alpha-beta T cell"
     synonyms: list[str] = field(default_factory=list)
-    parent_id: Optional[str] = None  # Direct parent CL ID
+    parent_id: str | None = None  # Direct parent CL ID
     level: HierarchyLevel = HierarchyLevel.FINE  # Classification level
     definition: str = ""  # OBO definition
     markers: list[str] = field(default_factory=list)  # Key marker genes

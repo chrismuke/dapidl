@@ -15,7 +15,7 @@ from clearml.automation.optuna import OptimizerOptuna
 from .search_space import get_clearml_hyper_parameters
 
 if TYPE_CHECKING:
-    from clearml.automation import Objective
+    pass
 
 logger = logging.getLogger(__name__)
 

@@ -1,26 +1,29 @@
 """Training loop for DAPIDL."""
 
 from pathlib import Path
-from typing import Any
+
+# Import types for type hints (avoid circular imports)
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
 import torch.nn as nn
+from loguru import logger
 from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
-from loguru import logger
 from tqdm import tqdm
 
-from dapidl.data.dataset import DAPIDLDataset, DAPIDLDatasetWithHeavyAug, create_data_splits, create_dataloaders
+from dapidl.data.dataset import (
+    create_data_splits,
+    create_dataloaders,
+)
 from dapidl.models.classifier import CellTypeClassifier
 from dapidl.training.losses import get_class_weights
 
-# Import types for type hints (avoid circular imports)
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from dapidl.data.multi_tissue_dataset import MultiTissueConfig
 
@@ -216,8 +219,8 @@ class Trainer:
     def _setup_multi_tissue_data(self) -> None:
         """Set up data loaders for multi-tissue training."""
         from dapidl.data.multi_tissue_dataset import (
-            create_multi_tissue_splits,
             create_multi_tissue_dataloaders,
+            create_multi_tissue_splits,
         )
 
         # Type narrowing - this is validated in __init__
@@ -314,12 +317,13 @@ class Trainer:
             return
 
         try:
-            import wandb
             import json
 
+            import wandb
+
             from dapidl.tracking.reproducibility import (
-                get_reproducibility_info,
                 get_cli_command,
+                get_reproducibility_info,
             )
 
             # Load dataset info for class distribution
@@ -747,7 +751,6 @@ class Trainer:
                 f1_score,
                 precision_score,
                 recall_score,
-                classification_report,
             )
 
             # Per-class metrics
@@ -818,7 +821,7 @@ class Trainer:
 
             # Log worst classes summary
             worst_classes = table_data_sorted[:5]  # Bottom 5
-            logger.info(f"  Worst 5 classes by F1:")
+            logger.info("  Worst 5 classes by F1:")
             for name, true_n, pred_n, f1, prec, rec in worst_classes:
                 logger.info(f"    {name}: F1={f1:.3f} (P={prec:.3f}, R={rec:.3f}, n={true_n})")
 
@@ -840,8 +843,9 @@ class Trainer:
             return
 
         try:
-            import wandb
             from collections import Counter
+
+            import wandb
 
             # Find misclassifications
             misclassified_mask = y_true != y_pred
@@ -870,7 +874,7 @@ class Trainer:
             )
             wandb.log({f"{prefix}_top_misclassifications": table})
 
-            logger.info(f"  Top 5 misclassifications:")
+            logger.info("  Top 5 misclassifications:")
             for i, ((true_idx, pred_idx), count) in enumerate(top_confusions[:5]):
                 logger.info(
                     f"    {self.class_names[true_idx]} → {self.class_names[pred_idx]}: {count}"
@@ -891,9 +895,9 @@ class Trainer:
             return
 
         try:
+
             import wandb
             from PIL import Image
-            import io
 
             logger.info(f"Logging {samples_per_class} sample patches per class to W&B...")
 
@@ -925,8 +929,9 @@ class Trainer:
 
             if lmdb_path.exists():
                 # Load from LMDB
-                import lmdb
                 import struct
+
+                import lmdb
 
                 env = lmdb.open(str(lmdb_path), readonly=True, lock=False)
                 with env.begin() as txn:
@@ -1095,7 +1100,7 @@ class Trainer:
 
             # Log detailed metrics (confusion matrix, per-class, misclassifications)
             if should_log_detailed and val_preds is not None and val_labels is not None:
-                logger.info(f"  Logging detailed metrics to W&B...")
+                logger.info("  Logging detailed metrics to W&B...")
                 self._log_confusion_matrix(val_labels, val_preds, epoch + 1, prefix="val")
                 self._log_per_class_metrics(val_labels, val_preds, epoch + 1, prefix="val")
                 self._log_misclassification_analysis(val_labels, val_preds, epoch + 1, prefix="val")

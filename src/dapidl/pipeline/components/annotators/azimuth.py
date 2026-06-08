@@ -14,9 +14,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import polars as pl
 import pandas as pd
-import numpy as np
+import polars as pl
 from loguru import logger
 
 from dapidl.pipeline.base import AnnotationConfig, AnnotationResult
@@ -25,7 +24,6 @@ from dapidl.pipeline.components.annotators.mapping import (
     map_to_broad_category,
 )
 from dapidl.pipeline.registry import register_annotator
-
 
 # Azimuth references available
 AZIMUTH_REFERENCES = {

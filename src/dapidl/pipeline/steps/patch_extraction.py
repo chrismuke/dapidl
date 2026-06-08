@@ -21,7 +21,12 @@ import numpy as np
 import polars as pl
 from loguru import logger
 
-from dapidl.pipeline.base import PipelineStep, StepArtifacts, get_pipeline_output_dir, resolve_artifact_path
+from dapidl.pipeline.base import (
+    PipelineStep,
+    StepArtifacts,
+    get_pipeline_output_dir,
+    resolve_artifact_path,
+)
 
 
 @dataclass
@@ -465,10 +470,7 @@ class PatchExtractionStep(PipelineStep):
         else:
             sample = image.astype(np.float32)
 
-        if cfg.normalization_method == "adaptive":
-            p_low = float(np.percentile(sample, cfg.percentile_low))
-            p_high = float(np.percentile(sample, cfg.percentile_high))
-        elif cfg.normalization_method == "percentile":
+        if cfg.normalization_method == "adaptive" or cfg.normalization_method == "percentile":
             p_low = float(np.percentile(sample, cfg.percentile_low))
             p_high = float(np.percentile(sample, cfg.percentile_high))
         else:  # minmax

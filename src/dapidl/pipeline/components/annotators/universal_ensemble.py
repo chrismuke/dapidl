@@ -139,12 +139,12 @@ def filter_available_models(requested: list[str]) -> list[str]:
 
 
 def run_universal_ensemble(
-    adata: "anndata.AnnData",
+    adata: anndata.AnnData,
     use_all_models: bool = False,
     include_singler: bool = True,
     granularity: str = "coarse",
     n_jobs: int = -1,
-) -> "anndata.AnnData":
+) -> anndata.AnnData:
     """Run universal ensemble annotation with all human models.
 
     Args:
@@ -162,10 +162,10 @@ def run_universal_ensemble(
         - consensus_votes: Number of agreeing methods
     """
     from dapidl.pipeline.components.annotators.popv_ensemble import (
+        GranularityLevel,
         PopVEnsembleConfig,
         PopVStyleEnsembleAnnotator,
         VotingStrategy,
-        GranularityLevel,
     )
 
     # Configure ensemble
@@ -207,9 +207,9 @@ def run_universal_ensemble(
 
 # Convenience function for pipeline integration
 def annotate_with_all_models(
-    adata: "anndata.AnnData",
+    adata: anndata.AnnData,
     quick: bool = True,
-) -> "anndata.AnnData":
+) -> anndata.AnnData:
     """Quick function to annotate with universal ensemble.
 
     Args:

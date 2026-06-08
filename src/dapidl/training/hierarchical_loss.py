@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
 
-from dapidl.models.hierarchical import HierarchyConfig, HierarchicalOutput
+from dapidl.models.hierarchical import HierarchicalOutput, HierarchyConfig
 
 
 class HierarchicalLoss(nn.Module):

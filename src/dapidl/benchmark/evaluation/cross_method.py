@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from dapidl.benchmark.segmenters.base import SegmentationOutput
 from dapidl.benchmark.consensus.instance_matching import match_instances_iou
+from dapidl.benchmark.segmenters.base import SegmentationOutput
 
 
 def compute_cross_method_metrics(

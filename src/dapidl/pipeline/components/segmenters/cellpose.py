@@ -283,7 +283,7 @@ class CellposeSegmenter:
             sample = dapi_image.flat[flat_indices].astype(np.float32)
             p_low, p_high = np.percentile(sample, [1, 99.5])
             logger.info(f"Used sampled percentiles ({sample_size:,} samples): p_low={p_low:.1f}, p_high={p_high:.1f}")
-            logger.info(f"Using LAZY normalization (tiles normalized on-demand to save memory)")
+            logger.info("Using LAZY normalization (tiles normalized on-demand to save memory)")
         else:
             p_low, p_high = np.percentile(dapi_image, [1, 99.5])
             logger.info(f"Percentiles: p_low={p_low:.1f}, p_high={p_high:.1f}")
@@ -293,7 +293,7 @@ class CellposeSegmenter:
         if not use_lazy_norm:
             dapi_norm = dapi_image.astype(np.float32)
             dapi_norm = np.clip((dapi_norm - p_low) / (p_high - p_low), 0, 1)
-            logger.info(f"Pre-normalized image to float32")
+            logger.info("Pre-normalized image to float32")
 
         tile_size = cfg.tile_size
         overlap = cfg.tile_overlap

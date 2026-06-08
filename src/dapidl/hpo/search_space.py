@@ -92,8 +92,8 @@ def get_clearml_hyper_parameters() -> list[dict[str, Any]]:
         List of parameter dictionaries for ClearML HPO
     """
     from clearml.automation import (
-        UniformParameterRange,
         DiscreteParameterRange,
+        UniformParameterRange,
     )
 
     return [

@@ -9,8 +9,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.ndimage import label as ndimage_label
 
-from dapidl.benchmark.segmenters.base import SegmentationOutput
 from dapidl.benchmark.evaluation.morphometric import compute_morphometric_metrics
+from dapidl.benchmark.segmenters.base import SegmentationOutput
 
 
 def iou_weighted_consensus(

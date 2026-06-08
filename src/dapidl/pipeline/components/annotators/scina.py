@@ -25,7 +25,6 @@ from dapidl.pipeline.components.annotators.mapping import (
 )
 from dapidl.pipeline.registry import register_annotator
 
-
 # Default marker genes for cell types (similar to scType but for SCINA format)
 DEFAULT_SIGNATURES = {
     # Epithelial

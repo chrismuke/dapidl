@@ -189,6 +189,7 @@ class TrainingStep(PipelineStep):
             - training_history: Training log
         """
         import json
+
         import torch
 
         cfg = self.config
@@ -641,7 +642,7 @@ class TrainingStep(PipelineStep):
 
     def _calculate_class_weights(
         self, dataset, num_classes: int, max_ratio: float
-    ) -> "torch.Tensor":
+    ) -> torch.Tensor:
         """Calculate class weights for imbalanced data."""
         import numpy as np
         import torch
@@ -886,8 +887,9 @@ class TrainingStep(PipelineStep):
         Returns:
             Dictionary mapping model names to S3 URLs
         """
-        import boto3
         from datetime import datetime
+
+        import boto3
 
         try:
             from clearml import Task

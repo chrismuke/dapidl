@@ -204,7 +204,7 @@ class GUIPipelineConfig:
         }
 
     @classmethod
-    def from_parameter_dict(cls, params: dict[str, str]) -> "GUIPipelineConfig":
+    def from_parameter_dict(cls, params: dict[str, str]) -> GUIPipelineConfig:
         """Create config from ClearML parameter dictionary.
 
         Handles deserialization of lists and booleans.

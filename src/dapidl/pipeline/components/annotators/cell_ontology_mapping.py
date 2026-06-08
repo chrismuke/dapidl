@@ -12,7 +12,6 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -21,7 +20,7 @@ class CellOntologyTerm:
     cl_id: str  # e.g., "CL:0000624"
     name: str  # e.g., "CD4-positive, alpha-beta T cell"
     synonyms: list[str]  # Alternative names
-    parent_id: Optional[str] = None  # Parent term for hierarchy
+    parent_id: str | None = None  # Parent term for hierarchy
 
 
 # =============================================================================

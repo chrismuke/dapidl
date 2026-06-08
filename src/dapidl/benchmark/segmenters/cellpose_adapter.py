@@ -12,12 +12,10 @@ adapters (StarDist, Mesmer, InstanSeg) can reuse:
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 import numpy as np
 
 from dapidl.benchmark.segmenters.base import SegmentationOutput, SegmenterAdapter
-
 
 # ---------------------------------------------------------------------------
 # Module-level helpers (reused by other adapters)
@@ -91,7 +89,7 @@ class _CellposeAdapterBase(SegmenterAdapter):
 
     def __init__(
         self,
-        model_type: Optional[str] = None,
+        model_type: str | None = None,
         gpu: bool = True,
         diameter: float = 0,
     ) -> None:

@@ -14,7 +14,6 @@ Requires R with SingleR and celldex packages installed:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +26,6 @@ from dapidl.pipeline.components.annotators.mapping import (
     map_to_broad_category,
 )
 from dapidl.pipeline.registry import register_annotator
-
 
 # Available SingleR reference datasets
 SINGLER_REFERENCES = {
@@ -69,7 +67,6 @@ def is_singler_available() -> bool:
     _fix_libstdcxx()
 
     try:
-        import rpy2.robjects as ro
         from rpy2.robjects.packages import importr
 
         # Try to load the R packages

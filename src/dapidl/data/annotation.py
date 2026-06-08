@@ -20,7 +20,6 @@ from loguru import logger
 
 from dapidl.data.xenium import XeniumDataReader
 
-
 # Default model for breast tissue (legacy — use get_default_model() for tissue-aware selection)
 DEFAULT_MODEL = "Cells_Adult_Breast.pkl"
 
@@ -132,7 +131,6 @@ def is_popv_available() -> bool:
 def is_singler_available() -> bool:
     """Check if rpy2 and SingleR R packages are available."""
     try:
-        import rpy2.robjects as ro
         from rpy2.robjects.packages import importr
         # Try to load the R packages
         importr('SingleR')
@@ -874,8 +872,9 @@ class CellTypeAnnotator:
         Returns:
             DataFrame with annotations
         """
-        import scanpy as sc
         from collections import Counter
+
+        import scanpy as sc
 
         logger.info("Running consensus annotation with voting...")
 
@@ -984,7 +983,7 @@ class CellTypeAnnotator:
 
     def _log_category_distribution(self, results: pl.DataFrame, col: str) -> None:
         """Log the distribution of categories."""
-        logger.info(f"Broad category distribution:")
+        logger.info("Broad category distribution:")
         for cat in results[col].unique().sort():
             count = (results[col] == cat).sum()
             pct = count / len(results) * 100

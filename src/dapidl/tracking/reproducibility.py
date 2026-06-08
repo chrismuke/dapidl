@@ -20,15 +20,15 @@ To migrate to a different backend:
 See tracking/base.py for the ExperimentTracker protocol (to be implemented).
 """
 
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
-from pathlib import Path
 import hashlib
 import json
 import platform
 import socket
 import subprocess
 import sys
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 
@@ -144,7 +144,7 @@ class ReproducibilityInfo:
         """Generate command to reproduce this run."""
         lines = [
             "# Reproduce this run:",
-            f"# 1. Checkout the exact code version:",
+            "# 1. Checkout the exact code version:",
             f"git checkout {self.git.commit}",
             "",
             "# 2. Verify/restore environment:",

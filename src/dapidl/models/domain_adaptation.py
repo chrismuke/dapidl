@@ -505,7 +505,7 @@ class AdaptiveInference:
         target_data_path: str | Path,
         num_batches: int = 20,
         batch_size: int = 64,
-    ) -> "AdaptiveInference":
+    ) -> AdaptiveInference:
         """Adapt model to target platform using AdaBN.
 
         Args:

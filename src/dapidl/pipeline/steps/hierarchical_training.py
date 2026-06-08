@@ -346,8 +346,9 @@ class HierarchicalTrainingStep(PipelineStep):
         Returns:
             Dictionary mapping model names to S3 URLs
         """
-        import boto3
         from datetime import datetime
+
+        import boto3
 
         # Generate experiment name from output directory
         exp_name = (

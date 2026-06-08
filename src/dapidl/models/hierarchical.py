@@ -26,7 +26,7 @@ Features:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -34,9 +34,9 @@ import torch.nn.functional as F
 from loguru import logger
 
 from dapidl.models.backbone import (
-    create_backbone,
-    SingleChannelAdapter,
     BACKBONE_PRESETS,
+    SingleChannelAdapter,
+    create_backbone,
 )
 
 
@@ -70,7 +70,7 @@ class HierarchyConfig:
         cls,
         class_mapping: dict[str, int],
         target_level: str = "fine",
-    ) -> "HierarchyConfig":
+    ) -> HierarchyConfig:
         """Create config from CL-standardized class mapping.
 
         Uses the ontology module to map classes to hierarchy levels.
@@ -487,7 +487,7 @@ class HierarchicalClassifier(nn.Module):
         logger.info(f"Unfroze heads: {heads}")
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_path: str) -> "HierarchicalClassifier":
+    def from_checkpoint(cls, checkpoint_path: str) -> HierarchicalClassifier:
         """Load model from checkpoint.
 
         Args:

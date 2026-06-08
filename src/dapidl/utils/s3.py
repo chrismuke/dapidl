@@ -14,7 +14,6 @@ AWS credentials are resolved via standard boto3 chain:
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import boto3
 from loguru import logger
@@ -99,7 +98,7 @@ def upload_to_s3(
 
 def download_from_s3(
     s3_uri: str,
-    local_path: Optional[Path] = None,
+    local_path: Path | None = None,
 ) -> Path:
     """Download a file or directory from S3 using boto3.
 
@@ -147,8 +146,8 @@ def register_dataset_from_s3(
     s3_uri: str,
     dataset_name: str,
     dataset_project: str,
-    metadata: Optional[dict] = None,
-    parent_datasets: Optional[list[str]] = None,
+    metadata: dict | None = None,
+    parent_datasets: list[str] | None = None,
 ) -> str:
     """Register an S3 dataset with ClearML WITHOUT uploading.
 
@@ -203,8 +202,8 @@ def upload_and_register_dataset(
     s3_path: str,
     dataset_name: str,
     dataset_project: str,
-    metadata: Optional[dict] = None,
-    parent_datasets: Optional[list[str]] = None,
+    metadata: dict | None = None,
+    parent_datasets: list[str] | None = None,
     delete_local: bool = False,
 ) -> tuple[str, str]:
     """Upload to S3 and register with ClearML.

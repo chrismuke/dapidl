@@ -32,14 +32,14 @@ Usage:
     result = annotator.annotate(config, adata=adata)
 """
 
-from dapidl.pipeline.components.annotators.celltypist import CellTypistAnnotator
-from dapidl.pipeline.components.annotators.ground_truth import GroundTruthAnnotator
-from dapidl.pipeline.components.annotators.mapping import (
-    BROAD_CATEGORY_MAPPING,
-    CELL_TYPE_HIERARCHY,
-    COARSE_CLASS_NAMES,
-    map_to_broad_category,
+# Auto selector module
+from dapidl.pipeline.components.annotators.auto_selector import (
+    CANONICAL_MARKERS,
+    TISSUE_MODELS,
+    AutoModelSelector,
+    ModelScore,
 )
+from dapidl.pipeline.components.annotators.celltypist import CellTypistAnnotator
 
 # Consensus annotator (auto model selection)
 from dapidl.pipeline.components.annotators.consensus import (
@@ -48,13 +48,12 @@ from dapidl.pipeline.components.annotators.consensus import (
     annotate_with_auto_consensus,
     get_high_confidence_cells,
 )
-
-# Auto selector module
-from dapidl.pipeline.components.annotators.auto_selector import (
-    AutoModelSelector,
-    ModelScore,
-    TISSUE_MODELS,
-    CANONICAL_MARKERS,
+from dapidl.pipeline.components.annotators.ground_truth import GroundTruthAnnotator
+from dapidl.pipeline.components.annotators.mapping import (
+    BROAD_CATEGORY_MAPPING,
+    CELL_TYPE_HIERARCHY,
+    COARSE_CLASS_NAMES,
+    map_to_broad_category,
 )
 
 # PopV annotator is optional (heavy dependencies)
@@ -72,11 +71,11 @@ except ImportError:
 # PopV-style ensemble annotator (lighter weight - uses CellTypist + SingleR)
 try:
     from dapidl.pipeline.components.annotators.popv_ensemble import (
-        PopVStyleEnsembleAnnotator,
-        PopVEnsembleConfig,
         EnsembleResult,
-        VotingStrategy,
         GranularityLevel,
+        PopVEnsembleConfig,
+        PopVStyleEnsembleAnnotator,
+        VotingStrategy,
         run_popv_ensemble,
     )
     _has_popv_ensemble = True
@@ -91,8 +90,8 @@ except ImportError:
     _has_singler = False
 
 # Marker-based annotators
-from dapidl.pipeline.components.annotators.sctype import ScTypeAnnotator
 from dapidl.pipeline.components.annotators.scina import SCINAAnnotator
+from dapidl.pipeline.components.annotators.sctype import ScTypeAnnotator
 
 # Deep learning annotators (optional - require scvi-tools/scarches)
 try:

@@ -1,10 +1,9 @@
 """DAPIDL Command Line Interface."""
 
 import sys
+from pathlib import Path
 
 import click
-from pathlib import Path
-from typing import Tuple
 from rich.console import Console
 from rich.table import Table
 
@@ -84,7 +83,7 @@ def list_models(downloaded_only: bool, update: bool) -> None:
     Shows all available models from the CellTypist repository.
     Use --downloaded-only to show only locally cached models.
     """
-    from dapidl.data.annotation import list_available_models, get_downloaded_models
+    from dapidl.data.annotation import get_downloaded_models, list_available_models
 
     console.print("[bold blue]Available CellTypist Models[/bold blue]\n")
 
@@ -220,7 +219,7 @@ def prepare(
     input_path: Path | None,
     xenium_path: Path | None,
     output: Path,
-    models: Tuple[str, ...],
+    models: tuple[str, ...],
     patch_size: int,
     confidence_threshold: float,
     majority_voting: bool,
@@ -256,9 +255,9 @@ def prepare(
     For multiple models, use --model multiple times:
         dapidl prepare -i /path -o /out -m Model1.pkl -m Model2.pkl
     """
+    from dapidl.data.annotation import CellTypeAnnotator
     from dapidl.data.merscope import create_reader, detect_platform
     from dapidl.data.patches import PatchExtractor
-    from dapidl.data.annotation import CellTypeAnnotator
 
     # Handle deprecated --xenium-path option
     data_path = input_path or xenium_path
@@ -390,7 +389,7 @@ def prepare(
 def annotate(
     xenium_path: Path,
     output: Path,
-    models: Tuple[str, ...],
+    models: tuple[str, ...],
     output_format: str,
     majority_voting: bool,
     add_colors: bool,
@@ -419,8 +418,8 @@ def annotate(
         dapidl annotate -x /path/to/xenium -o /path/to/output \\
             -m Cells_Adult_Breast.pkl -m Immune_All_High.pkl
     """
-    from dapidl.data.xenium import XeniumDataReader
     from dapidl.data.annotation import CellTypeAnnotator
+    from dapidl.data.xenium import XeniumDataReader
     from dapidl.data.xenium_export import create_annotated_xenium_dataset
 
     console.print("[bold blue]DAPIDL Xenium Annotation[/bold blue]")
@@ -503,8 +502,8 @@ def annotate(
 def create_dataset(
     xenium_path: Path,
     output: Path,
-    csv_files: Tuple[Path, ...],
-    replace_files: Tuple[Tuple[str, Path], ...],
+    csv_files: tuple[Path, ...],
+    replace_files: tuple[tuple[str, Path], ...],
 ) -> None:
     """Create a hardlinked Xenium dataset with custom CSV files.
 
@@ -526,8 +525,9 @@ def create_dataset(
         dapidl create-dataset -x /path/to/xenium -o /output \\
             -c annotations.csv --replace cells.parquet /path/to/new_cells.parquet
     """
-    from dapidl.data.xenium_export import create_hardlink_dataset
     import shutil
+
+    from dapidl.data.xenium_export import create_hardlink_dataset
 
     console.print("[bold blue]DAPIDL Create Hardlinked Dataset[/bold blue]")
     console.print(f"Source Xenium: {xenium_path}")
@@ -683,7 +683,7 @@ def train(
     """
     from dapidl.training.trainer import Trainer
 
-    console.print(f"[bold blue]DAPIDL Training[/bold blue]")
+    console.print("[bold blue]DAPIDL Training[/bold blue]")
     console.print(f"Data path: {data}")
     console.print(f"Output path: {output}")
     console.print(f"Backbone: {backbone}")
@@ -721,7 +721,7 @@ def train(
     )
     trainer.train()
 
-    console.print(f"\n[bold green]Training complete![/bold green]")
+    console.print("\n[bold green]Training complete![/bold green]")
 
 
 @main.command(name="train-multi")
@@ -895,7 +895,7 @@ def train_multi(
     console.print("[cyan]Starting training...[/cyan]\n")
     trainer.train()
 
-    console.print(f"\n[bold green]Training complete![/bold green]")
+    console.print("\n[bold green]Training complete![/bold green]")
     console.print(f"  Model saved to: {output / 'best_model.pt'}")
 
 
@@ -926,9 +926,8 @@ def evaluate(checkpoint: Path, data: Path, output: Path | None) -> None:
 
     Computes metrics (F1, accuracy, confusion matrix) on test set.
     """
-    from dapidl.evaluation.metrics import compute_metrics, plot_confusion_matrix
 
-    console.print(f"[bold blue]DAPIDL Evaluation[/bold blue]")
+    console.print("[bold blue]DAPIDL Evaluation[/bold blue]")
     console.print(f"Checkpoint: {checkpoint}")
     console.print(f"Data path: {data}")
 
@@ -1011,10 +1010,11 @@ def adapt(
         dapidl adapt -c model.pt -t target/ --compute-metrics
     """
     import torch
+
     from dapidl.models import (
         adapt_batch_norm,
-        create_adaptation_loader,
         compute_domain_shift_metrics,
+        create_adaptation_loader,
     )
 
     console.print("[bold blue]DAPIDL Domain Adaptation (AdaBN)[/bold blue]")
@@ -1132,7 +1132,7 @@ def adapt(
     checkpoint_data["target_data"] = str(target_data)
     torch.save(checkpoint_data, output)
 
-    console.print(f"\n[bold green]Adaptation complete![/bold green]")
+    console.print("\n[bold green]Adaptation complete![/bold green]")
     console.print(f"Adapted model saved to: {output}")
     console.print("\n[dim]Use the adapted model for inference on target platform data.[/dim]")
 
@@ -1204,12 +1204,12 @@ def compare_labels(
     """
     import pandas as pd
     import polars as pl
+
     from dapidl.harmonization import (
         LabelHarmonizer,
         evaluate_annotations_df,
         print_evaluation_report,
     )
-    from dapidl.data.annotation import GROUND_TRUTH_MAPPING
 
     console.print("[bold blue]DAPIDL Label Comparison with Harmonization[/bold blue]")
     console.print()
@@ -1331,7 +1331,7 @@ def predict(
 
     Runs inference on a new DAPI image, optionally using pre-computed segmentation.
     """
-    console.print(f"[bold blue]DAPIDL Prediction[/bold blue]")
+    console.print("[bold blue]DAPIDL Prediction[/bold blue]")
     console.print(f"Model: {model}")
     console.print(f"Image: {image}")
     console.print(f"Output: {output}")
@@ -1471,7 +1471,7 @@ def pipeline(
     input_path: Path | None,
     xenium_path: Path | None,
     output: Path,
-    models: Tuple[str, ...],
+    models: tuple[str, ...],
     patch_size: int,
     confidence_threshold: float,
     majority_voting: bool,
@@ -1529,9 +1529,9 @@ def pipeline(
         # Only train, using existing dataset
         dapidl pipeline -i /path/to/data -o ./experiment --skip-prepare
     """
+    from dapidl.data.annotation import CellTypeAnnotator
     from dapidl.data.merscope import create_reader, detect_platform
     from dapidl.data.patches import PatchExtractor
-    from dapidl.data.annotation import CellTypeAnnotator
     from dapidl.training.trainer import Trainer
 
     # Handle both -i and -x options
@@ -1642,7 +1642,7 @@ def pipeline(
         )
         trainer.train()
 
-        console.print(f"\n[green]✓ Training complete![/green]")
+        console.print("\n[green]✓ Training complete![/green]")
         console.print()
     else:
         console.print("[yellow]Skipping training (--skip-train)[/yellow]")
@@ -1727,7 +1727,7 @@ def export_lmdb(data_path: str, output_path: str | None, map_size: float, worker
             map_size_gb=map_size,
             num_workers=workers,
         )
-        console.print(f"\n[green]✓ LMDB export complete![/green]")
+        console.print("\n[green]✓ LMDB export complete![/green]")
         console.print(f"  Output: {lmdb_path}")
         console.print("\n[dim]Use with: dapidl train -d <dataset> --backend dali-lmdb[/dim]")
     except Exception as e:
@@ -1792,13 +1792,13 @@ def clean_dataset(
         dapidl clean-dataset -d ./dataset --dry-run
     """
     import json
+
     import numpy as np
     import polars as pl
 
     from dapidl.data.cleaning import (
-        compute_spatial_coherence,
-        filter_spatially_inconsistent,
         clean_dataset_spatial,
+        filter_spatially_inconsistent,
     )
 
     console.print("[bold blue]Spatial Consistency Filtering[/bold blue]")
@@ -1834,7 +1834,7 @@ def clean_dataset(
                     y_col = col
 
         if x_col is None or y_col is None:
-            console.print(f"[red]Error: Could not find coordinate columns[/red]")
+            console.print("[red]Error: Could not find coordinate columns[/red]")
             console.print(f"Available columns: {metadata.columns}")
             raise click.Abort()
 
@@ -1854,17 +1854,17 @@ def clean_dataset(
         )
 
         # Display results
-        console.print(f"\n[bold]Overall Statistics:[/bold]")
+        console.print("\n[bold]Overall Statistics:[/bold]")
         console.print(f"  Original cells: {stats['n_cells_original']:,}")
         console.print(f"  Would keep:     {stats['n_cells_kept']:,}")
         console.print(f"  Would filter:   {stats['n_cells_filtered']:,} ({stats['filter_rate']*100:.1f}%)")
         console.print(f"  Exempt cells:   {stats['n_cells_exempt']:,}")
 
-        console.print(f"\n[bold]Coherence Distribution:[/bold]")
+        console.print("\n[bold]Coherence Distribution:[/bold]")
         p = stats["coherence_percentiles"]
         console.print(f"  p5:  {p['p5']:.2f}  p25: {p['p25']:.2f}  p50: {p['p50']:.2f}  p75: {p['p75']:.2f}  p95: {p['p95']:.2f}")
 
-        console.print(f"\n[bold]Per-Class Breakdown:[/bold]")
+        console.print("\n[bold]Per-Class Breakdown:[/bold]")
         per_class = stats.get("per_class", {})
         # Sort by filter rate descending
         sorted_classes = sorted(per_class.items(), key=lambda x: 1 - x[1]["keep_rate"])
@@ -1888,7 +1888,7 @@ def clean_dataset(
             )
 
             output = output_path if output_path else f"{data_path}_cleaned"
-            console.print(f"\n[green]✓ Dataset cleaned![/green]")
+            console.print("\n[green]✓ Dataset cleaned![/green]")
             console.print(f"  Original:  {stats['n_cells_original']:,} cells")
             console.print(f"  Cleaned:   {stats['n_cells_kept']:,} cells")
             console.print(f"  Filtered:  {stats['n_cells_filtered']:,} ({stats['filter_rate']*100:.1f}%)")
@@ -1975,7 +1975,6 @@ def heist_prepare(
     """
     import numpy as np
     import torch
-    from loguru import logger
 
     from dapidl.data.annotation import CellTypeAnnotator
     from dapidl.data.xenium import XeniumDataReader
@@ -2003,6 +2002,7 @@ def heist_prepare(
     # Annotate cells
     import anndata as ad
     import pandas as pd
+
     from dapidl.data.annotation import AnnotationStrategy
 
     # Create AnnData for annotation
@@ -2106,7 +2106,7 @@ def heist_prepare(
     with open(output_path / "metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
 
-    console.print(f"\n[green]✓ HEIST data prepared![/green]")
+    console.print("\n[green]✓ HEIST data prepared![/green]")
     console.print(f"  Expression: {output_path / 'expression.npy'}")
     console.print(f"  Spatial graph: {spatial_edge_index.shape[1]} edges")
     console.print(f"  Cell-type GRNs: {len(cell_type_grns)} types")
@@ -2159,9 +2159,8 @@ def heist_train(
         dapidl heist-train -d ./heist_data --epochs 50
     """
     import json
-    import numpy as np
+
     import torch
-    from loguru import logger
 
     from dapidl.data.heist_dataset import create_heist_data_splits, load_heist_data
     from dapidl.models.heist import HEISTClassifier
@@ -2259,7 +2258,7 @@ def heist_train(
     console.print("\n[cyan]Starting training...[/cyan]")
     results = trainer.train()
 
-    console.print(f"\n[green]✓ Training complete![/green]")
+    console.print("\n[green]✓ Training complete![/green]")
     console.print(f"  Best val F1: {results['best_val_f1']:.4f} (epoch {results['best_epoch']})")
     if "test_metrics" in results:
         console.print(f"  Test F1: {results['test_metrics']['f1']:.4f}")
@@ -2455,8 +2454,8 @@ def run_pipeline(
         LMDBConfig,
         Platform,
         SamplingStrategy,
-        SegmenterType,
         SegmentationConfig,
+        SegmenterType,
         TrainingConfig,
         ValidationConfig,
     )
@@ -2604,7 +2603,7 @@ def list_components() -> None:
     Shows all registered segmenters and annotators that can be used
     in the pipeline.
     """
-    from dapidl.pipeline import list_segmenters, list_annotators
+    from dapidl.pipeline import list_annotators, list_segmenters
 
     console.print("[bold blue]Pipeline Components[/bold blue]\n")
 
@@ -3014,6 +3013,7 @@ def create_controller_task(
             --epochs 50 --sampling sqrt
     """
     from clearml import Task
+
     from dapidl.pipeline.unified_config import (
         AnnotationConfig,
         BackboneType,
@@ -3093,7 +3093,7 @@ def create_controller_task(
         console.print(f"\n[green]Task enqueued to '{queue}' queue[/green]")
         console.print(f"  Monitor at: {_get_clearml_web_url()}")
     else:
-        console.print(f"\n[green]Task created (not enqueued)[/green]")
+        console.print("\n[green]Task created (not enqueued)[/green]")
         console.print(f"  To launch: clone in {_get_clearml_web_url()} -> edit params -> enqueue to '{queue}'")
         console.print(f"  Or enqueue via CLI: clearml-task enqueue --id {task.id} --queue {queue}")
 
@@ -3219,7 +3219,7 @@ def sota_pipeline(
     console.print(f"  Methods: {len(config.annotation.methods)} configured")
     for m in config.annotation.methods:
         console.print(f"    - {m['name']}: {m.get('params', {})}")
-    console.print(f"  Voting: UNWEIGHTED (beats confidence-weighted by 15-22%)")
+    console.print("  Voting: UNWEIGHTED (beats confidence-weighted by 15-22%)")
 
     console.print("\n[cyan]Training (SOTA):[/cyan]")
     console.print(f"  Backbone: {config.training.backbone.value}")
@@ -3244,7 +3244,7 @@ def sota_pipeline(
         console.print("[dim]Steps will run as subprocesses with cache_executed_step support[/dim]\n")
         controller.create_pipeline()
         pipeline_id = controller.run_locally_with_caching()
-        console.print(f"\n[green]✓ SOTA Pipeline complete![/green]")
+        console.print("\n[green]✓ SOTA Pipeline complete![/green]")
         console.print(f"  Pipeline ID: {pipeline_id}")
     elif local:
         console.print("[cyan]Running locally (no caching)...[/cyan]\n")
@@ -3443,7 +3443,7 @@ def popv_annotate(
             project_name=project,
         )
 
-        console.print(f"\n[green]✓ Annotation complete![/green]")
+        console.print("\n[green]✓ Annotation complete![/green]")
         console.print(f"  Cells annotated: {result.stats.get('n_cells', 'N/A')}")
         console.print(f"  High-confidence cells: {result.stats.get('n_high_confidence', 'N/A')}")
         console.print(f"  Cell types: {len(result.class_mapping)}")

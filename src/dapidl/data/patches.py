@@ -1,16 +1,16 @@
 """Patch extraction from DAPI images."""
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import numpy as np
 import polars as pl
 import zarr
 from loguru import logger
 
-from dapidl.data.xenium import XeniumDataReader
 from dapidl.data.annotation import CellTypeAnnotator
+from dapidl.data.xenium import XeniumDataReader
 
 
 class PatchExtractor:

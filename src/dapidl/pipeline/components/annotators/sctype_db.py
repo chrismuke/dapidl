@@ -42,12 +42,11 @@ Usage:
 
 from __future__ import annotations
 
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 import polars as pl
 from loguru import logger
-
 
 # Path to bundled ScTypeDB
 SCTYPE_DB_PATH = Path(__file__).parent.parent.parent.parent / "data" / "resources" / "ScTypeDB_full.xlsx"

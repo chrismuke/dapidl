@@ -23,7 +23,6 @@ from loguru import logger
 
 from dapidl.pipeline.base import PipelineStep, StepArtifacts
 
-
 # ============================================================================
 # LOCAL DATA DETECTION
 # ============================================================================
@@ -516,7 +515,7 @@ class DataLoaderStep(PipelineStep):
             if f.is_file() and not f.name.startswith(".")
         ]
         if not data_files:
-            logger.warning(f"ClearML dataset cache is empty, checking for S3 URI fallback...")
+            logger.warning("ClearML dataset cache is empty, checking for S3 URI fallback...")
             # Try to get S3 URI from dataset's migration_info or configuration
             task = dataset._task
             config_obj = task.get_configuration_object("migration_info") if task else None

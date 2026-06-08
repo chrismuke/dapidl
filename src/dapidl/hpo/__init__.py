@@ -4,16 +4,16 @@ This module provides ClearML-based hyperparameter optimization for DAPIDL traini
 including search space definitions, visualization, and result aggregation.
 """
 
-from .search_space import (
-    SEARCH_SPACE,
-    BACKBONE_CONFIGS,
-    resolve_dataset_path,
-    get_clearml_hyper_parameters,
-)
 from .optimizer import create_hpo_optimizer, run_hpo
+from .search_space import (
+    BACKBONE_CONFIGS,
+    SEARCH_SPACE,
+    get_clearml_hyper_parameters,
+    resolve_dataset_path,
+)
 from .visualization import (
-    generate_sample_predictions,
     create_class_prediction_grid,
+    generate_sample_predictions,
     log_confusion_matrix,
 )
 

@@ -281,7 +281,7 @@ class HEISTClassifier(nn.Module):
         cls,
         checkpoint_path: str | Path,
         map_location: str = "cpu",
-    ) -> "HEISTClassifier":
+    ) -> HEISTClassifier:
         """Load model from checkpoint.
 
         Args:

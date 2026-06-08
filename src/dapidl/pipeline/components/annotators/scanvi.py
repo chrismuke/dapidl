@@ -12,7 +12,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import polars as pl
 import scanpy as sc
 from loguru import logger
@@ -23,7 +22,6 @@ from dapidl.pipeline.components.annotators.mapping import (
     map_to_broad_category,
 )
 from dapidl.pipeline.registry import register_annotator
-
 
 # Mapping scANVI predictions to broad categories
 SCANVI_TO_BROAD = {

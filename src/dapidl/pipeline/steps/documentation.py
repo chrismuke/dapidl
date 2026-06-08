@@ -20,7 +20,7 @@ from typing import Any
 
 from loguru import logger
 
-from dapidl.pipeline.base import PipelineStep, StepArtifacts, resolve_artifact_path
+from dapidl.pipeline.base import PipelineStep, StepArtifacts
 
 
 @dataclass

@@ -216,7 +216,7 @@ def generate_report(
     try:
         _generate_comparison_chart(all_metrics, chart_path)
         logger.info("Wrote comparison chart to %s", chart_path)
-        chart_line = f"![Comparison Chart](comparison_chart.png)\n"
+        chart_line = "![Comparison Chart](comparison_chart.png)\n"
     except ImportError:
         logger.warning("matplotlib not available — skipping comparison chart")
         chart_line = "_Chart not generated (matplotlib unavailable)._\n"

@@ -22,7 +22,6 @@ Usage:
 from __future__ import annotations
 
 import warnings
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -413,7 +412,6 @@ def _extract_dataset_name(dataset_name_or_path: str) -> str:
 
     Returns the directory name most likely to match DATASET_MODELS keys.
     """
-    from pathlib import Path
 
     path = Path(dataset_name_or_path)
 
@@ -999,7 +997,6 @@ class AutoModelSelector:
         Returns:
             List of ModelScore objects, sorted by composite_score
         """
-        import scanpy as sc
 
         logger.info(f"AutoModelSelector: Scoring {len(self.candidate_models)} models")
         logger.info(f"Tissue type: {self.tissue_type}")
@@ -1057,8 +1054,8 @@ class AutoModelSelector:
             ConsensusResult with annotations and statistics
         """
         import celltypist
-        from celltypist import models as ct_models
         import scanpy as sc
+        from celltypist import models as ct_models
 
         # Determine models to use
         if models is None:
@@ -1233,8 +1230,8 @@ class AutoModelSelector:
             ConsensusResult with tiered annotations
         """
         import celltypist
-        from celltypist import models as ct_models
         import scanpy as sc
+        from celltypist import models as ct_models
 
         model_names = models or self.candidate_models[:5]
         if len(model_names) < 2:

@@ -5,13 +5,11 @@ based on the principle that cells of the same type tend to cluster spatially.
 """
 
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import polars as pl
 from loguru import logger
 from scipy.spatial import KDTree
-
 
 # Cell types that are legitimately sparse/isolated and should be exempt from filtering
 # These are often immune cells infiltrating epithelial or stromal regions
@@ -115,8 +113,8 @@ def filter_spatially_inconsistent(
     cell_labels: np.ndarray,
     coherence_threshold: float = 0.20,
     k: int = 20,
-    solitary_exempt_types: Optional[frozenset[str]] = None,
-    label_to_name: Optional[dict[int, str]] = None,
+    solitary_exempt_types: frozenset[str] | None = None,
+    label_to_name: dict[int, str] | None = None,
 ) -> tuple[np.ndarray, dict]:
     """Filter cells with low spatial coherence.
 
@@ -234,10 +232,10 @@ def filter_spatially_inconsistent(
 
 def clean_dataset_spatial(
     data_path: Path,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     coherence_threshold: float = 0.20,
     k: int = 20,
-    solitary_exempt_types: Optional[frozenset[str]] = None,
+    solitary_exempt_types: frozenset[str] | None = None,
 ) -> dict:
     """Apply spatial consistency filtering to a dataset.
 
@@ -256,6 +254,7 @@ def clean_dataset_spatial(
     """
     import json
     import shutil
+
     import zarr
 
     data_path = Path(data_path)

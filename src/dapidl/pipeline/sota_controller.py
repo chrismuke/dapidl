@@ -589,7 +589,6 @@ class SOTAPipelineController:
             SegmentationStep,
         )
         from dapidl.pipeline.steps.data_loader import DataLoaderConfig
-        from dapidl.pipeline.steps.segmentation import SegmentationStepConfig
         from dapidl.pipeline.steps.ensemble_annotation import (
             EnsembleAnnotationConfig,
             EnsembleAnnotationStep,
@@ -598,6 +597,7 @@ class SOTAPipelineController:
             LMDBCreationConfig,
             LMDBCreationStep,
         )
+        from dapidl.pipeline.steps.segmentation import SegmentationStepConfig
         from dapidl.pipeline.steps.training import (
             TrainingStep,
             TrainingStepConfig,
@@ -757,9 +757,9 @@ class SOTAPipelineController:
         Must be called once before running pipeline remotely.
         """
         from dapidl.pipeline.steps import (
+            CrossValidationStep,
             DataLoaderStep,
             SegmentationStep,
-            CrossValidationStep,
             TrainingStep,
         )
         from dapidl.pipeline.steps.ensemble_annotation import EnsembleAnnotationStep

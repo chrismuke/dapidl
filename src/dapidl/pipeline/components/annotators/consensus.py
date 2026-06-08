@@ -19,16 +19,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import polars as pl
 from loguru import logger
 
 from dapidl.pipeline.base import AnnotationConfig, AnnotationResult
-from dapidl.pipeline.registry import register_annotator
 from dapidl.pipeline.components.annotators.mapping import (
     get_class_names,
-    map_to_broad_category,
 )
+from dapidl.pipeline.registry import register_annotator
 
 
 @dataclass
@@ -232,7 +230,7 @@ class ConsensusAnnotator:
         }
 
         # Log summary
-        logger.info(f"Annotation complete:")
+        logger.info("Annotation complete:")
         logger.info(f"  Total cells: {len(annotations_df):,}")
         logger.info(f"  High-confidence: {n_high_conf:,} ({stats['pct_high_confidence']:.1f}%)")
 
@@ -424,7 +422,7 @@ def compare_aggregation_strategies(
     Returns a polars DataFrame with one row per strategy and columns:
         strategy, accuracy, macro_f1, weighted_f1.
     """
-    from sklearn.metrics import f1_score, accuracy_score
+    from sklearn.metrics import accuracy_score, f1_score
 
     rows: list[dict] = []
     # Each individual method

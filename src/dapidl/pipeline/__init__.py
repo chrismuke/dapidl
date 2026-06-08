@@ -58,16 +58,14 @@ from dapidl.pipeline.base import (
     SegmentationResult,
     StepArtifacts,
 )
+
+# Import components to trigger registration
+# This must happen after registry imports
+from dapidl.pipeline.components import annotators, segmenters  # noqa: F401
 from dapidl.pipeline.controller import (
     DAPIDLPipelineController,
     PipelineConfig,
     create_pipeline,
-)
-from dapidl.pipeline.universal_controller import (
-    UniversalDAPIPipelineController,
-    UniversalPipelineConfig,
-    TissueConfig,
-    create_universal_pipeline,
 )
 from dapidl.pipeline.enhanced_controller import (
     EnhancedDAPIDLPipelineController,
@@ -75,30 +73,6 @@ from dapidl.pipeline.enhanced_controller import (
     create_step_base_tasks,
 )
 from dapidl.pipeline.gui_pipeline_config import GUIPipelineConfig
-# Unified configuration (v2.0) - consolidates all 4 configs
-from dapidl.pipeline.unified_config import (
-    DAPIDLPipelineConfig,
-    InputConfig,
-    AnnotationConfig as UnifiedAnnotationConfig,
-    LMDBConfig,
-    TrainingConfig,
-    OutputConfig,
-    Platform,
-    AnnotationStrategy,
-    BackboneType,
-    TrainingMode,
-)
-from dapidl.pipeline.unified_controller import (
-    UnifiedPipelineController,
-    PipelineResult,
-    create_unified_pipeline,
-)
-# State-of-the-Art Controller (v3.0) - best practices from benchmarking
-from dapidl.pipeline.sota_controller import (
-    SOTAPipelineController,
-    create_sota_config,
-    create_sota_pipeline,
-)
 from dapidl.pipeline.registry import (
     get_annotator,
     get_segmenter,
@@ -108,9 +82,39 @@ from dapidl.pipeline.registry import (
     register_segmenter,
 )
 
-# Import components to trigger registration
-# This must happen after registry imports
-from dapidl.pipeline.components import segmenters, annotators  # noqa: F401
+# State-of-the-Art Controller (v3.0) - best practices from benchmarking
+from dapidl.pipeline.sota_controller import (
+    SOTAPipelineController,
+    create_sota_config,
+    create_sota_pipeline,
+)
+from dapidl.pipeline.unified_config import (
+    AnnotationConfig as UnifiedAnnotationConfig,
+)
+
+# Unified configuration (v2.0) - consolidates all 4 configs
+from dapidl.pipeline.unified_config import (
+    AnnotationStrategy,
+    BackboneType,
+    DAPIDLPipelineConfig,
+    InputConfig,
+    LMDBConfig,
+    OutputConfig,
+    Platform,
+    TrainingConfig,
+    TrainingMode,
+)
+from dapidl.pipeline.unified_controller import (
+    PipelineResult,
+    UnifiedPipelineController,
+    create_unified_pipeline,
+)
+from dapidl.pipeline.universal_controller import (
+    TissueConfig,
+    UniversalDAPIPipelineController,
+    UniversalPipelineConfig,
+    create_universal_pipeline,
+)
 
 __all__ = [
     # NEW: Unified Configuration (v2.0) - recommended

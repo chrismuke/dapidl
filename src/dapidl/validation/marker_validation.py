@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-import polars as pl
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -148,7 +147,7 @@ class MarkerValidationResult:
 
 
 def compute_marker_scores(
-    adata: "ad.AnnData",
+    adata: ad.AnnData,
     predictions: np.ndarray,
     markers_db: dict[str, dict[str, list[str]]] = BREAST_MARKERS,
     min_cells: int = 50,
@@ -283,7 +282,7 @@ def _find_matching_markers(
 
 
 def _compute_positive_enrichment(
-    adata: "ad.AnnData",
+    adata: ad.AnnData,
     mask: np.ndarray,
     markers: list[str],
 ) -> tuple[float, float]:
@@ -308,7 +307,7 @@ def _compute_positive_enrichment(
 
 
 def _compute_negative_leakage(
-    adata: "ad.AnnData",
+    adata: ad.AnnData,
     mask: np.ndarray,
     markers: list[str],
 ) -> float:
@@ -329,7 +328,7 @@ def _compute_negative_leakage(
 
 
 def validate_with_markers(
-    adata: "ad.AnnData",
+    adata: ad.AnnData,
     predictions: np.ndarray,
     tissue_type: str = "breast",
 ) -> dict:

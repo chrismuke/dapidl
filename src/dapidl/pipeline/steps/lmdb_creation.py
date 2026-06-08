@@ -451,7 +451,7 @@ class LMDBCreationStep(PipelineStep):
                 else:
                     # Cast cells to string if annotations are strings
                     cells_df = cells_df.with_columns(pl.col("cell_id").cast(pl.Utf8))
-                logger.debug(f"Aligned cell_id types for join")
+                logger.debug("Aligned cell_id types for join")
 
             annotations_df = annotations_df.join(
                 cells_df.select(coord_cols),

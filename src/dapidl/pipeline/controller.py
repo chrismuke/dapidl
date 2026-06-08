@@ -13,7 +13,6 @@ Pipeline Flow:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -209,7 +208,7 @@ class PipelineConfig:
         errors = self.validate()
         if errors:
             raise ValueError(
-                f"Invalid pipeline configuration:\n  - " + "\n  - ".join(errors)
+                "Invalid pipeline configuration:\n  - " + "\n  - ".join(errors)
             )
 
 

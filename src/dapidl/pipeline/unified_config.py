@@ -22,11 +22,9 @@ Migration Guide:
 from __future__ import annotations
 
 from enum import Enum
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
 
 # ============================================================================
 # Enums for type-safe choices
@@ -169,13 +167,13 @@ class InputConfig(BaseModel):
     )
 
     # Multi-tissue support (for universal training)
-    tissues: list["TissueDatasetConfig"] = Field(
+    tissues: list[TissueDatasetConfig] = Field(
         default_factory=list,
         description="Multiple tissue datasets for universal training",
     )
 
     @model_validator(mode="after")
-    def validate_data_source(self) -> "InputConfig":
+    def validate_data_source(self) -> InputConfig:
         """Ensure at least one data source is specified (unless using tissues)."""
         sources = [
             self.dataset_id,
@@ -197,7 +195,7 @@ class InputConfig(BaseModel):
         platform: Platform = Platform.XENIUM,
         confidence_tier: int = 2,
         weight_multiplier: float = 1.0,
-    ) -> "InputConfig":
+    ) -> InputConfig:
         """Add a tissue dataset for multi-tissue training."""
         self.tissues.append(
             TissueDatasetConfig(
@@ -1241,7 +1239,7 @@ class DAPIDLPipelineConfig(BaseModel):
         return params
 
     @classmethod
-    def from_clearml_parameters(cls, params: dict[str, str]) -> "DAPIDLPipelineConfig":
+    def from_clearml_parameters(cls, params: dict[str, str]) -> DAPIDLPipelineConfig:
         """Create config from ClearML parameter dictionary.
 
         Handles deserialization of lists, booleans, and enums.
@@ -1393,7 +1391,7 @@ class DAPIDLPipelineConfig(BaseModel):
     # ========================================================================
 
     @classmethod
-    def from_pipeline_config(cls, old_config: Any) -> "DAPIDLPipelineConfig":
+    def from_pipeline_config(cls, old_config: Any) -> DAPIDLPipelineConfig:
         """Migrate from controller.py PipelineConfig.
 
         Args:
@@ -1471,7 +1469,7 @@ class DAPIDLPipelineConfig(BaseModel):
         )
 
     @classmethod
-    def from_gui_pipeline_config(cls, old_config: Any) -> "DAPIDLPipelineConfig":
+    def from_gui_pipeline_config(cls, old_config: Any) -> DAPIDLPipelineConfig:
         """Migrate from gui_pipeline_config.py GUIPipelineConfig.
 
         Args:
@@ -1535,7 +1533,7 @@ class DAPIDLPipelineConfig(BaseModel):
         )
 
     @classmethod
-    def from_universal_config(cls, old_config: Any) -> "DAPIDLPipelineConfig":
+    def from_universal_config(cls, old_config: Any) -> DAPIDLPipelineConfig:
         """Migrate from universal_controller.py UniversalPipelineConfig.
 
         Args:

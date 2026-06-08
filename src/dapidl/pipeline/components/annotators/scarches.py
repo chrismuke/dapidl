@@ -25,7 +25,6 @@ from dapidl.pipeline.components.annotators.mapping import (
 )
 from dapidl.pipeline.registry import register_annotator
 
-
 # Label to broad category mapping
 SCARCHES_TO_BROAD = {
     "Epithelial": "Epithelial",
@@ -127,8 +126,8 @@ class ScArchesAnnotator:
         Returns:
             Annotation results with cell types and confidence
         """
-        import scvi
         import scarches as sca
+        import scvi
 
         cfg = config or self.config
 
@@ -285,7 +284,6 @@ class ScArchesAnnotator:
 
     def _annotate_with_pretrained(self, adata: Any, cfg: AnnotationConfig) -> AnnotationResult:
         """Use pretrained scArches model for annotation."""
-        import scvi
         import scarches as sca
 
         logger.info(f"Loading pretrained model from {self.model_path}")

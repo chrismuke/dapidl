@@ -29,17 +29,13 @@ Usage:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
-from typing import Optional
 
 from loguru import logger
 
 from dapidl.ontology.cl_database import (
-    DAPIDL_BROAD_CATEGORIES,
-    CL_TO_BROAD_CATEGORY,
-    CL_TO_COARSE_CATEGORY,
     get_all_terms,
     get_broad_category,
     get_coarse_category,
@@ -128,7 +124,7 @@ class CLMapper:
         self._gt_mappings = ground_truth_mappings or {}
 
         # OBO loader for advanced features
-        self._loader: Optional[CLLoader] = None
+        self._loader: CLLoader | None = None
         if self.config.use_obo_loader:
             self._loader = get_loader()
 
@@ -523,7 +519,7 @@ class CLMapper:
         self,
         labels: list[str],
         return_df: bool = False,
-    ) -> list[MappingResult] | "pl.DataFrame":
+    ) -> list[MappingResult] | pl.DataFrame:
         """Map multiple labels.
 
         Args:
@@ -607,7 +603,7 @@ class CLMapper:
 
 
 # Singleton instance
-_default_mapper: Optional[CLMapper] = None
+_default_mapper: CLMapper | None = None
 
 
 def get_mapper() -> CLMapper:

@@ -4,9 +4,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-import numpy as np
 import polars as pl
 from loguru import logger
 
@@ -48,7 +46,7 @@ def create_hardlink_dataset(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get list of modified files (normalized paths)
-    modified_set = {str(Path(p)) for p in modified_files.keys()}
+    modified_set = {str(Path(p)) for p in modified_files}
 
     # Walk source directory and create structure
     files_linked = 0

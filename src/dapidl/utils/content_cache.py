@@ -126,7 +126,7 @@ def upload_step_output(step_name: str, output_path: Path, force: bool = False) -
         except s3.exceptions.ClientError:
             pass  # Not found, proceed with upload
     else:
-        logger.info(f"Force upload enabled — overwriting cache if exists")
+        logger.info("Force upload enabled — overwriting cache if exists")
 
     logger.info(f"Uploading step output to S3: {output_path} → {s3_uri}")
     total_size = sum(entry["size"] for entry in manifest)

@@ -122,7 +122,7 @@ class UniversalTrainingConfig:
         platform: str = "xenium",
         confidence_tier: int = 2,
         weight_multiplier: float = 1.0,
-    ) -> "UniversalTrainingConfig":
+    ) -> UniversalTrainingConfig:
         """Add a dataset to the training configuration.
 
         Args:
@@ -351,12 +351,9 @@ class UniversalDAPITrainingStep(PipelineStep):
 
         from dapidl.data.multi_tissue_dataset import (
             MultiTissueConfig,
-            MultiTissueDataset,
-            TissueDatasetConfig,
-            create_multi_tissue_splits,
             create_multi_tissue_dataloaders,
+            create_multi_tissue_splits,
         )
-        from dapidl.training.hierarchical_trainer import HierarchicalTrainer
 
         cfg = self.config
         inputs = artifacts.outputs
@@ -567,13 +564,12 @@ class UniversalDAPITrainingStep(PipelineStep):
             Tuple of (test_metrics, tissue_metrics)
         """
         import json
+
         import torch
-        import torch.nn as nn
-        from torch.cuda.amp import GradScaler, autocast
+        from torch.cuda.amp import GradScaler
 
         from dapidl.models.hierarchical import HierarchicalClassifier
-        from dapidl.training.hierarchical_loss import HierarchicalLoss, CurriculumScheduler
-        from dapidl.data.hierarchical_dataset import HierarchicalLabels
+        from dapidl.training.hierarchical_loss import CurriculumScheduler, HierarchicalLoss
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Training on device: {device}")
@@ -1080,9 +1076,9 @@ class UniversalDAPITrainingStep(PipelineStep):
 
     def _run_test_assessment(self, model, test_loader, device, hierarchy_config, train_dataset):
         """Run test set assessment with per-tissue breakdown."""
-        import torch
-        from sklearn.metrics import f1_score, accuracy_score, classification_report
         import numpy as np
+        import torch
+        from sklearn.metrics import accuracy_score, f1_score
 
         model.train(False)
         all_preds = {"coarse": [], "medium": [], "fine": []}
@@ -1186,8 +1182,9 @@ class UniversalDAPITrainingStep(PipelineStep):
         test_metrics: dict,
     ) -> dict[str, str]:
         """Upload trained models to S3 using boto3."""
-        import boto3
         from datetime import datetime
+
+        import boto3
 
         # Generate experiment name
         exp_name = (

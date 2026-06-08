@@ -42,58 +42,58 @@ ClearML Pipeline Integration:
     ```
 """
 
+from dapidl.ontology.annotator_mappings import (
+    AZIMUTH_TO_CL,
+    CELLTYPIST_TO_CL,
+    MERSCOPE_BREAST_GT_TO_CL,
+    PATHOLOGY_TO_CL,
+    SCINA_TO_CL,
+    SCTYPE_TO_CL,
+    # Per-annotator mappings
+    SINGLER_TO_CL,
+    # Ground truth mappings
+    XENIUM_BREAST_GT_TO_CL,
+    get_all_annotator_mappings,
+    get_all_gt_mappings,
+    # Factory functions
+    get_annotator_mappings,
+    get_gt_mappings,
+)
 from dapidl.ontology.cl_database import (
-    # Data classes
-    CLTerm,
-    HierarchyLevel,
-    # Term collections
-    SUPER_COARSE_TERMS,
+    CL_TO_BROAD_CATEGORY,
+    CL_TO_COARSE_CATEGORY,
     COARSE_TERMS,
-    MEDIUM_TERMS,
-    FINE_TERMS,
-    # Lookup functions
-    get_all_terms,
-    get_term,
-    get_term_by_name,
-    get_terms_by_level,
     # DAPIDL mappings
     DAPIDL_BROAD_CATEGORIES,
     DAPIDL_COARSE_CATEGORIES,
-    CL_TO_BROAD_CATEGORY,
-    CL_TO_COARSE_CATEGORY,
+    FINE_TERMS,
+    MEDIUM_TERMS,
+    # Term collections
+    SUPER_COARSE_TERMS,
+    # Data classes
+    CLTerm,
+    HierarchyLevel,
+    # Lookup functions
+    get_all_terms,
     get_broad_category,
     get_coarse_category,
+    get_term,
+    get_term_by_name,
+    get_terms_by_level,
 )
 from dapidl.ontology.cl_loader import (
     CLLoader,
-    get_loader,
     ensure_ontology_loaded,
+    get_loader,
 )
 from dapidl.ontology.cl_mapper import (
     CLMapper,
     MapperConfig,
-    MappingResult,
     MappingMethod,
+    MappingResult,
     get_mapper,
     map_label,
     map_labels,
-)
-from dapidl.ontology.annotator_mappings import (
-    # Per-annotator mappings
-    SINGLER_TO_CL,
-    CELLTYPIST_TO_CL,
-    SCTYPE_TO_CL,
-    SCINA_TO_CL,
-    AZIMUTH_TO_CL,
-    # Ground truth mappings
-    XENIUM_BREAST_GT_TO_CL,
-    MERSCOPE_BREAST_GT_TO_CL,
-    PATHOLOGY_TO_CL,
-    # Factory functions
-    get_annotator_mappings,
-    get_gt_mappings,
-    get_all_annotator_mappings,
-    get_all_gt_mappings,
 )
 
 __all__ = [

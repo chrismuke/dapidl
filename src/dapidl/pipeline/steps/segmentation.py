@@ -349,7 +349,6 @@ class SegmentationStep(PipelineStep):
 
     def _load_dapi_image(self, data_path: Path, platform: str):
         """Load DAPI image from platform data."""
-        import numpy as np
 
         if platform == "xenium":
             # Xenium: OME-TIFF

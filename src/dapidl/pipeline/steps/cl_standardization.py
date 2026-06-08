@@ -24,7 +24,7 @@ Usage in ClearML Pipeline:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -34,11 +34,8 @@ from loguru import logger
 from dapidl.ontology import (
     CLMapper,
     MapperConfig,
-    MappingMethod,
     get_all_annotator_mappings,
     get_all_gt_mappings,
-    get_broad_category,
-    get_coarse_category,
 )
 from dapidl.pipeline.base import (
     PipelineStep,

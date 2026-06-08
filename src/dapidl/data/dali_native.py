@@ -26,11 +26,11 @@ except ImportError:
 
 # DALI imports are optional
 try:
-    from nvidia.dali import pipeline_def
-    from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
     import nvidia.dali.fn as fn
     import nvidia.dali.types as types
     from nvidia.dali import math as dali_math
+    from nvidia.dali import pipeline_def
+    from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
 
     DALI_AVAILABLE = True
 except ImportError:
@@ -373,7 +373,7 @@ def create_dali_lmdb_train_pipeline(
     seed: int = 42,
     stats: dict[str, float] | None = None,
     prefetch_queue_depth: int = 2,
-) -> tuple["Pipeline", LMDBExternalSource]:
+) -> tuple[Pipeline, LMDBExternalSource]:
     """Create DALI training pipeline reading from LMDB.
 
     Args:
@@ -487,7 +487,7 @@ def create_dali_lmdb_val_pipeline(
     device_id: int = 0,
     stats: dict[str, float] | None = None,
     prefetch_queue_depth: int = 2,
-) -> tuple["Pipeline", LMDBExternalSource]:
+) -> tuple[Pipeline, LMDBExternalSource]:
     """Create DALI validation pipeline reading from LMDB (no augmentation).
 
     Args:
@@ -566,7 +566,7 @@ class DALILMDBDataLoader:
 
     def __init__(
         self,
-        pipeline: "Pipeline",
+        pipeline: Pipeline,
         source: LMDBExternalSource,
         output_map: list[str] | None = None,
         auto_reset: bool = True,

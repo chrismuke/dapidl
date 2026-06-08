@@ -22,7 +22,6 @@ import numpy as np
 import polars as pl
 from loguru import logger
 
-
 # =============================================================================
 # Artifact URL Resolution
 # =============================================================================
@@ -141,8 +140,8 @@ def resolve_artifact_path(value: str | Path | None, artifact_name: str = "") -> 
 
             # If it's a zip file, extract it
             if local_path.suffix == ".zip":
-                import zipfile
                 import tempfile
+                import zipfile
 
                 extract_dir = Path(tempfile.mkdtemp(prefix="dapidl_artifact_"))
                 logger.info(f"Extracting zip to: {extract_dir}")

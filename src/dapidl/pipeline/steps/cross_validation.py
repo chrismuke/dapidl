@@ -563,8 +563,8 @@ class CrossValidationStep(PipelineStep):
 
             # Fine-grained → coarse via ontology (mirrors training's hierarchy mapping)
             try:
-                from dapidl.ontology import map_label, get_broad_category
-                for raw_name in class_mapping.keys():
+                from dapidl.ontology import get_broad_category, map_label
+                for raw_name in class_mapping:
                     if raw_name not in raw_name_to_coarse:
                         cl_id = map_label(raw_name)
                         if cl_id != "UNMAPPED":
@@ -728,6 +728,7 @@ class CrossValidationStep(PipelineStep):
         circularity of using a model trained on CellTypist.
         """
         import lmdb
+
         from dapidl.validation import unsupervised_morphology_validation
 
         # Load patches from LMDB (may be at patches_path/ or patches_path/patches.lmdb/)
@@ -874,7 +875,7 @@ class CrossValidationStep(PipelineStep):
         if results.get("unsupervised"):
             unsup = results["unsupervised"]
             if "ari" in unsup:
-                print(f"\nUnsupervised Morphology Validation:")
+                print("\nUnsupervised Morphology Validation:")
                 print(f"  ARI: {unsup['ari']:.3f} ({unsup.get('interpretation', 'N/A')})")
                 print(f"  NMI: {unsup.get('nmi', 0):.3f}")
                 print(f"  Purity: {unsup.get('overall_purity', 0):.1%}")
@@ -883,7 +884,7 @@ class CrossValidationStep(PipelineStep):
                 print(f"\nUnsupervised: Error - {unsup['error']}")
 
         tiers = results["confidence_tiers"]
-        print(f"\nConfidence Tiers:")
+        print("\nConfidence Tiers:")
         print(f"  High: {tiers.get('high_fraction', 0):.1%}")
         print(f"  Medium: {tiers.get('medium_fraction', 0):.1%}")
         print(f"  Low: {tiers.get('low_fraction', 0):.1%}")
@@ -891,7 +892,7 @@ class CrossValidationStep(PipelineStep):
         if results.get("ground_truth"):
             gt = results["ground_truth"]
             if "accuracy" in gt:
-                print(f"\nGround Truth Comparison:")
+                print("\nGround Truth Comparison:")
                 print(f"  Accuracy: {gt['accuracy']:.1%}")
                 print(f"  Macro F1: {gt['f1_macro']:.3f}")
                 print(f"  Matched cells: {gt.get('matched_cells', 0)}")
@@ -1080,7 +1081,7 @@ class CrossValidationStep(PipelineStep):
 
         logger.info(f"Ground truth accuracy: {accuracy:.1%}")
         logger.info(f"Ground truth macro F1: {f1_macro:.3f}")
-        logger.info(f"Per-class F1:")
+        logger.info("Per-class F1:")
         for label in labels:
             if label in report:
                 logger.info(f"  {label}: F1={report[label].get('f1-score', 0):.3f}")

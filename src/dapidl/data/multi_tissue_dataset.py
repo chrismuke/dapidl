@@ -22,26 +22,24 @@ from __future__ import annotations
 
 import json
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Literal
 
 import lmdb
 import numpy as np
-import polars as pl
 import torch
-from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from loguru import logger
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
+from dapidl.data.hierarchical_dataset import HierarchicalLabels
 from dapidl.data.transforms import (
+    compute_dataset_stats,
     get_train_transforms,
     get_val_transforms,
-    compute_dataset_stats,
 )
-from dapidl.data.hierarchical_dataset import HierarchicalLabels
-from dapidl.models.hierarchical import HierarchyConfig
-
 
 SamplingStrategy = Literal["equal", "proportional", "sqrt"]
 ConfidenceTier = Literal[1, 2, 3]
@@ -79,7 +77,7 @@ class MultiTissueConfig:
         platform: str = "xenium",
         confidence_tier: ConfidenceTier = 2,
         weight_multiplier: float = 1.0,
-    ) -> "MultiTissueConfig":
+    ) -> MultiTissueConfig:
         """Add a dataset to the configuration.
 
         Args:
@@ -421,7 +419,7 @@ class MultiTissueDataset(Dataset):
         CL-standardized label.
         """
         try:
-            from dapidl.ontology import map_label, get_term
+            from dapidl.ontology import get_term, map_label
             has_ontology = True
         except ImportError:
             logger.warning("Ontology module not available, using simple union")

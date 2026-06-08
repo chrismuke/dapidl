@@ -26,10 +26,9 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Optional
 
 import networkx as nx
 from loguru import logger
@@ -56,7 +55,7 @@ class CLLoader:
         self.cache_dir = Path(cache_dir) if cache_dir else CACHE_DIR
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        self._graph: Optional[nx.MultiDiGraph] = None
+        self._graph: nx.MultiDiGraph | None = None
         self._name_to_id: dict[str, str] = {}
         self._synonym_to_id: dict[str, list[str]] = {}
 
@@ -403,7 +402,7 @@ class CLLoader:
 
 
 # Singleton instance for convenience
-_default_loader: Optional[CLLoader] = None
+_default_loader: CLLoader | None = None
 
 
 def get_loader() -> CLLoader:

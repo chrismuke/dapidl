@@ -5,10 +5,9 @@ import torch.nn as nn
 from loguru import logger
 
 from dapidl.models.backbone import (
-    create_backbone,
-    SingleChannelAdapter,
     BACKBONE_PRESETS,
-    list_backbones,
+    SingleChannelAdapter,
+    create_backbone,
 )
 
 

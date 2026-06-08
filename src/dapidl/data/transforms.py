@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import albumentations as A
 import numpy as np
@@ -19,7 +18,7 @@ class InvalidNormalizationStatsError(ValueError):
 def validate_normalization_stats(
     stats: dict[str, float],
     auto_recompute: bool = False,
-    samples: Optional[np.ndarray] = None,
+    samples: np.ndarray | None = None,
     percentile_low: float = 1.0,
     percentile_high: float = 99.0,
 ) -> dict[str, float]:

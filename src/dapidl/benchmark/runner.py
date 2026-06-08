@@ -10,20 +10,20 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from dapidl.benchmark.segmenters.base import SegmentationOutput, SegmenterAdapter
+from dapidl.benchmark.consensus.iou_weighted import iou_weighted_consensus
+from dapidl.benchmark.consensus.majority_voting import majority_voting_consensus
+from dapidl.benchmark.consensus.topological_voting import topological_voting_consensus
+from dapidl.benchmark.evaluation.biological import compute_biological_metrics
+from dapidl.benchmark.evaluation.cross_method import compute_cross_method_metrics
+from dapidl.benchmark.evaluation.morphometric import compute_morphometric_metrics
 from dapidl.benchmark.fov_selector import (
     FOVTile,
     extract_fov_tile,
     load_dapi_mosaic,
     select_fovs,
 )
-from dapidl.benchmark.evaluation.morphometric import compute_morphometric_metrics
-from dapidl.benchmark.evaluation.biological import compute_biological_metrics
-from dapidl.benchmark.evaluation.cross_method import compute_cross_method_metrics
-from dapidl.benchmark.consensus.majority_voting import majority_voting_consensus
-from dapidl.benchmark.consensus.iou_weighted import iou_weighted_consensus
-from dapidl.benchmark.consensus.topological_voting import topological_voting_consensus
 from dapidl.benchmark.reporting import generate_report
+from dapidl.benchmark.segmenters.base import SegmentationOutput, SegmenterAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -343,6 +343,7 @@ class BenchmarkRunner:
         cross_method_dir = self.output_dir / "cross_method"
         cross_method_dir.mkdir(parents=True, exist_ok=True)
         import json
+
         from dapidl.benchmark.reporting import _numpy_safe
 
         for fov in fovs:

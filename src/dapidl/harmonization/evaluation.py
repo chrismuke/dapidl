@@ -7,13 +7,10 @@ using the harmonization system for meaningful comparison.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
 
-import numpy as np
 import polars as pl
 
-from dapidl.harmonization.hierarchy import BREAST_HIERARCHY, CellTypeHierarchy
 from dapidl.harmonization.mapper import (
     HarmonizationResult,
     LabelHarmonizer,

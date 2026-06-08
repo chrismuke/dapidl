@@ -1,6 +1,5 @@
 """Backbone architectures for DAPIDL."""
 
-from typing import Literal
 
 import timm
 import torch

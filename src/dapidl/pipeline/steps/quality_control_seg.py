@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 from loguru import logger
+from starpose.qc import SegmentationGroundedScorer, decide_broken
 
 from dapidl.pipeline.steps.quality_control import (
     _atomic_write_parquet,
@@ -21,7 +22,6 @@ from dapidl.pipeline.steps.quality_control import (
     _slide_groups,
 )
 from dapidl.qc.io import read_patches
-from starpose.qc import SegmentationGroundedScorer, decide_broken
 
 REFERENCE_SAMPLE = 2000
 

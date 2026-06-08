@@ -24,7 +24,7 @@ References:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +33,6 @@ from loguru import logger
 
 from dapidl.pipeline.base import AnnotationConfig, AnnotationResult
 from dapidl.pipeline.components.annotators.mapping import (
-    get_class_names,
     map_to_broad_category,
 )
 from dapidl.pipeline.registry import register_annotator

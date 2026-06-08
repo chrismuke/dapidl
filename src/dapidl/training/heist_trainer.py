@@ -18,7 +18,6 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from loguru import logger
 from sklearn.metrics import classification_report, f1_score
 from torch.optim import AdamW

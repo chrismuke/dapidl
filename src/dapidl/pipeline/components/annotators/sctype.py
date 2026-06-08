@@ -24,7 +24,6 @@ from dapidl.pipeline.components.annotators.mapping import (
 )
 from dapidl.pipeline.registry import register_annotator
 
-
 # Default marker genes for common cell types (can be extended)
 DEFAULT_MARKERS = {
     # Epithelial
@@ -282,8 +281,8 @@ class ScTypeAnnotator:
             # Load from ScTypeDB
             try:
                 from dapidl.pipeline.components.annotators.sctype_db import (
-                    get_tissue_markers,
                     AVAILABLE_TISSUES,
+                    get_tissue_markers,
                 )
                 self.markers = get_tissue_markers(tissue, include_immune=include_immune)
                 logger.info(f"Loaded ScTypeDB markers for tissue '{tissue}': {len(self.markers)} cell types")

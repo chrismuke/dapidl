@@ -1,22 +1,22 @@
 """PyTorch Dataset for DAPIDL."""
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import polars as pl
 import torch
 import zarr
-from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from loguru import logger
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 from dapidl.data.transforms import (
+    compute_dataset_stats,
+    get_heavy_augmentation_transforms,
     get_train_transforms,
     get_val_transforms,
-    get_heavy_augmentation_transforms,
-    compute_dataset_stats,
 )
 
 
@@ -818,8 +818,8 @@ def create_dataloaders_with_backend(
     if backend == "dali-lmdb":
         # Use DALI with LMDB backend (fastest)
         from dapidl.data.dali_native import (
-            is_lmdb_available,
             create_dali_lmdb_dataloaders,
+            is_lmdb_available,
         )
         from dapidl.data.dali_pipeline import is_dali_available
 
@@ -858,7 +858,7 @@ def create_dataloaders_with_backend(
 
     elif backend == "dali":
         # Use DALI backend with Zarr (slower due to Python external source)
-        from dapidl.data.dali_pipeline import is_dali_available, create_dali_dataloaders
+        from dapidl.data.dali_pipeline import create_dali_dataloaders, is_dali_available
 
         if not is_dali_available():
             raise RuntimeError(

@@ -11,7 +11,6 @@ This enables validation WITHOUT ground truth annotations.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -89,7 +88,7 @@ class ValidationMetrics:
 
 
 def compute_leiden_metrics(
-    adata: "ad.AnnData",
+    adata: ad.AnnData,
     celltypist_key: str = "celltypist_labels",
     resolutions: list[float] | None = None,
 ) -> tuple[float, float, float]:
@@ -139,7 +138,7 @@ def compute_leiden_metrics(
 
 
 def compute_dapi_agreement(
-    model: "CellTypeClassifier",
+    model: CellTypeClassifier,
     patches: torch.Tensor,
     celltypist_labels: np.ndarray,
     celltypist_confidence: np.ndarray,
@@ -211,7 +210,7 @@ def compute_dapi_agreement(
 
 
 def extract_morphology_embeddings(
-    model: "CellTypeClassifier",
+    model: CellTypeClassifier,
     patches: torch.Tensor,
     device: str = "cuda",
     batch_size: int = 256,
@@ -270,8 +269,8 @@ def cluster_morphology_embeddings(
 
     elif method == "leiden":
         # Use scanpy's Leiden on a kNN graph of embeddings
-        import scanpy as sc
         import anndata as ad
+        import scanpy as sc
 
         adata_temp = ad.AnnData(X=embeddings)
         sc.pp.neighbors(adata_temp, n_neighbors=15, use_rep="X")

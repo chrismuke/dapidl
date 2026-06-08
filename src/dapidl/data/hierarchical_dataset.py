@@ -14,21 +14,21 @@ Returns:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import polars as pl
 import torch
 import zarr
-from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from loguru import logger
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 from dapidl.data.transforms import (
+    compute_dataset_stats,
     get_train_transforms,
     get_val_transforms,
-    compute_dataset_stats,
 )
 from dapidl.models.hierarchical import HierarchyConfig
 

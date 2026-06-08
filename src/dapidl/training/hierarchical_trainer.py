@@ -16,16 +16,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-import torch.nn as nn
+from loguru import logger
 from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
-from loguru import logger
 from tqdm import tqdm
 
 from dapidl.data.hierarchical_dataset import (
-    HierarchicalDataset,
     HierarchicalLabels,
     create_hierarchical_data_splits,
     create_hierarchical_dataloaders,
@@ -33,11 +31,10 @@ from dapidl.data.hierarchical_dataset import (
 from dapidl.models.hierarchical import (
     HierarchicalClassifier,
     HierarchyConfig,
-    HierarchicalOutput,
 )
 from dapidl.training.hierarchical_loss import (
-    HierarchicalLoss,
     CurriculumScheduler,
+    HierarchicalLoss,
 )
 
 
@@ -432,7 +429,7 @@ class HierarchicalTrainer:
         Returns:
             Dictionary of validation metrics
         """
-        from sklearn.metrics import f1_score, precision_score, recall_score
+        from sklearn.metrics import f1_score
 
         # Set model to inference mode
         self.model.training = False

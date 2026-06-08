@@ -18,11 +18,11 @@ from loguru import logger
 
 # DALI imports are optional
 try:
-    from nvidia.dali import pipeline_def
-    from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
     import nvidia.dali.fn as fn
     import nvidia.dali.types as types
     from nvidia.dali import math as dali_math
+    from nvidia.dali import pipeline_def
+    from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
 
     DALI_AVAILABLE = True
 except ImportError:
@@ -134,7 +134,7 @@ def create_dali_train_pipeline(
     seed: int = 42,
     stats: dict[str, float] | None = None,
     prefetch_queue_depth: int = 2,
-) -> "Pipeline":
+) -> Pipeline:
     """Create DALI training pipeline with GPU augmentations.
 
     Args:
@@ -250,7 +250,7 @@ def create_dali_val_pipeline(
     device_id: int = 0,
     stats: dict[str, float] | None = None,
     prefetch_queue_depth: int = 2,
-) -> "Pipeline":
+) -> Pipeline:
     """Create DALI validation pipeline (no augmentation).
 
     Args:
@@ -332,7 +332,7 @@ class DALIDataLoader:
 
     def __init__(
         self,
-        pipeline: "Pipeline",
+        pipeline: Pipeline,
         source: ZarrExternalSource,
         output_map: list[str] = None,
         auto_reset: bool = True,

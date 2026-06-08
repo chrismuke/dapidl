@@ -19,20 +19,20 @@ Example:
     tracker.init(project="dapidl", config=config, reproducibility=info)
 """
 
-from dapidl.tracking.reproducibility import (
-    ReproducibilityInfo,
-    GitInfo,
-    EnvironmentInfo,
-    DatasetInfo,
-    get_reproducibility_info,
-    get_git_info,
-    get_environment_info,
-    get_dataset_info,
-    compute_dataset_hash,
-    set_cli_command,
-    get_cli_command,
-)
 from dapidl.tracking.base import ExperimentTracker, NullTracker
+from dapidl.tracking.reproducibility import (
+    DatasetInfo,
+    EnvironmentInfo,
+    GitInfo,
+    ReproducibilityInfo,
+    compute_dataset_hash,
+    get_cli_command,
+    get_dataset_info,
+    get_environment_info,
+    get_git_info,
+    get_reproducibility_info,
+    set_cli_command,
+)
 
 __all__ = [
     # Reproducibility

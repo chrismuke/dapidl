@@ -34,23 +34,23 @@ Example:
     print(f"Mid accuracy: {result.metrics['mid']['accuracy']:.3f}")
 """
 
+from dapidl.harmonization.evaluation import (
+    create_mapping_from_annotations,
+    evaluate_annotations_df,
+    evaluate_predictions,
+    print_evaluation_report,
+)
 from dapidl.harmonization.hierarchy import (
-    CellTypeHierarchy,
     BREAST_HIERARCHY,
+    CellTypeHierarchy,
 )
 from dapidl.harmonization.mapper import (
-    LabelHarmonizer,
     HarmonizationResult,
+    LabelHarmonizer,
     LabelMapping,
+    get_available_mappings,
     load_mapping,
     save_mapping,
-    get_available_mappings,
-)
-from dapidl.harmonization.evaluation import (
-    evaluate_predictions,
-    evaluate_annotations_df,
-    print_evaluation_report,
-    create_mapping_from_annotations,
 )
 
 __all__ = [

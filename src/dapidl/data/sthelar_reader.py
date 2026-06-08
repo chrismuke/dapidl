@@ -16,13 +16,12 @@ Coordinates in the SpatialData object are in microns.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 from loguru import logger
-
 
 # STHELAR group label mapping (from cells_final_label_group)
 # WARNING: These group labels are noisy — Leiden refinement misassigns cells.

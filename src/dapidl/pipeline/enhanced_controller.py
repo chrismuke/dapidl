@@ -432,16 +432,16 @@ class EnhancedDAPIDLPipelineController:
         Returns:
             Pipeline result with model path and metrics
         """
-        from dapidl.pipeline.steps.data_loader import DataLoaderStep, DataLoaderConfig
+        from dapidl.pipeline.base import StepArtifacts
+        from dapidl.pipeline.steps.data_loader import DataLoaderConfig, DataLoaderStep
         from dapidl.pipeline.steps.ensemble_annotation import (
-            EnsembleAnnotationStep,
             EnsembleAnnotationConfig,
+            EnsembleAnnotationStep,
         )
         from dapidl.pipeline.steps.lmdb_creation import (
-            LMDBCreationStep,
             LMDBCreationConfig,
+            LMDBCreationStep,
         )
-        from dapidl.pipeline.base import StepArtifacts
 
         cfg = self.config
 
@@ -476,8 +476,8 @@ class EnhancedDAPIDLPipelineController:
             if cfg.use_cell_ontology:
                 logger.info("Step 3: Standardizing labels with Cell Ontology...")
                 from dapidl.pipeline.steps.cl_standardization import (
-                    CLStandardizationStep,
                     CLStandardizationConfig,
+                    CLStandardizationStep,
                 )
 
                 cl_config = CLStandardizationConfig(
@@ -519,9 +519,9 @@ class EnhancedDAPIDLPipelineController:
 
             if cfg.training_mode == "hierarchical":
                 from dapidl.pipeline.steps.universal_training import (
+                    TissueDatasetSpec,
                     UniversalDAPITrainingStep,
                     UniversalTrainingConfig,
-                    TissueDatasetSpec,
                 )
 
                 train_config = UniversalTrainingConfig(
@@ -549,7 +549,7 @@ class EnhancedDAPIDLPipelineController:
                 test_metrics = train_artifacts.outputs.get("test_metrics", {})
                 tissue_metrics = train_artifacts.outputs.get("tissue_metrics", {})
             else:
-                from dapidl.pipeline.steps.training import TrainingStep, TrainingConfig
+                from dapidl.pipeline.steps.training import TrainingConfig, TrainingStep
 
                 train_config = TrainingConfig(
                     backbone=cfg.backbone,
@@ -649,9 +649,9 @@ def create_step_base_tasks(project: str = "DAPIDL/pipelines"):
     """
     from dapidl.pipeline.steps.data_loader import DataLoaderStep
     from dapidl.pipeline.steps.ensemble_annotation import EnsembleAnnotationStep
+    from dapidl.pipeline.steps.hierarchical_training import HierarchicalTrainingStep
     from dapidl.pipeline.steps.lmdb_creation import LMDBCreationStep
     from dapidl.pipeline.steps.training import TrainingStep
-    from dapidl.pipeline.steps.hierarchical_training import HierarchicalTrainingStep
 
     steps = [
         DataLoaderStep(),

@@ -19,7 +19,6 @@ Supports both ClearML remote execution and local debugging.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -108,7 +107,7 @@ class UniversalPipelineConfig:
         annotator: str = "celltypist",
         ground_truth_file: str | None = None,
         weight_multiplier: float = 1.0,
-    ) -> "UniversalPipelineConfig":
+    ) -> UniversalPipelineConfig:
         """Add a tissue dataset to the pipeline.
 
         Args:
@@ -358,7 +357,6 @@ class UniversalDAPIPipelineController:
         from dapidl.pipeline.steps.segmentation import SegmentationStepConfig
         from dapidl.pipeline.steps.universal_training import (
             UniversalTrainingConfig,
-            TissueDatasetSpec,
         )
 
         cfg = self.config
