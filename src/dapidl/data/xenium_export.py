@@ -87,7 +87,7 @@ def create_hardlink_dataset(
                         files_copied += 1
                         logger.debug(f"Copied (hardlink failed): {rel_path}")
                     else:
-                        raise OSError(f"Cannot create hardlink for {rel_path}: {e}")
+                        raise OSError(f"Cannot create hardlink for {rel_path}: {e}") from e
 
     logger.info(f"Created dataset at {output_dir}")
     logger.info(f"  Files hardlinked: {files_linked} (saved {total_size_saved / 1e9:.2f} GB)")

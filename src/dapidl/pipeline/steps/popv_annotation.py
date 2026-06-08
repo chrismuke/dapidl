@@ -232,7 +232,7 @@ class PopVAnnotationStep(PipelineStep):
                 is_popv_available,
             )
         except ImportError:
-            raise ImportError("PopV annotator not available. Install with: pip install popv")
+            raise ImportError("PopV annotator not available. Install with: pip install popv") from None
 
         if not is_popv_available():
             raise ImportError("popV package not installed. Install with: pip install popv")

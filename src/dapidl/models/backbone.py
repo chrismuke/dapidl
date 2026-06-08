@@ -440,7 +440,7 @@ class PathologyFoundationModel(nn.Module):
             raise ImportError(
                 "transformers library required for Phikon-v2. "
                 "Install with: pip install transformers"
-            )
+            ) from None
 
         if pretrained:
             logger.info(f"Loading Phikon-v2 from HuggingFace: {hf_repo}")
@@ -466,7 +466,7 @@ class PathologyFoundationModel(nn.Module):
             raise ImportError(
                 "huggingface_hub library required for UNI. "
                 "Install with: pip install huggingface-hub"
-            )
+            ) from None
 
         if pretrained:
             logger.info(f"Loading UNI from HuggingFace: {hf_repo}")

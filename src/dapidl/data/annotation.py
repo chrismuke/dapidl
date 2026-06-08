@@ -606,7 +606,7 @@ class CellTypeAnnotator:
         try:
             from popv.hub import HubModel
         except ImportError:
-            raise ImportError("popV not installed. Install with: pip install popv")
+            raise ImportError("popV not installed. Install with: pip install popv") from None
 
         logger.info("Running popV multi-model ensemble prediction...")
 

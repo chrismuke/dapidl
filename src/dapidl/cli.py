@@ -272,7 +272,7 @@ def prepare(
         platform = detect_platform(data_path)
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise click.Abort()
+        raise click.Abort() from e
 
     console.print("[bold blue]DAPIDL Dataset Preparation[/bold blue]")
     console.print(f"Platform: {platform.upper()}")
@@ -1547,7 +1547,7 @@ def pipeline(
             platform = detect_platform(data_path)
         except ValueError as e:
             console.print(f"[red]Error: {e}[/red]")
-            raise click.Abort()
+            raise click.Abort() from e
 
     console.print("[bold magenta]═══════════════════════════════════════════════════════════════[/bold magenta]")
     console.print("[bold magenta]                    DAPIDL PIPELINE                           [/bold magenta]")
@@ -1732,7 +1732,7 @@ def export_lmdb(data_path: str, output_path: str | None, map_size: float, worker
         console.print("\n[dim]Use with: dapidl train -d <dataset> --backend dali-lmdb[/dim]")
     except Exception as e:
         console.print(f"[red]Error during conversion: {e}[/red]")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @main.command(name="clean-dataset")
@@ -1896,7 +1896,7 @@ def clean_dataset(
 
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
-            raise click.Abort()
+            raise click.Abort() from e
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3400,7 +3400,7 @@ def popv_annotate(
     except ImportError:
         console.print("[red]Error: popV annotator module not found[/red]")
         console.print("[yellow]This may be an installation issue.[/yellow]")
-        raise click.Abort()
+        raise click.Abort() from None
 
     if not is_popv_available():
         console.print("[red]Error: popV package is not installed[/red]")
@@ -3448,7 +3448,7 @@ def popv_annotate(
 
     except Exception as e:
         console.print(f"\n[red]Error: {e}[/red]")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @popv_group.command(name="list-references")

@@ -495,7 +495,7 @@ class DataLoaderStep(PipelineStep):
                         f"Dataset ID {resolved_id} not found on this ClearML instance "
                         f"and no migration mapping or name match found. "
                         f"Check configs/clearml_id_mapping.json or use a valid dataset ID."
-                    )
+                    ) from None
         else:
             dataset = Dataset.get(
                 dataset_project=cfg.dataset_project,
