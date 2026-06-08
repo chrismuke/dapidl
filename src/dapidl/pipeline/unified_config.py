@@ -21,11 +21,11 @@ Migration Guide:
 
 from __future__ import annotations
 
+import contextlib
 from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-import contextlib
 
 # ============================================================================
 # Enums for type-safe choices

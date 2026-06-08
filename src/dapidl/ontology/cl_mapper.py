@@ -32,6 +32,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -42,6 +43,9 @@ from dapidl.ontology.cl_database import (
     get_term,
 )
 from dapidl.ontology.cl_loader import CLLoader, get_loader
+
+if TYPE_CHECKING:
+    import polars as pl
 
 
 class MappingMethod(Enum):

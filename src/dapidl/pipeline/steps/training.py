@@ -13,11 +13,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from dapidl.pipeline.base import PipelineStep, StepArtifacts, resolve_artifact_path
+
+if TYPE_CHECKING:
+    import torch
 
 
 @dataclass
@@ -946,7 +949,7 @@ class TrainingStep(PipelineStep):
                 logger.debug(f"Could not register in ClearML: {e}")
 
         if s3_urls:
-            logger.info(f"Models uploaded to S3: {s3_prefix}")
+            logger.info(f"Models uploaded to S3: s3://{cfg.s3_bucket}/{s3_key_prefix}")
         else:
             logger.warning("No models were uploaded to S3")
 
