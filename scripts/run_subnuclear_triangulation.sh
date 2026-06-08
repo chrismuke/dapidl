@@ -79,7 +79,7 @@ print(f"(C) nuc-only floor macro-F1    : {floor['nuc_only']['macro_f1']:.3f}  "
 print(f"(C) nuc+ctx floor  macro-F1    : {floor['nuc_plus_ctx']['macro_f1']:.3f}  "
       f"(gap {floor['nuc_plus_ctx']['vs_effnet_0619']:+.3f})")
 print(f"(D) IG concentration (overall) : {sal['overall']['mean_concentration']:.2f}  "
-      f"(1=area-proportional, >1 subnuclear-driven, <1 context-driven; n={sal['overall'].get('n', '?')})")
+      f"(1=area-proportional, >1 subnuclear-driven, <1 context-driven; n={sal.get('n', '?')})")
 print("    per-class concentration     :",
       {k: round(v["mean_concentration"], 2) for k, v in sal["by_class"].items()})
 PY
