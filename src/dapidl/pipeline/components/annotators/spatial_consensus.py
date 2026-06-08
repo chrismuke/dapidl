@@ -311,7 +311,7 @@ def spatial_consensus(
     consensus_scores = []
     for i in range(n_cells):
         votes = Counter()
-        for name, preds in voters.items():
+        for _name, preds in voters.items():
             label = preds[i]
             if label and label != "Unknown":
                 votes[label] += 1

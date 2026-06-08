@@ -565,10 +565,8 @@ class AdaptiveInference:
         if images.ndim == 2:
             images = images.unsqueeze(0).unsqueeze(0)
         elif images.ndim == 3:
-            if images.shape[0] != 1:  # (B, H, W)
-                images = images.unsqueeze(1)  # -> (B, 1, H, W)
-            else:  # (1, H, W)
-                images = images.unsqueeze(0)  # -> (1, 1, H, W)
+            # (B, H, W) -> (B, 1, H, W); (1, H, W) -> (1, 1, H, W)
+            images = images.unsqueeze(1) if images.shape[0] != 1 else images.unsqueeze(0)
 
         images = images.to(self.device)
 

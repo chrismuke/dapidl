@@ -2031,7 +2031,6 @@ def heist_prepare(
     # Get annotated cell IDs and filter data to match
     # Ensure consistent types (convert to strings for comparison)
     annotated_cell_ids = annotations["cell_id"].to_numpy()
-    annotated_cell_ids_set = {str(cid) for cid in annotated_cell_ids}
     cell_id_to_idx = {str(cid): i for i, cid in enumerate(cell_ids)}
 
     # Create valid indices matching annotation order
@@ -2216,7 +2215,6 @@ def heist_train(
     class_weights = compute_class_weights(labels)
 
     # Load universal GRN
-    universal_grn = torch.load(data_path / "universal_grn.pt", weights_only=True)
 
     # Create model
     console.print("\n[cyan]Creating model...[/cyan]")

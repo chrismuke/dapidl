@@ -621,8 +621,8 @@ class HierarchicalTrainer:
             coarse_labels = val_metrics.pop("_coarse_labels", None)
             medium_preds = val_metrics.pop("_medium_preds", None)
             medium_labels = val_metrics.pop("_medium_labels", None)
-            fine_preds = val_metrics.pop("_fine_preds", None)
-            fine_labels = val_metrics.pop("_fine_labels", None)
+            val_metrics.pop("_fine_preds", None)
+            val_metrics.pop("_fine_labels", None)
 
             # Update scheduler
             self.scheduler.step()
@@ -705,8 +705,8 @@ class HierarchicalTrainer:
         coarse_labels = test_metrics.pop("_coarse_labels", None)
         medium_preds = test_metrics.pop("_medium_preds", None)
         medium_labels = test_metrics.pop("_medium_labels", None)
-        fine_preds = test_metrics.pop("_fine_preds", None)
-        fine_labels = test_metrics.pop("_fine_labels", None)
+        test_metrics.pop("_fine_preds", None)
+        test_metrics.pop("_fine_labels", None)
 
         for k, v in test_metrics.items():
             if isinstance(v, float):

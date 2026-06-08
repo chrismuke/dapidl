@@ -151,7 +151,6 @@ class PatchExtractor:
         logger.info(f"Processing {n_cells} cells...")
 
         # Pre-allocate arrays
-        patches_list = []
         labels_list = []
         metadata_list = []
 

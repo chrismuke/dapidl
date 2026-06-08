@@ -200,11 +200,6 @@ class ConsensusAnnotator:
             pl.col("consensus_confidence").alias("confidence"),
         ])
 
-        # Filter out "Other" for class mapping
-        valid_types = annotations_df.filter(
-            pl.col("broad_category").is_in(["Epithelial", "Immune", "Stromal"])
-        )
-
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         if not cfg.fine_grained:

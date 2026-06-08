@@ -1,5 +1,6 @@
 """Training loop for DAPIDL."""
 
+import contextlib
 from pathlib import Path
 
 # Import types for type hints (avoid circular imports)
@@ -473,10 +474,9 @@ class Trainer:
             wandb.log_artifact(artifact)
 
             # Link to the Datasets registry if available
-            try:
+            # Registry linking may not be available in all deployments
+            with contextlib.suppress(Exception):
                 wandb.run.link_artifact(artifact, target_path="wandb-registry-Datasets/dapidl")
-            except Exception:
-                pass  # Registry linking may not be available in all deployments
 
             logger.info("Dataset artifact logged to W&B")
 
@@ -527,10 +527,9 @@ class Trainer:
 
             # Link best model to the Models registry
             if is_best:
-                try:
+                # Registry linking may not be available
+                with contextlib.suppress(Exception):
                     wandb.run.link_artifact(artifact, target_path="wandb-registry-Models/dapidl")
-                except Exception:
-                    pass  # Registry linking may not be available
 
             logger.info(f"Model artifact '{artifact_name}' logged to W&B")
 
@@ -979,7 +978,7 @@ class Trainer:
                 class_name = self.class_names[class_idx]
                 patches = patches_by_class[class_idx]
 
-                for sample_idx, (global_idx, patch) in enumerate(patches[:samples_per_class]):
+                for _sample_idx, (global_idx, patch) in enumerate(patches[:samples_per_class]):
                     # Normalize uint16 to uint8 for visualization
                     patch_normalized = patch.astype(np.float32)
                     patch_normalized = (patch_normalized - patch_normalized.min()) / (patch_normalized.max() - patch_normalized.min() + 1e-8)

@@ -94,7 +94,6 @@ def _spatial_block_split(
     `block_x = floor(x / block_size)`, `block_y = floor(y / block_size)`.
     """
     n_block_x = (img_w + block_size - 1) // block_size
-    n_block_y = (img_h + block_size - 1) // block_size
     bx = (centroids_px[:, 0] // block_size).astype(np.int64)
     by = (centroids_px[:, 1] // block_size).astype(np.int64)
     block_idx = by * n_block_x + bx

@@ -201,7 +201,6 @@ class HierarchicalOutput:
             where level_used is 'fine', 'medium', or 'coarse'
         """
         batch_size = self.coarse_logits.shape[0]
-        device = self.coarse_logits.device
 
         # Start with coarse as default
         predictions = self.coarse_logits.argmax(dim=-1)

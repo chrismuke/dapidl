@@ -356,9 +356,8 @@ class TrainingStep(PipelineStep):
             )
 
         # Upload to S3 and register in ClearML
-        s3_urls = {}
         if cfg.upload_to_s3:
-            s3_urls = self._upload_models_to_s3(output_dir, cfg, test_metrics)
+            self._upload_models_to_s3(output_dir, cfg, test_metrics)
 
         return StepArtifacts(
             inputs=inputs,

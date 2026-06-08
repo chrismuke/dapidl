@@ -664,11 +664,10 @@ class CellTypeAnnotator:
                 pred_key = "popv_prediction"
                 score_key = "popv_prediction_score"
 
-                if pred_key not in adata_annotated.obs.columns:
-                    # Fall back to majority vote
-                    if "popv_majority_vote_prediction" in adata_annotated.obs.columns:
-                        pred_key = "popv_majority_vote_prediction"
-                        score_key = "popv_majority_vote_score"
+                # Fall back to majority vote
+                if pred_key not in adata_annotated.obs.columns and "popv_majority_vote_prediction" in adata_annotated.obs.columns:
+                    pred_key = "popv_majority_vote_prediction"
+                    score_key = "popv_majority_vote_score"
 
                 if pred_key in adata_annotated.obs.columns:
                     predictions = adata_annotated.obs[pred_key].values
@@ -926,10 +925,9 @@ class CellTypeAnnotator:
             best_type = None
             best_conf = 0.0
             for model_idx in range(n_models):
-                if all_broad_categories[model_idx, cell_idx] == consensus_broad:
-                    if all_confidences[model_idx, cell_idx] > best_conf:
-                        best_conf = all_confidences[model_idx, cell_idx]
-                        best_type = all_cell_types[model_idx, cell_idx]
+                if all_broad_categories[model_idx, cell_idx] == consensus_broad and all_confidences[model_idx, cell_idx] > best_conf:
+                    best_conf = all_confidences[model_idx, cell_idx]
+                    best_type = all_cell_types[model_idx, cell_idx]
 
             # If no model matches consensus broad (shouldn't happen), take highest confidence
             if best_type is None:
@@ -1031,8 +1029,8 @@ class CellTypeAnnotator:
         # Import R packages
         singler = importr('SingleR')
         celldex = importr('celldex')
-        base = importr('base')
-        stats = importr('stats')
+        base = importr('base')  # noqa: F841
+        stats = importr('stats')  # noqa: F841
 
         # Get reference data
         ref_func_name = SINGLER_REFERENCES[self.singler_reference]
@@ -1061,7 +1059,7 @@ class CellTypeAnnotator:
         # Convert to R matrix with gene names as rows, cells as columns
         # SingleR expects genes x cells
         cell_names = [str(cid) for cid in adata.obs_names]
-        expr_r = ro.r.matrix(
+        expr_r = ro.r.matrix(  # noqa: F841
             ro.FloatVector(expr_norm.T.flatten()),
             nrow=len(genes),
             ncol=expr_norm.shape[0],

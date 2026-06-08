@@ -280,11 +280,10 @@ class MultiTissueDataset(Dataset):
                 # Priority: predicted_type (fine-grained) > broad_category (coarse)
                 class_name_col = None
                 for col in ["predicted_type", "broad_category"]:
-                    if col in meta_df.columns:
-                        # Check if this column has the same number of unique values as labels
-                        if meta_df[col].n_unique() == n_labels:
-                            class_name_col = col
-                            break
+                    # Check if this column has the same number of unique values as labels
+                    if col in meta_df.columns and meta_df[col].n_unique() == n_labels:
+                        class_name_col = col
+                        break
 
                 if class_name_col:
                     # Build mapping: class_name -> label_id
@@ -420,7 +419,6 @@ class MultiTissueDataset(Dataset):
         """
         try:
             from dapidl.ontology import get_term, map_label
-            has_ontology = True
         except ImportError:
             logger.warning("Ontology module not available, using simple union")
             self._build_simple_union_labels()

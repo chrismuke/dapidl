@@ -83,7 +83,6 @@ class NativeSegmenter:
         Returns:
             Result with all cells marked as matched
         """
-        cfg = config or self.config
 
         # Build centroids from cells_df
         x_col = "x_centroid" if "x_centroid" in cells_df.columns else "centroid_x"

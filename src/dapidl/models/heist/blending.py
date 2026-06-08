@@ -70,7 +70,6 @@ class HierarchicalBlending(nn.Module):
         Returns:
             (N, D) fused embeddings.
         """
-        n_cells = high_emb.shape[0]
 
         # Stack as sequence of length 2: (N, 2, D)
         x = torch.stack([high_emb, low_emb], dim=1)

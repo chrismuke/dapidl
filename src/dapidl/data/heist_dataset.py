@@ -87,11 +87,8 @@ class HEISTDataset(Dataset):
         """
         n_partitions = max(1, self.n_cells // self.partition_size)
 
-        if permute:
-            # Shuffle node indices
-            perm = torch.randperm(self.n_cells)
-        else:
-            perm = torch.arange(self.n_cells)
+        # Shuffle node indices when permuting
+        perm = torch.randperm(self.n_cells) if permute else torch.arange(self.n_cells)
 
         if METIS_AVAILABLE and self.spatial_edge_index.shape[1] > 0:
             return self._metis_partition(perm, n_partitions)

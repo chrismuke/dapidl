@@ -238,9 +238,8 @@ class CLLoader:
         parents = []
         # In obonet, edges go from child to parent
         for _, parent, edge_data in self._graph.out_edges(cl_id, data=True):
-            if edge_data.get("relationship") in (None, "is_a"):
-                if parent.startswith("CL:"):
-                    parents.append(parent)
+            if edge_data.get("relationship") in (None, "is_a") and parent.startswith("CL:"):
+                parents.append(parent)
         return parents
 
     def get_children(self, cl_id: str) -> list[str]:
@@ -259,9 +258,8 @@ class CLLoader:
 
         children = []
         for child, _, edge_data in self._graph.in_edges(cl_id, data=True):
-            if edge_data.get("relationship") in (None, "is_a"):
-                if child.startswith("CL:"):
-                    children.append(child)
+            if edge_data.get("relationship") in (None, "is_a") and child.startswith("CL:"):
+                children.append(child)
         return children
 
     def get_ancestors(self, cl_id: str, include_self: bool = False) -> list[str]:

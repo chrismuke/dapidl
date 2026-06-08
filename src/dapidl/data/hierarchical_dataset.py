@@ -581,7 +581,6 @@ def create_hierarchical_data_splits(
 
     val_size = val_ratio / (val_ratio + test_ratio)
     if stratify:
-        temp_labels = stratify_labels[np.isin(indices, temp_indices)]
         temp_mask = np.isin(indices, temp_indices)
         temp_stratify = stratify_labels[temp_mask]
     else:

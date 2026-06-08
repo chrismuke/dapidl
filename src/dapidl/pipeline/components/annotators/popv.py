@@ -553,9 +553,8 @@ class PopVAnnotator:
             # Add per-method predictions if requested
             if config.include_method_predictions:
                 for col in adata.obs.columns:
-                    if col.startswith("popv_") and col.endswith("_prediction"):
-                        if col != pred_col:
-                            row[col] = str(adata.obs[col].iloc[i])
+                    if col.startswith("popv_") and col.endswith("_prediction") and col != pred_col:
+                        row[col] = str(adata.obs[col].iloc[i])
 
             annotations_data.append(row)
 

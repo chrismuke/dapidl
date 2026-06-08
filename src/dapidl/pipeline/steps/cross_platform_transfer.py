@@ -202,7 +202,6 @@ class CrossPlatformTransferStep(PipelineStep):
 
         # Load model
         model, class_names = self._load_model(model_path)
-        num_classes = len(class_names)
         logger.info(f"Model classes: {class_names}")
 
         # Load and prepare target data
@@ -357,7 +356,6 @@ class CrossPlatformTransferStep(PipelineStep):
         class_names: list[str],
     ) -> tuple[np.ndarray, np.ndarray, list[str]]:
         """Load patches from target platform data."""
-        cfg = self.config
 
         # Check for existing LMDB dataset
         lmdb_path = data_path / "patches.lmdb"

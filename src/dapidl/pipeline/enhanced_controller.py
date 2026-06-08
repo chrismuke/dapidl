@@ -547,7 +547,6 @@ class EnhancedDAPIDLPipelineController:
                 train_step = UniversalDAPITrainingStep(train_config)
                 train_artifacts = train_step.execute(primary_lmdb)
                 test_metrics = train_artifacts.outputs.get("test_metrics", {})
-                tissue_metrics = train_artifacts.outputs.get("tissue_metrics", {})
             else:
                 from dapidl.pipeline.steps.training import TrainingConfig, TrainingStep
 
