@@ -53,7 +53,6 @@ def main() -> None:
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "center_masks").mkdir(exist_ok=True)
 
     labels = np.load(LMDB_DIR / "labels.npy")
     # allow_pickle=True is safe here: sources.npy is a self-built LMDB artifact stored on local
@@ -79,7 +78,7 @@ def main() -> None:
     t0 = time.time()
     n_done = n_nuc = 0
     suffix = f"{args.sources}" + (f"_cap{args.max_per_source}" if args.max_per_source else "")
-    pq_path = out / (f"seg_features_{suffix}.parquet" if suffix else "seg_features.parquet")
+    pq_path = out / f"seg_features_{suffix}.parquet"
 
     def flush_rows():
         nonlocal writer, rows
@@ -97,37 +96,40 @@ def main() -> None:
             mask_buf, mask_idx = [], []
             return
         packed = np.packbits(np.stack(mask_buf).reshape(len(mask_buf), -1), axis=1)
+        (out / "center_masks").mkdir(exist_ok=True)
         np.savez_compressed(out / "center_masks" / f"chunk_{mask_idx[0]:09d}.npz",
                             idx=np.array(mask_idx), masks=packed, shape=np.array([128, 128]))
         mask_buf, mask_idx = [], []
 
-    with env.begin() as txn:
-        for gi in idx:
-            patch = _read_patch(txn, gi)
-            masks, probs = scorer._segment(patch)
-            cn = select_center_nucleus(masks, probs, cfg)
-            mask = cn.mask if cn is not None else None
-            prob = cn.prob if cn is not None else 0.0
-            feats = nucleus_feature_vector(patch, mask, prob, cfg, scorer.pixel_size)
-            row = {"global_idx": int(gi), "source": str(sources[gi]),
-                   "label": int(labels[gi]), **feats}
-            rows.append(row)
-            if cn is not None:
-                n_nuc += 1
-                if args.save_masks == "all":
-                    mask_buf.append(mask.astype(bool))
-                    mask_idx.append(int(gi))
-            n_done += 1
-            if n_done % args.chunk == 0:
-                flush_rows()
-                flush_masks()
-                rate = n_done / (time.time() - t0)
-                print(f"[feature-pass] {n_done}/{len(idx)} ({rate:.1f}/s) "
-                      f"nucleus_coverage={n_nuc/n_done:.3f}")
-    flush_rows()
-    flush_masks()
-    if writer is not None:
-        writer.close()
+    try:
+        with env.begin() as txn:
+            for gi in idx:
+                patch = _read_patch(txn, gi)
+                masks, probs = scorer._segment(patch)
+                cn = select_center_nucleus(masks, probs, cfg)
+                mask = cn.mask if cn is not None else None
+                prob = cn.prob if cn is not None else 0.0
+                feats = nucleus_feature_vector(patch, mask, prob, cfg, scorer.pixel_size)
+                row = {"global_idx": int(gi), "source": str(sources[gi]),
+                       "label": int(labels[gi]), **feats}
+                rows.append(row)
+                if cn is not None:
+                    n_nuc += 1
+                    if args.save_masks == "all":
+                        mask_buf.append(cn.mask.astype(bool))
+                        mask_idx.append(int(gi))
+                n_done += 1
+                if n_done % args.chunk == 0:
+                    flush_rows()
+                    flush_masks()
+                    rate = n_done / (time.time() - t0)
+                    print(f"[feature-pass] {n_done}/{len(idx)} ({rate:.1f}/s) "
+                          f"nucleus_coverage={n_nuc/n_done:.3f}")
+        flush_rows()
+        flush_masks()
+    finally:
+        if writer is not None:
+            writer.close()
 
     dt = time.time() - t0
     rate = n_done / dt if dt > 0 else 0.0
@@ -135,10 +137,12 @@ def main() -> None:
           f"nucleus_coverage={n_nuc/max(n_done,1):.3f}; wrote {pq_path}")
     if args.limit is not None:
         full = len(select_pass_indices(sources, labels, TRAIN + TEST))
-        eta_h = full / rate / 3600 if rate > 0 else float("inf")
         rep2 = len(select_pass_indices(sources, labels, TEST))
+        eta_h = full / rate / 3600 if rate > 0 else float("inf")
+        rep2_h = rep2 / rate / 3600 if rate > 0 else float("inf")
         print(f"[ETA] full {full} patches @ {rate:.1f}/s ≈ {eta_h:.1f} h "
-              f"(rep2 only: {rep2} ≈ {rep2/rate/3600:.2f} h)")
+              f"(rep2 only: {rep2} ≈ {rep2_h:.2f} h)")
+        print("[smoke] re-run without --limit for the full pass")
 
 
 if __name__ == "__main__":
