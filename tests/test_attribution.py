@@ -23,6 +23,15 @@ def test_ig_zero_when_x_equals_baseline():
     assert abs(float(attr.sum())) < 1e-6
 
 
+def test_ig_shape_and_finite_for_image_input():
+    torch.manual_seed(2)
+    model = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(8 * 8, 2))
+    x = torch.randn(1, 1, 8, 8)
+    attr = integrated_gradients(model, x, target=0, steps=8)
+    assert attr.shape == x.shape  # guards the rank-agnostic view() logic for (1,1,H,W)
+    assert torch.isfinite(attr).all()
+
+
 def test_fraction_in_mask_uses_absolute_value():
     attr = np.array([[1.0, -3.0], [0.0, 0.0]])
     mask = np.array([[True, False], [False, False]])
