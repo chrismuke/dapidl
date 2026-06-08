@@ -295,10 +295,9 @@ class PercentileNormalize(A.ImageOnlyTransform):
         p_high: float,
         mean: float = 0.5,
         std: float = 0.25,
-        always_apply: bool = True,
         p: float = 1.0,
     ):
-        super().__init__(always_apply=always_apply, p=p)
+        super().__init__(p=p)
         self.p_low = p_low
         self.p_high = p_high
         self.mean = mean
@@ -342,7 +341,6 @@ class ReinhardNormalize(A.ImageOnlyTransform):
         target_stats: dict[str, float],
         final_mean: float = 0.5,
         final_std: float = 0.25,
-        always_apply: bool = True,
         p: float = 1.0,
     ):
         """Initialize Reinhard normalization.
@@ -353,7 +351,7 @@ class ReinhardNormalize(A.ImageOnlyTransform):
             final_mean: Mean for final normalization (model input)
             final_std: Std for final normalization (model input)
         """
-        super().__init__(always_apply=always_apply, p=p)
+        super().__init__(p=p)
         self.source_stats = source_stats
         self.target_stats = target_stats
         self.final_mean = final_mean
@@ -423,10 +421,10 @@ def get_train_transforms(
                 A.RandomRotate90(p=0.5),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
-                A.ShiftScaleRotate(
-                    shift_limit=0.1,
-                    scale_limit=scale_limit,  # 0.1 single-platform, 0.5 cross-platform
-                    rotate_limit=15,
+                A.Affine(
+                    translate_percent=(-0.1, 0.1),
+                    scale=(1 - scale_limit, 1 + scale_limit),  # 0.1 single, 0.5 cross-platform
+                    rotate=(-15, 15),
                     border_mode=0,
                     p=0.5,
                 ),
@@ -463,10 +461,10 @@ def get_train_transforms(
                 A.RandomRotate90(p=0.5),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
-                A.ShiftScaleRotate(
-                    shift_limit=0.1,
-                    scale_limit=scale_limit,  # 0.1 single-platform, 0.5 cross-platform
-                    rotate_limit=15,
+                A.Affine(
+                    translate_percent=(-0.1, 0.1),
+                    scale=(1 - scale_limit, 1 + scale_limit),  # 0.1 single, 0.5 cross-platform
+                    rotate=(-15, 15),
                     border_mode=0,
                     p=0.5,
                 ),
@@ -622,10 +620,10 @@ def get_heavy_augmentation_transforms(
                 A.RandomRotate90(p=1.0),  # Always rotate
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
-                A.ShiftScaleRotate(
-                    shift_limit=0.15,  # Increased from 0.1
-                    scale_limit=0.2,   # Increased from 0.1
-                    rotate_limit=30,   # Increased from 15
+                A.Affine(
+                    translate_percent=(-0.15, 0.15),  # Increased from 0.1
+                    scale=(0.8, 1.2),                 # Increased from 0.1
+                    rotate=(-30, 30),                 # Increased from 15
                     border_mode=0,
                     p=0.8,  # Increased from 0.5
                 ),
@@ -668,10 +666,10 @@ def get_heavy_augmentation_transforms(
                 A.RandomRotate90(p=1.0),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
-                A.ShiftScaleRotate(
-                    shift_limit=0.15,
-                    scale_limit=0.2,
-                    rotate_limit=30,
+                A.Affine(
+                    translate_percent=(-0.15, 0.15),
+                    scale=(0.8, 1.2),
+                    rotate=(-30, 30),
                     border_mode=0,
                     p=0.8,
                 ),
