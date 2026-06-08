@@ -2031,7 +2031,7 @@ def heist_prepare(
     # Get annotated cell IDs and filter data to match
     # Ensure consistent types (convert to strings for comparison)
     annotated_cell_ids = annotations["cell_id"].to_numpy()
-    annotated_cell_ids_set = set(str(cid) for cid in annotated_cell_ids)
+    annotated_cell_ids_set = {str(cid) for cid in annotated_cell_ids}
     cell_id_to_idx = {str(cid): i for i, cid in enumerate(cell_ids)}
 
     # Create valid indices matching annotation order
@@ -2167,10 +2167,7 @@ def heist_train(
     from dapidl.training.heist_trainer import HEISTTrainer, compute_class_weights
 
     data_path = Path(data_dir)
-    if output_dir is None:
-        output_path = data_path / "training"
-    else:
-        output_path = Path(output_dir)
+    output_path = data_path / "training" if output_dir is None else Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     console.print("[bold blue]HEIST Training[/bold blue]")

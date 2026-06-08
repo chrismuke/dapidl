@@ -397,7 +397,7 @@ class MultiTissueDataset(Dataset):
         self.labels = np.zeros(self.total_samples, dtype=np.int64)
         offset = 0
 
-        for i, (labels, mapping) in enumerate(zip(self._all_labels, self._all_class_mappings)):
+        for _i, (labels, mapping) in enumerate(zip(self._all_labels, self._all_class_mappings, strict=False)):
             # Build local-to-unified mapping
             local_to_unified = {}
             reverse_mapping = {v: k for k, v in mapping.items()}
@@ -431,7 +431,7 @@ class MultiTissueDataset(Dataset):
         all_cl_ids = set()
 
         for mapping in self._all_class_mappings:
-            for class_name in mapping.keys():
+            for class_name in mapping:
                 cl_id = map_label(class_name)
                 if cl_id != "UNMAPPED":
                     all_cl_ids.add(cl_id)
@@ -455,12 +455,9 @@ class MultiTissueDataset(Dataset):
         # Build name-to-unified mapping for each original class
         name_to_unified = {}
         for mapping in self._all_class_mappings:
-            for class_name in mapping.keys():
+            for class_name in mapping:
                 cl_id = map_label(class_name)
-                if cl_id != "UNMAPPED":
-                    unified_name = cl_to_unified[cl_id]
-                else:
-                    unified_name = class_name
+                unified_name = cl_to_unified[cl_id] if cl_id != "UNMAPPED" else class_name
                 name_to_unified[class_name] = self.unified_class_mapping.get(
                     unified_name, 0
                 )
@@ -469,7 +466,7 @@ class MultiTissueDataset(Dataset):
         self.labels = np.zeros(self.total_samples, dtype=np.int64)
         offset = 0
 
-        for i, (labels, mapping) in enumerate(zip(self._all_labels, self._all_class_mappings)):
+        for _i, (labels, mapping) in enumerate(zip(self._all_labels, self._all_class_mappings, strict=False)):
             reverse_mapping = {v: k for k, v in mapping.items()}
 
             for j, local_label in enumerate(labels):
@@ -510,7 +507,7 @@ class MultiTissueDataset(Dataset):
         """
         for i, (start, end) in enumerate(zip(
             self.dataset_offsets[:-1],
-            self.dataset_offsets[1:]
+            self.dataset_offsets[1:], strict=False
         )):
             if start <= global_idx < end:
                 return i, global_idx - start

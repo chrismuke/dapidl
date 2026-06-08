@@ -153,7 +153,7 @@ def export_cell_groups_csv(
             colors.append(hex_color)
 
         # Create color mapping
-        color_map = dict(zip(unique_types, colors))
+        color_map = dict(zip(unique_types, colors, strict=False))
 
         # Add color column
         csv_df = csv_df.with_columns(
@@ -268,10 +268,7 @@ def create_annotated_xenium_dataset(
             modified_files["cells.parquet"] = temp_cells
 
         # Create hardlinked dataset
-        if (xenium_dir / "outs").exists():
-            output_outs = output_dir / "outs"
-        else:
-            output_outs = output_dir
+        output_outs = output_dir / "outs" if (xenium_dir / "outs").exists() else output_dir
 
         create_hardlink_dataset(
             source_dir=xenium_outs,

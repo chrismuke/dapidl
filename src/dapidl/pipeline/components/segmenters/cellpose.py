@@ -349,8 +349,8 @@ class CellposeSegmenter:
                 masks_list = self._run_cellpose_inference_batch(batch_tiles, cfg)
 
                 # Process results for each tile in batch
-                for idx, (masks, (y_start, x_start, y_end, x_end, tile_shape)) in enumerate(
-                    zip(masks_list, batch_metadata)
+                for _idx, (masks, (y_start, x_start, y_end, x_end, tile_shape)) in enumerate(
+                    zip(masks_list, batch_metadata, strict=False)
                 ):
                     # Calculate the non-overlapping region to keep
                     keep_y_start = overlap // 2 if y_start > 0 else 0

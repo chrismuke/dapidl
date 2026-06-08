@@ -457,9 +457,7 @@ class CurriculumScheduler:
         phase = self.get_phase_number(epoch)
 
         # Only freeze during Phase 2 and 3 transitions
-        if phase > 1 and epochs_in_phase <= self.freeze_backbone_epochs:
-            return True
-        return False
+        return bool(phase > 1 and epochs_in_phase <= self.freeze_backbone_epochs)
 
     def get_phase_number(self, epoch: int) -> int:
         """Get current phase number (1, 2, or 3)."""

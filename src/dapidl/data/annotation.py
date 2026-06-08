@@ -370,7 +370,6 @@ GROUND_TRUTH_MAPPING = {
     # Identity mappings for marker-based annotations
     "Epithelial": "Epithelial",
     "Immune": "Immune",
-    "Stromal": "Stromal",
 }
 
 
@@ -809,7 +808,7 @@ class CellTypeAnnotator:
         refined_by = np.array([""] * len(cell_types_primary))
 
         # Step 2: Run specialized models for refinement
-        for i, specialized_model in enumerate(self.model_names[1:], start=2):
+        for _i, specialized_model in enumerate(self.model_names[1:], start=2):
             logger.info(f"Running specialized model {specialized_model} for refinement...")
 
             cell_types_spec, conf_spec, _ = self._run_single_model(adata_norm, specialized_model)
@@ -918,10 +917,7 @@ class CellTypeAnnotator:
 
             # Vote on broad category (excluding Unknown if possible)
             valid_broads = [b for b in cell_broads if b != "Unknown"]
-            if valid_broads:
-                broad_counter = Counter(valid_broads)
-            else:
-                broad_counter = Counter(cell_broads)
+            broad_counter = Counter(valid_broads) if valid_broads else Counter(cell_broads)
 
             consensus_broad, consensus_count = broad_counter.most_common(1)[0]
             consensus_score = consensus_count / n_models
@@ -1107,10 +1103,7 @@ class CellTypeAnnotator:
         pred_labels = list(ro.r('function(x) x$labels')(results))
         # Get max score as confidence (scores are correlation values)
         scores = np.array(ro.r('function(x) x$scores')(results))
-        if len(scores.shape) == 1:
-            confidences = scores
-        else:
-            confidences = scores.max(axis=1)
+        confidences = scores if len(scores.shape) == 1 else scores.max(axis=1)
         # Normalize scores to 0-1 range (correlation can be negative)
         confidences = (confidences + 1) / 2  # Convert from [-1, 1] to [0, 1]
 
@@ -1163,7 +1156,7 @@ class CellTypeAnnotator:
 
         # Get cell IDs from AnnData - convert to strings for comparison
         # (H5 stores as strings, Excel may convert to int)
-        adata_cell_ids = set(str(x) for x in adata.obs["cell_id"].values)
+        adata_cell_ids = {str(x) for x in adata.obs["cell_id"].values}
         gt_df["Barcode"] = gt_df["Barcode"].astype(str)
         gt_cell_ids = set(gt_df["Barcode"].values)
 

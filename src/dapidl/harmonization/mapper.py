@@ -378,7 +378,7 @@ class LabelHarmonizer:
 
             # Compute metrics (excluding Unknown)
             mask = np.array(
-                [s != "Unknown" and t != "Unknown" for s, t in zip(src_mapped, tgt_mapped)]
+                [s != "Unknown" and t != "Unknown" for s, t in zip(src_mapped, tgt_mapped, strict=False)]
             )
             if mask.sum() > 0:
                 src_valid = np.array(src_mapped)[mask]
@@ -451,9 +451,9 @@ class LabelHarmonizer:
         tgt_mapped, _ = self.map_labels(target_labels, target_name, level)
 
         # Filter out Unknown
-        mask = [s != "Unknown" and t != "Unknown" for s, t in zip(src_mapped, tgt_mapped)]
-        src_valid = [s for s, m in zip(src_mapped, mask) if m]
-        tgt_valid = [t for t, m in zip(tgt_mapped, mask) if m]
+        mask = [s != "Unknown" and t != "Unknown" for s, t in zip(src_mapped, tgt_mapped, strict=False)]
+        src_valid = [s for s, m in zip(src_mapped, mask, strict=False) if m]
+        tgt_valid = [t for t, m in zip(tgt_mapped, mask, strict=False) if m]
 
         return classification_report(tgt_valid, src_valid, zero_division=0)
 

@@ -144,7 +144,7 @@ def evaluate_annotations_df(
                     s == t
                     for s, t in zip(
                         result.harmonized_source[level],
-                        result.harmonized_target[level],
+                        result.harmonized_target[level], strict=False,
                     )
                 ],
             ),

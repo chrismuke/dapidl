@@ -120,7 +120,7 @@ def match_instances_iou(
     matches: list[tuple[int, int]] = []
     ious: list[float] = []
 
-    for r, c in zip(row_idx, col_idx):
+    for r, c in zip(row_idx, col_idx, strict=False):
         iou_val = iou_matrix[r, c]
         if iou_val >= iou_threshold:
             matches.append((int(labels_a[r]), int(labels_b[c])))

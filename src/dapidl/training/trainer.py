@@ -811,7 +811,7 @@ class Trainer:
             ax.set_xlim(0, 1)
 
             # Add value labels
-            for bar, f1 in zip(bars, sorted_f1):
+            for bar, f1 in zip(bars, sorted_f1, strict=False):
                 ax.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height() / 2,
                         f"{f1:.3f}", va="center", fontsize=8)
 
@@ -822,7 +822,7 @@ class Trainer:
             # Log worst classes summary
             worst_classes = table_data_sorted[:5]  # Bottom 5
             logger.info("  Worst 5 classes by F1:")
-            for name, true_n, pred_n, f1, prec, rec in worst_classes:
+            for name, true_n, _pred_n, f1, prec, rec in worst_classes:
                 logger.info(f"    {name}: F1={f1:.3f} (P={prec:.3f}, R={rec:.3f}, n={true_n})")
 
         except Exception as e:
@@ -849,7 +849,7 @@ class Trainer:
 
             # Find misclassifications
             misclassified_mask = y_true != y_pred
-            misclassified_pairs = list(zip(y_true[misclassified_mask], y_pred[misclassified_mask]))
+            misclassified_pairs = list(zip(y_true[misclassified_mask], y_pred[misclassified_mask], strict=False))
 
             if not misclassified_pairs:
                 return
@@ -875,7 +875,7 @@ class Trainer:
             wandb.log({f"{prefix}_top_misclassifications": table})
 
             logger.info("  Top 5 misclassifications:")
-            for i, ((true_idx, pred_idx), count) in enumerate(top_confusions[:5]):
+            for _i, ((true_idx, pred_idx), count) in enumerate(top_confusions[:5]):
                 logger.info(
                     f"    {self.class_names[true_idx]} → {self.class_names[pred_idx]}: {count}"
                 )

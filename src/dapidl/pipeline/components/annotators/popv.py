@@ -215,10 +215,7 @@ class PopVAnnotator:
 
         # Get config
         if config is not None:
-            if isinstance(config, AnnotationConfig):
-                cfg = self._convert_config(config)
-            else:
-                cfg = config
+            cfg = self._convert_config(config) if isinstance(config, AnnotationConfig) else config
         else:
             cfg = self.config
 
@@ -550,9 +547,8 @@ class PopVAnnotator:
             }
 
             # Add ontology parent if available
-            if config.include_ontology_parent:
-                if "popv_parent" in adata.obs.columns:
-                    row["ontology_parent"] = str(adata.obs["popv_parent"].iloc[i])
+            if config.include_ontology_parent and "popv_parent" in adata.obs.columns:
+                row["ontology_parent"] = str(adata.obs["popv_parent"].iloc[i])
 
             # Add per-method predictions if requested
             if config.include_method_predictions:
@@ -586,7 +582,7 @@ class PopVAnnotator:
             unique_types = sorted(annotations_df["broad_category"].unique().to_list())
 
         class_mapping = {name: i for i, name in enumerate(unique_types)}
-        index_to_class = {i: name for i, name in enumerate(unique_types)}
+        index_to_class = dict(enumerate(unique_types))
 
         # Calculate statistics
         consensus_scores = annotations_df["consensus_score"].to_numpy()

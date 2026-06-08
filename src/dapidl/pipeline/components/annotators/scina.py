@@ -310,7 +310,7 @@ class SCINAAnnotator:
 
         # Build annotations DataFrame
         annotations_data = []
-        for cid, pred, conf in zip(cell_ids, assigned_types, confidence):
+        for cid, pred, conf in zip(cell_ids, assigned_types, confidence, strict=False):
             broad_cat = SCINA_TO_BROAD.get(pred, map_to_broad_category(pred))
             annotations_data.append({
                 "cell_id": str(cid),
@@ -329,7 +329,7 @@ class SCINAAnnotator:
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Calculate statistics
         n_annotated = annotations_df.height

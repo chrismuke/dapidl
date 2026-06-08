@@ -25,6 +25,7 @@ from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+import contextlib
 
 # ============================================================================
 # Enums for type-safe choices
@@ -1063,10 +1064,8 @@ def _parse_dataset_entry(entry: str) -> TissueDatasetConfig:
     # Weight may be the second clean_parts token (after recipe extraction)
     weight = 1.0
     if len(clean_parts) > 1:
-        try:
+        with contextlib.suppress(ValueError):
             weight = float(clean_parts[1])
-        except ValueError:
-            pass
 
     return TissueDatasetConfig(
         tissue=tissue,

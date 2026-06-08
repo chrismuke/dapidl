@@ -88,7 +88,7 @@ class PatchExtractor:
         n_valid = 0
         n_skipped = 0
 
-        for cell_id, (x, y) in zip(cell_ids, centroids):
+        for cell_id, (x, y) in zip(cell_ids, centroids, strict=False):
             patch = self.extract_patch(image, x, y)
             if patch is not None:
                 n_valid += 1
@@ -265,7 +265,7 @@ class PatchExtractor:
             "fine_grained": use_fine_grained,
             "class_distribution": {
                 cat: int((metadata_df[label_column] == cat).sum())
-                for cat in class_mapping.keys()
+                for cat in class_mapping
             },
         }
         with open(output_path / "dataset_info.json", "w") as f:

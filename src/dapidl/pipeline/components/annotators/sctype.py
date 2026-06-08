@@ -218,7 +218,7 @@ def assign_cell_types(
     confidence = np.clip(confidence, 0, 1)
 
     assigned_types = []
-    for i, (idx, score) in enumerate(zip(best_indices, best_scores)):
+    for _i, (idx, score) in enumerate(zip(best_indices, best_scores, strict=False)):
         if score >= min_score:
             assigned_types.append(cell_types[idx])
         else:
@@ -363,7 +363,7 @@ class ScTypeAnnotator:
 
         # Build annotations DataFrame
         annotations_data = []
-        for i, (cid, pred, conf) in enumerate(zip(cell_ids, assigned_types, confidence)):
+        for _i, (cid, pred, conf) in enumerate(zip(cell_ids, assigned_types, confidence, strict=False)):
             broad_cat = SCTYPE_TO_BROAD.get(pred, map_to_broad_category(pred))
             annotations_data.append({
                 "cell_id": str(cid),
@@ -382,7 +382,7 @@ class ScTypeAnnotator:
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Calculate statistics
         n_annotated = annotations_df.height
@@ -452,7 +452,7 @@ def run_sctype_standalone(
     # Load data
     data_path = Path(data_path)
 
-    if data_path.suffix == ".h5" and not data_path.suffix == ".h5ad":
+    if data_path.suffix == ".h5" and data_path.suffix != ".h5ad":
         # 10x format
         logger.info(f"Loading 10x H5 format from {data_path}")
         with h5py.File(data_path, 'r') as f:

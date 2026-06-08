@@ -507,7 +507,7 @@ class CrossPlatformTransferStep(PipelineStep):
                 id_to_label = dict(zip(
                     annot_df["cell_id"].to_list() if "cell_id" in annot_df.columns
                     else annot_df["EntityID"].to_list(),
-                    annot_df[label_col].to_list()
+                    annot_df[label_col].to_list(), strict=False
                 ))
             else:
                 id_to_label = {}

@@ -57,10 +57,7 @@ def resolve_dataset_path(
     Returns:
         Path to the LMDB dataset directory
     """
-    if base_path is None:
-        base_path = Path.home() / "datasets" / "derived"
-    else:
-        base_path = Path(base_path)
+    base_path = Path.home() / "datasets" / "derived" if base_path is None else Path(base_path)
 
     dataset_name = f"xenium-breast-{centering}-{granularity}-p{patch_size}"
     dataset_path = base_path / dataset_name

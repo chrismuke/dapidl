@@ -152,7 +152,7 @@ class SingleRAnnotator:
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Calculate statistics
         n_annotated = annotations_df.height
@@ -264,10 +264,7 @@ class SingleRAnnotator:
         pred_labels = list(ro.r("function(x) x$labels")(results))
         # Get max score as confidence (scores are correlation values)
         scores = np.array(ro.r("function(x) x$scores")(results))
-        if len(scores.shape) == 1:
-            confidences = scores
-        else:
-            confidences = scores.max(axis=1)
+        confidences = scores if len(scores.shape) == 1 else scores.max(axis=1)
         # Normalize scores to 0-1 range (correlation can be negative)
         confidences = (confidences + 1) / 2  # Convert from [-1, 1] to [0, 1]
 

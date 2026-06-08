@@ -295,7 +295,7 @@ class UniversalDAPITrainingStep(PipelineStep):
                 return all("path" in c and "tissue" in c for c in configs)
 
         # Check for patches_path_N pattern
-        has_patches = any(k.startswith("patches_path") for k in outputs.keys())
+        has_patches = any(k.startswith("patches_path") for k in outputs)
         return has_patches
 
     def execute(self, artifacts: StepArtifacts) -> StepArtifacts:
@@ -978,7 +978,7 @@ class UniversalDAPITrainingStep(PipelineStep):
         model.train()
         total_loss = 0.0
 
-        for batch_idx, (images, labels) in enumerate(loader):
+        for _batch_idx, (images, labels) in enumerate(loader):
             images = images.to(device)
             # Extract targets - pass None for inactive heads (curriculum learning)
             coarse_targets = labels["coarse"].to(device)

@@ -181,10 +181,7 @@ class CrossValidationStep(PipelineStep):
             class_mapping = json.loads(class_mapping)
 
         # Setup output directory
-        if cfg.output_dir:
-            output_dir = Path(cfg.output_dir)
-        else:
-            output_dir = patches_path.parent / "validation"
+        output_dir = Path(cfg.output_dir) if cfg.output_dir else patches_path.parent / "validation"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info("=" * 60)
@@ -225,10 +222,7 @@ class CrossValidationStep(PipelineStep):
 
         # Check for consensus score
         has_consensus = "consensus_score" in annotations_df.columns
-        if has_consensus:
-            consensus_scores = annotations_df["consensus_score"].to_numpy()
-        else:
-            consensus_scores = None
+        consensus_scores = annotations_df["consensus_score"].to_numpy() if has_consensus else None
 
         # 1. LEIDEN CLUSTERING CHECK
         if cfg.run_leiden_check:
@@ -631,10 +625,7 @@ class CrossValidationStep(PipelineStep):
 
                 output = model(batch)
                 # HierarchicalClassifier returns HierarchicalOutput; use coarse_logits
-                if hasattr(output, 'coarse_logits'):
-                    logits = output.coarse_logits
-                else:
-                    logits = output
+                logits = output.coarse_logits if hasattr(output, 'coarse_logits') else output
                 probs = F.softmax(logits, dim=1)
                 preds = probs.argmax(dim=1)
 
@@ -865,9 +856,8 @@ class CrossValidationStep(PipelineStep):
             elif "error" in results["leiden"]:
                 print(f"\nLeiden: Error - {results['leiden']['error']}")
 
-        if results["dapi"]:
-            if "agreement_rate" in results["dapi"]:
-                print(f"DAPI Agreement: {results['dapi']['agreement_rate']:.1%}")
+        if results["dapi"] and "agreement_rate" in results["dapi"]:
+            print(f"DAPI Agreement: {results['dapi']['agreement_rate']:.1%}")
 
         if results["consensus"]:
             print(f"Consensus Mean: {results['consensus'].get('mean_consensus', 'N/A'):.3f}")
@@ -1048,7 +1038,7 @@ class CrossValidationStep(PipelineStep):
         matched_gt_labels = []
         matched_pred_labels = []
 
-        for i, (cell_id, pred_label) in enumerate(zip(pred_cell_ids, celltypist_labels)):
+        for i, (cell_id, pred_label) in enumerate(zip(pred_cell_ids, celltypist_labels, strict=False)):
             if cell_id in gt_cell_ids:
                 gt_row = gt_df.filter(pl.col(cell_id_col) == cell_id)
                 if len(gt_row) > 0:

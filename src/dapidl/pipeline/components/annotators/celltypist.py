@@ -119,7 +119,7 @@ class CellTypistAnnotator:
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Calculate statistics
         n_annotated = annotations_df.height

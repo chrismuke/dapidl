@@ -191,10 +191,7 @@ class ConsensusAnnotator:
         annotations_df = consensus_result.annotations_df
 
         # Use the appropriate column for class mapping
-        if cfg.fine_grained:
-            type_col = "consensus_fine"
-        else:
-            type_col = "consensus_broad"
+        type_col = "consensus_fine" if cfg.fine_grained else "consensus_broad"
 
         # Rename for standard interface
         annotations_df = annotations_df.with_columns([
@@ -214,7 +211,7 @@ class ConsensusAnnotator:
             class_names = ["Epithelial", "Immune", "Stromal"]
 
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Statistics
         n_high_conf = annotations_df.filter(pl.col("is_high_confidence")).height

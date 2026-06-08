@@ -634,7 +634,7 @@ class PatchExtractionStep(PipelineStep):
         # Detect if we're in fine-grained mode by checking if class_mapping
         # contains broad categories or fine-grained types
         broad_categories = {"Epithelial", "Immune", "Stromal", "Endothelial", "Unknown"}
-        is_fine_grained = not all(k in broad_categories for k in class_mapping.keys())
+        is_fine_grained = not all(k in broad_categories for k in class_mapping)
 
         # Choose label column based on mode
         if is_fine_grained:

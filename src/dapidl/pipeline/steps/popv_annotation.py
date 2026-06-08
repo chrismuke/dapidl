@@ -416,10 +416,7 @@ class PopVAnnotationStep(PipelineStep):
         self, annotations_df: pl.DataFrame, fine_grained: bool
     ) -> dict[str, int]:
         """Compute class mapping from annotations DataFrame."""
-        if fine_grained:
-            col = "predicted_type"
-        else:
-            col = "broad_category"
+        col = "predicted_type" if fine_grained else "broad_category"
 
         if col not in annotations_df.columns:
             # Fallback

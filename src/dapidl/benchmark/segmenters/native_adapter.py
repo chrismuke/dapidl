@@ -176,7 +176,7 @@ class NativeAdapter(SegmenterAdapter):
         centroids_list: list[tuple[float, float]] = []
 
         for cell_id, (x_g, y_g, vol) in enumerate(
-            zip(xs_global, ys_global, volumes), start=1
+            zip(xs_global, ys_global, volumes, strict=False), start=1
         ):
             # Convert global µm coordinates to pixel coordinates
             cx = (x_g - self._x_offset) / pix

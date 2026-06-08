@@ -104,7 +104,7 @@ class SpatialGraphBuilder:
         dist_list = []
 
         for i in range(n_cells):
-            for j, (neighbor_idx, dist) in enumerate(
+            for _j, (neighbor_idx, dist) in enumerate(
                 zip(indices[i, 1:], distances[i, 1:], strict=True)
             ):
                 if dist <= max_distance_px:

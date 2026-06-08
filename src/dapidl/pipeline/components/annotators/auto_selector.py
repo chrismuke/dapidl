@@ -829,7 +829,7 @@ def compute_proportion_score(
 
     # Compute observed proportions
     unique, counts = np.unique(broad_preds, return_counts=True)
-    observed = dict(zip(unique, counts / len(broad_preds)))
+    observed = dict(zip(unique, counts / len(broad_preds), strict=False))
 
     scores = []
     for cell_type, (low, high) in expected_proportions.items():
@@ -903,7 +903,7 @@ def score_model(
         # Predicted proportions
         broad_preds = np.array([map_to_broad(p) for p in predictions])
         unique, counts = np.unique(broad_preds, return_counts=True)
-        pred_proportions = {k: float(v / len(broad_preds)) for k, v in zip(unique, counts)}
+        pred_proportions = {k: float(v / len(broad_preds)) for k, v in zip(unique, counts, strict=False)}
 
         # Composite score (weighted by empirical importance)
         composite = (
@@ -1187,7 +1187,7 @@ class AutoModelSelector:
             "n_high_confidence": n_high_conf,
             "pct_high_confidence": n_high_conf / n_cells * 100,
             "broad_distribution": dict(zip(
-                *np.unique(consensus_broad, return_counts=True)
+                *np.unique(consensus_broad, return_counts=True), strict=False
             )),
         }
 
@@ -1322,7 +1322,7 @@ class AutoModelSelector:
         consensus_score = n_models_agree / total_models
 
         # Medium-grained
-        medium_predictions = [_map_to_medium(f, b) for f, b in zip(consensus_fine, consensus_broad)]
+        medium_predictions = [_map_to_medium(f, b) for f, b in zip(consensus_fine, consensus_broad, strict=False)]
 
         # Build DataFrame
         annotations_df = pl.DataFrame({
@@ -1356,7 +1356,7 @@ class AutoModelSelector:
             "mean_agreement": float(n_models_agree.mean()),
             "strategy": "tiered",
             "broad_distribution": dict(zip(
-                *np.unique(consensus_broad, return_counts=True)
+                *np.unique(consensus_broad, return_counts=True), strict=False
             )),
         }
 

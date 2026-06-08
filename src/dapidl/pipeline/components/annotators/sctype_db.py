@@ -201,10 +201,7 @@ def get_tissue_markers(
     db = load_sctype_db()
 
     # Normalize tissue input to list
-    if isinstance(tissue, str):
-        tissues = [tissue]
-    else:
-        tissues = list(tissue)
+    tissues = [tissue] if isinstance(tissue, str) else list(tissue)
 
     # Resolve tissue names
     resolved_tissues = set()

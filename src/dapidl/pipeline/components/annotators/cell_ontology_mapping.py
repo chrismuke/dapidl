@@ -125,16 +125,10 @@ ANNOTATOR_TO_CL = {
     "Regulatory T cells": "CL:0000815",
     "B cells": "CL:0000236",
     "Plasma cells": "CL:0000786",
-    "Macrophages": "CL:0000235",
-    "Monocytes": "CL:0000576",
     "Dendritic cells": "CL:0000451",
     "Mast cells": "CL:0000097",
-    "NK cells": "CL:0000623",
-    "Fibroblasts": "CL:0000057",
     "Myofibroblasts": "CL:0000186",
     "Pericytes": "CL:0000669",
-    "Adipocytes": "CL:0000136",
-    "Endothelial cells": "CL:0000115",
     "Lymphatic endothelial": "CL:0002138",
 
     # === SCINA outputs (underscores) ===

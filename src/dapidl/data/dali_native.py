@@ -194,10 +194,7 @@ def convert_dataset_to_lmdb(
     zarr_path = data_path / "patches.zarr"
     labels_path = data_path / "labels.npy"
 
-    if output_path is None:
-        output_path = data_path / "patches.lmdb"
-    else:
-        output_path = Path(output_path)
+    output_path = data_path / "patches.lmdb" if output_path is None else Path(output_path)
 
     # Copy normalization stats if they exist
     stats_path = data_path / "normalization_stats.json"

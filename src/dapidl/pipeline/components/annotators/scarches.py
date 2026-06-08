@@ -229,16 +229,13 @@ class ScArchesAnnotator:
             proba = knn.predict_proba(query_latent)
 
         # Get confidence
-        if hasattr(proba, "max"):
-            confidence = proba.max(axis=1)
-        else:
-            confidence = np.ones(len(predictions)) * 0.8
+        confidence = proba.max(axis=1) if hasattr(proba, "max") else np.ones(len(predictions)) * 0.8
 
         # Build annotations
         cell_ids = adata.obs_names.tolist()
         annotations_data = []
 
-        for cid, pred, conf in zip(cell_ids, predictions, confidence):
+        for cid, pred, conf in zip(cell_ids, predictions, confidence, strict=False):
             broad = map_to_broad(pred)
             annotations_data.append({
                 "cell_id": str(cid),
@@ -256,7 +253,7 @@ class ScArchesAnnotator:
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Stats
         n_annotated = annotations_df.height
@@ -310,7 +307,7 @@ class ScArchesAnnotator:
         cell_ids = adata.obs_names.tolist()
         annotations_data = []
 
-        for cid, pred, conf in zip(cell_ids, predictions, confidence):
+        for cid, pred, conf in zip(cell_ids, predictions, confidence, strict=False):
             broad = map_to_broad(pred)
             annotations_data.append({
                 "cell_id": str(cid),
@@ -327,7 +324,7 @@ class ScArchesAnnotator:
 
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         return AnnotationResult(
             annotations_df=annotations_df,

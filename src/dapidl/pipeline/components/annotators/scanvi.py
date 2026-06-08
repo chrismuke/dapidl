@@ -243,7 +243,7 @@ class ScANVIAnnotator:
 
         # Build annotations DataFrame
         annotations_data = []
-        for cid, pred, conf in zip(query_cell_ids, query_predictions, confidence):
+        for cid, pred, conf in zip(query_cell_ids, query_predictions, confidence, strict=False):
             broad_cat = map_scanvi_to_broad(pred)
             annotations_data.append({
                 "cell_id": str(cid),
@@ -262,7 +262,7 @@ class ScANVIAnnotator:
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Calculate statistics
         n_annotated = annotations_df.height

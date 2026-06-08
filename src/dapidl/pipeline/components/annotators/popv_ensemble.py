@@ -644,8 +644,8 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
         # Build cell_id -> predictions mapping
         cell_predictions = defaultdict(list)
         for pred in all_predictions:
-            pred_dict = dict(zip(pred["cell_ids"], pred["predictions"]))
-            conf_dict = dict(zip(pred["cell_ids"], pred["confidence"]))
+            pred_dict = dict(zip(pred["cell_ids"], pred["predictions"], strict=False))
+            conf_dict = dict(zip(pred["cell_ids"], pred["confidence"], strict=False))
 
             for cell_id in cell_ids:
                 str_cell_id = str(cell_id)
@@ -759,7 +759,7 @@ write.csv(output, file.path(output_dir, "singler_results.csv"), row.names = FALS
 
         # Aggregate confidence per label
         label_scores = defaultdict(float)
-        for label, conf in zip(labels, confidences):
+        for label, conf in zip(labels, confidences, strict=False):
             label_scores[label] += conf
 
         # Get winner

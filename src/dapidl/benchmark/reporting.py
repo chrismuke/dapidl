@@ -143,7 +143,7 @@ def _generate_comparison_chart(
     fig, axes = plt.subplots(1, 4, figsize=(18, max(4, len(methods) * 0.5 + 2)))
     fig.suptitle("Segmentation Method Comparison", fontsize=14, y=1.02)
 
-    for ax, (title, values, higher_is_better) in zip(axes, metrics_data):
+    for ax, (title, values, higher_is_better) in zip(axes, metrics_data, strict=False):
         if higher_is_better:
             best_idx = int(np.argmax(values)) if values else 0
         else:

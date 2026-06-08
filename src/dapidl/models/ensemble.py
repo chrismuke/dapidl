@@ -99,7 +99,7 @@ class MultiScaleEnsemble(nn.Module):
         # Collect predictions from all models
         all_probs = []
 
-        for model, patch_size in zip(self.models, self.patch_sizes):
+        for model, patch_size in zip(self.models, self.patch_sizes, strict=False):
             if patch_size not in patches_dict:
                 raise ValueError(
                     f"Missing patches for size {patch_size}. "
@@ -241,7 +241,7 @@ class MultiScaleEnsemble(nn.Module):
             Dictionary mapping patch_size -> probability tensor (B, num_classes)
         """
         predictions = {}
-        for model, patch_size in zip(self.models, self.patch_sizes):
+        for model, patch_size in zip(self.models, self.patch_sizes, strict=False):
             patches = patches_dict[patch_size]
             logits = model(patches)
             predictions[patch_size] = F.softmax(logits, dim=1)

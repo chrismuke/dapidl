@@ -72,10 +72,8 @@ def acquire_train_lock():
     try:
         yield
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             _TRAIN_LOCK.unlink()
-        except FileNotFoundError:
-            pass
 
 
 def _pid_alive(pid: int) -> bool:

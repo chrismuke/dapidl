@@ -920,10 +920,7 @@ class EnsembleAnnotationStep(PipelineStep):
         self, annotations_df: pl.DataFrame, fine_grained: bool
     ) -> dict[str, int]:
         """Compute class mapping from annotations DataFrame."""
-        if fine_grained:
-            col = "predicted_type"
-        else:
-            col = "broad_category"
+        col = "predicted_type" if fine_grained else "broad_category"
 
         cell_types = sorted(annotations_df[col].unique().to_list())
         # Filter out Unknown if present, add at end

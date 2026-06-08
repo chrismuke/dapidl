@@ -405,10 +405,7 @@ class SegmentationStep(PipelineStep):
             if not path.exists():
                 path = list(data_path.glob("cell_metadata*.csv"))[0]
 
-        if path.suffix == ".parquet":
-            cells_df = pl.read_parquet(path)
-        else:
-            cells_df = pl.read_csv(path)
+        cells_df = pl.read_parquet(path) if path.suffix == ".parquet" else pl.read_csv(path)
 
         # Standardize column names
         if platform == "xenium":

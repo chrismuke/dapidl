@@ -87,10 +87,7 @@ def adapt_batch_norm(
                 break
 
             # Handle both (images,) and (images, labels) formats
-            if isinstance(batch, (list, tuple)):
-                images = batch[0]
-            else:
-                images = batch
+            images = batch[0] if isinstance(batch, (list, tuple)) else batch
 
             # Move to device and run forward pass
             images = images.to(device)

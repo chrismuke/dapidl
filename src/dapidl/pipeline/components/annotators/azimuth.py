@@ -214,7 +214,7 @@ class AzimuthAnnotator:
         # Build class mapping
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         # Stats
         n_annotated = annotations_df.height
@@ -331,7 +331,7 @@ tryCatch({{
         """Return empty result on failure."""
         class_names = get_class_names(cfg.fine_grained)
         class_mapping = {name: i for i, name in enumerate(class_names)}
-        index_to_class = {i: name for i, name in enumerate(class_names)}
+        index_to_class = dict(enumerate(class_names))
 
         return AnnotationResult(
             annotations_df=pl.DataFrame(),

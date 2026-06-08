@@ -126,7 +126,7 @@ def create_class_prediction_grid(
 
         # Draw samples
         class_samples = samples.get(class_name, [])
-        for col_idx, (img, pred_class, is_correct) in enumerate(class_samples):
+        for col_idx, (img, _pred_class, is_correct) in enumerate(class_samples):
             x_offset = label_width + col_idx * cell_size
 
             # Border color: green for correct, red for incorrect

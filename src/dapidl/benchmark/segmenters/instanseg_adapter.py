@@ -86,10 +86,7 @@ class InstanSegAdapter(SegmenterAdapter):
         runtime = time.perf_counter() - t0
 
         # result is a tuple (nuclei_masks, cell_masks); use nuclei
-        if isinstance(result, tuple):
-            nuclei = result[0]
-        else:
-            nuclei = result
+        nuclei = result[0] if isinstance(result, tuple) else result
 
         masks = np.asarray(nuclei).astype(np.int32)
 

@@ -203,10 +203,10 @@ class DAPIDLDatasetWithHeavyAug(Dataset):
         total = len(labels_subset)
         threshold_count = rare_class_threshold * total
 
-        self.rare_classes = set(
+        self.rare_classes = {
             idx for idx, count in enumerate(class_counts)
             if 0 < count < threshold_count
-        )
+        }
 
         # Create transforms
         if split == "train":

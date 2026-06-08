@@ -205,10 +205,7 @@ class MultiTaskClassifier(nn.Module):
         if input_adapter == "auto":
             if backbone_name in BACKBONE_PRESETS:
                 native_channels = BACKBONE_PRESETS[backbone_name]["native_channels"]
-                if native_channels == 1:
-                    input_adapter = "none"
-                else:
-                    input_adapter = "replicate"
+                input_adapter = "none" if native_channels == 1 else "replicate"
             else:
                 input_adapter = "replicate"
 

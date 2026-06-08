@@ -614,7 +614,7 @@ class LMDBCreationStep(PipelineStep):
         # 1b. confidence_levels.npy - per-patch confidence level (0=coarse, 1=medium, 2=fine)
         confidence_array = np.array(all_confidence_levels, dtype=np.int8)
         np.save(dataset_dir / "confidence_levels.npy", confidence_array)
-        cl_counts = {int(k): int(v) for k, v in zip(*np.unique(confidence_array, return_counts=True))}
+        cl_counts = {int(k): int(v) for k, v in zip(*np.unique(confidence_array, return_counts=True), strict=False)}
         logger.info(
             f"Saved confidence_levels.npy: {len(confidence_array)} values "
             f"(fine={cl_counts.get(2, 0)}, medium={cl_counts.get(1, 0)}, coarse={cl_counts.get(0, 0)})"

@@ -236,10 +236,9 @@ def _find_local_dataset_by_id(dataset_id: str, verify: bool = True) -> Path | No
             return None
 
         # Verify local files match ClearML metadata
-        if verify:
-            if not _verify_local_against_clearml(matched_path, dataset_id):
-                logger.warning(f"Local dataset at {matched_path} is stale, will download")
-                return None
+        if verify and not _verify_local_against_clearml(matched_path, dataset_id):
+            logger.warning(f"Local dataset at {matched_path} is stale, will download")
+            return None
 
         logger.info(f"✓ Dataset '{ds_name}' found locally: {matched_path}")
         return matched_path
@@ -751,10 +750,9 @@ class DataLoaderStep(PipelineStep):
 
         # Check output/ subdirectory (alternative structure)
         output_path = data_path / "output"
-        if output_path.exists():
-            if (output_path / "morphology_focus.ome.tif").exists():
-                logger.info("Found Xenium data in output/ subdirectory")
-                return output_path
+        if output_path.exists() and (output_path / "morphology_focus.ome.tif").exists():
+            logger.info("Found Xenium data in output/ subdirectory")
+            return output_path
 
         # Return original path, let _detect_platform raise error if needed
         return data_path

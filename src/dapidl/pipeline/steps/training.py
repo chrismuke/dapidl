@@ -730,7 +730,7 @@ class TrainingStep(PipelineStep):
             model.train()
             train_loss = 0.0
 
-            for batch_idx, (patches, labels) in enumerate(train_loader):
+            for _batch_idx, (patches, labels) in enumerate(train_loader):
                 patches = patches.to(device)
                 labels = labels.to(device)
 

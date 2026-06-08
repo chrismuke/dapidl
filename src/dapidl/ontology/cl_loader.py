@@ -97,10 +97,7 @@ class CLLoader:
         Args:
             obo_path: Path to OBO file. Downloads if not provided.
         """
-        if obo_path is None:
-            obo_path = self.download()
-        else:
-            obo_path = Path(obo_path)
+        obo_path = self.download() if obo_path is None else Path(obo_path)
 
         if not obo_path.exists():
             raise FileNotFoundError(f"OBO file not found: {obo_path}")

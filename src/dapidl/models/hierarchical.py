@@ -402,10 +402,7 @@ class HierarchicalClassifier(nn.Module):
         features = self.backbone(x)
 
         # Apply shared projection if present
-        if self.projection is not None:
-            projected = self.projection(features)
-        else:
-            projected = features
+        projected = self.projection(features) if self.projection is not None else features
 
         # Coarse classification (always active)
         coarse_logits = self.coarse_head(projected)

@@ -56,7 +56,7 @@ def rasterize_instances(
     assert abs(sx - sy) < 1e-3, f"non-square scale sx={sx}, sy={sy}"
 
     # Convert IDs to int (rasterize wants Python ints/numpy)
-    shapes = list(zip(geoms, [int(i) for i in instance_ids]))
+    shapes = list(zip(geoms, [int(i) for i in instance_ids], strict=False))
 
     out = rasterio.features.rasterize(
         shapes=shapes,
@@ -138,7 +138,7 @@ def rasterize_tile(
         | (y0 + tile_size - sub_cents[:, 1] < pad)
     )
 
-    geoms = [g for g in sub.geometry]
+    geoms = list(sub.geometry)
     instance_map = rasterize_instances(
         geoms,
         sub[instance_id_col].to_numpy(),
