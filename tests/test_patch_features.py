@@ -28,6 +28,7 @@ def test_haralick_contrast_and_entropy_higher_on_textured():
     hf = haralick_features(pf, m)
     assert ht["contrast"] > hf["contrast"]
     assert ht["entropy"] > hf["entropy"]
+    assert np.isfinite(ht["correlation"])  # graycoprops correlation -> nan_to_num path
 
 
 def test_haralick_returns_six_keys():
@@ -78,3 +79,6 @@ def test_feature_vector_stable_columns():
     assert set(with_nuc) == set(without)
     for c in NUC_COLUMNS + CTX_COLUMNS + ["has_nucleus"]:
         assert c in with_nuc
+    # ctx scope deliberately carries NO geometry (a fixed square is constant) -- lock it
+    for k in ("area_um2", "eccentricity", "solidity", "extent", "major_axis", "minor_axis"):
+        assert f"ctx_{k}" not in with_nuc

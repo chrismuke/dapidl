@@ -22,6 +22,7 @@ _INT = ("int_mean", "int_std", "int_p10", "int_p50", "int_p90", "int_above_bg")
 _TEX = ("structure_raw", "brenner", "interior_cov",
         "contrast", "homogeneity", "energy", "correlation", "asm", "entropy")
 
+# nuc scope = the shared geom+int+tex set, PLUS two nucleus-only extras appended below
 NUC_COLUMNS = [f"nuc_{k}" for k in (_GEOM + _INT + _TEX)] + ["nuc_stardist_prob", "nuc_area_fraction"]
 CTX_COLUMNS = [f"ctx_{k}" for k in (_INT + _TEX)]
 
@@ -101,8 +102,11 @@ def _scope(patch: np.ndarray, region: np.ndarray, cfg: SegQCConfig,
         interior = ndimage.binary_erosion(region, iterations=cfg.erode_px)
         bg = ~region
     else:
+        # ctx scope has no separate background: int_above_bg becomes (patch mean -
+        # patch median), a brightness-skew proxy. `bg` here is intentionally the
+        # WHOLE patch (== region), not its complement.
         interior = region
-        bg = region  # ctx "background" = whole patch -> above_bg becomes mean - global median
+        bg = region
     out.update(_intensity(patch, region, bg))
     out.update(_texture(patch, region, interior, cfg))
     return out
