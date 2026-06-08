@@ -40,3 +40,25 @@ def build_class_montage(
     arr = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()
     plt.close(fig)
     return arr
+
+
+def build_reason_montage(patches: np.ndarray, reasons: np.ndarray, reason: str,
+                         top_n: int = 64, cols: int = 8) -> np.ndarray:
+    """Grid of up to top_n patches flagged with a given broken_reason."""
+    sel = np.where(reasons == reason)[0][:top_n]
+    n = len(sel)
+    rows = max(1, int(np.ceil(max(n, 1) / cols)))
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 1.6, rows * 1.7))
+    axes = np.atleast_1d(axes).ravel()
+    for ax in axes:
+        ax.axis("off")
+    for i, idx in enumerate(sel):
+        p = patches[idx].astype(np.float32)
+        lo, hi = np.percentile(p, [1, 99])
+        axes[i].imshow(np.clip((p - lo) / max(hi - lo, 1e-6), 0, 1), cmap="gray")
+    fig.suptitle(f"broken_reason = {reason} (n shown={n})", fontsize=11)
+    fig.tight_layout()
+    fig.canvas.draw()
+    arr = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()
+    plt.close(fig)
+    return arr

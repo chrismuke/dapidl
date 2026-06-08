@@ -121,6 +121,22 @@ class XeniumDataReader:
         """Return (height, width) of DAPI image."""
         return self.image.shape
 
+    @property
+    def image_path(self) -> Path:
+        """Resolved morphology OME-TIFF path WITHOUT loading the image.
+
+        Lets callers open the (tiled/compressed) mosaic lazily — e.g. via
+        ``dapidl.data.lazy_mosaic.open_xenium_mosaic`` — instead of materializing
+        the full ~1-2 GB array (review B8). Old format first, then new.
+        """
+        outs_path = self._get_outs_path()
+        p = outs_path / "morphology_focus.ome.tif"
+        if not p.exists():
+            p = outs_path / "morphology.ome.tif"
+            if not p.exists():
+                raise FileNotFoundError(f"No morphology image found in {outs_path}")
+        return p
+
     def _load_image(self) -> np.ndarray:
         """Load DAPI morphology image from OME-TIFF.
 
@@ -128,16 +144,7 @@ class XeniumDataReader:
         - Old format: morphology_focus.ome.tif (single focused plane)
         - New format: morphology.ome.tif (combined image from all FOVs)
         """
-        outs_path = self._get_outs_path()
-
-        # Try old format first (morphology_focus.ome.tif), then new format
-        image_path = outs_path / "morphology_focus.ome.tif"
-        if not image_path.exists():
-            image_path = outs_path / "morphology.ome.tif"
-            if not image_path.exists():
-                raise FileNotFoundError(
-                    f"No morphology image found in {outs_path}"
-                )
+        image_path = self.image_path
 
         logger.info(f"Loading DAPI image from {image_path}")
 
@@ -191,6 +198,67 @@ class XeniumDataReader:
         return np.column_stack(
             [df["x_centroid"].to_numpy(), df["y_centroid"].to_numpy()]
         )
+
+    def get_nucleus_centroids_pixels(self) -> np.ndarray:
+        """Get nucleus polygon centroids in pixel coordinates.
+
+        Reads ``nucleus_boundaries.parquet`` and computes the per-cell mean of
+        vertex coordinates, then converts microns -> pixels via ``PIXEL_SIZE``.
+        Cells with no entry in ``nucleus_boundaries.parquet`` (a small minority,
+        typically DAPI-negative) fall back to the cell centroid so the returned
+        array stays index-aligned with :meth:`get_centroids_pixels` and
+        :meth:`get_cell_ids` — downstream patch indices and labels carry over
+        without re-keying.
+
+        Returns:
+            Array of shape (N, 2) with (x, y) pixel coordinates in
+            ``cells_df`` ``cell_id`` order.
+        """
+        nb_path = self._get_outs_path() / "nucleus_boundaries.parquet"
+        nb = pl.read_parquet(nb_path)
+        arr, n_fallback = self._nucleus_centroids_from_boundaries(
+            self.cells_df, nb, self.PIXEL_SIZE
+        )
+        frac = n_fallback / max(1, len(arr))
+        msg = (f"nucleus-centroid fallback to cell centroid for "
+               f"{n_fallback:,}/{len(arr):,} cells ({frac:.1%})")
+        if frac > 0.10:
+            logger.warning(msg + " — >10%: check cell_id dtype/coverage in "
+                                 "nucleus_boundaries.parquet")
+        else:
+            logger.info(msg)
+        return arr
+
+    @staticmethod
+    def _nucleus_centroids_from_boundaries(
+        cells_df: pl.DataFrame, nb: pl.DataFrame, pixel_size: float
+    ) -> tuple[np.ndarray, int]:
+        """Pure: per-cell mean-of-vertices nucleus centroid (px), aligned to
+        ``cells_df`` cell_id order; cells absent from ``nb`` fall back to the cell
+        centroid. Returns ``(array (N, 2), n_fallback)``.
+
+        The ``nb`` join key is cast to the ``cells_df`` cell_id dtype FIRST: a
+        Categorical-vs-Utf8 (etc.) mismatch otherwise yields an all-null join =
+        100% silent fallback = a nucleus-centered LMDB byte-identical to the
+        cell-centered one (a no-op that looks like it ran). See review B7.
+        """
+        centroids = nb.group_by("cell_id", maintain_order=True).agg(
+            pl.col("vertex_x").mean().alias("xc"),
+            pl.col("vertex_y").mean().alias("yc"),
+        )
+        target_dtype = cells_df.schema["cell_id"]
+        if centroids.schema["cell_id"] != target_dtype:
+            centroids = centroids.with_columns(pl.col("cell_id").cast(target_dtype))
+        df = cells_df.join(centroids, on="cell_id", how="left")
+        n_fallback = int(df["xc"].null_count())
+        df = df.with_columns(
+            pl.col("xc").fill_null(pl.col("x_centroid")),
+            pl.col("yc").fill_null(pl.col("y_centroid")),
+        )
+        arr = np.column_stack(
+            [df["xc"].to_numpy() / pixel_size, df["yc"].to_numpy() / pixel_size]
+        )
+        return arr, n_fallback
 
     def get_cell_ids(self) -> np.ndarray:
         """Get array of cell IDs."""

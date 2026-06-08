@@ -36,10 +36,13 @@ import polars as pl
 from loguru import logger
 
 # Import existing data readers
+from dapidl.data.lazy_mosaic import LazyMosaic, normalize_crop, open_xenium_mosaic
 from dapidl.data.sthelar import SthelarDataReader
 from dapidl.data.xenium import XeniumDataReader
+from dapidl.qc.io import FORMAT_KEY, FORMAT_U64KEY_SQUARE
 
 DERIVED = Path("/mnt/work/datasets/derived")
+LMDB_TXN_CHUNK = 5000  # commit the write txn every N patches to bound dirty-page RAM (review B8)
 XENIUM_BASE = Path("/mnt/work/datasets/raw/xenium")
 STHELAR_BASE = Path("/mnt/work/datasets/STHELAR/sdata_slides")
 
@@ -136,16 +139,21 @@ def extract_xenium_breast(
     patch_idx_start: int,
     all_labels: list[int],
     all_sources: list[str],
+    all_cell_ids: list[str],
     max_cells: int = 0,
+    nucleus_centered: bool = False,
 ) -> tuple[int, dict]:
-    """Extract DAPI patches from Xenium breast rep1/rep2."""
+    """Extract DAPI patches from Xenium breast rep1/rep2.
+
+    nucleus_centered=True crops on the nucleus polygon centroid instead of the
+    cell centroid (review B2 / spec 2026-05-25). STHELAR is already
+    nucleus-centered, so only the Xenium path has this switch.
+    """
     half = patch_size // 2
-    logger.info(f"=== Xenium {rep_name}: {raw_dir} ===")
+    logger.info(f"=== Xenium {rep_name}: {raw_dir} "
+                f"({'nucleus' if nucleus_centered else 'cell'}-centered) ===")
 
     reader = XeniumDataReader(raw_dir / "outs")
-    dapi = reader.image  # uint16 (H, W)
-    h, w = dapi.shape
-    dapi_norm, norm_stats = normalize_dapi(dapi)
 
     gt_lookup = _load_xenium_supervised_gt(rep_name)
     if not gt_lookup:
@@ -153,7 +161,8 @@ def extract_xenium_breast(
         return patch_idx_start, {}
     logger.info(f"  Loaded {len(gt_lookup)} barcode→annotation entries from {REP_TO_SHEET[rep_name]}")
 
-    centroids = reader.get_centroids_pixels()
+    centroids = (reader.get_nucleus_centroids_pixels() if nucleus_centered
+                 else reader.get_centroids_pixels())
     cell_ids = reader.get_cell_ids()
 
     # Build candidate list (passes label filter + bounds), then optionally subsample
@@ -184,29 +193,43 @@ def extract_xenium_breast(
         rng.shuffle(candidates)
         logger.info(f"  Subsampled to {len(candidates)} cells (cap={max_cells})")
 
+    # Lazy mosaic: crop per cell (decode only touched tiles), normalize per crop,
+    # percentiles from a strided subsample -- no full-image float32 copy (review B8).
     n_written = 0
     n_skipped_oob = 0
-    with env.begin(write=True) as txn:
-        idx = patch_idx_start
-        for i, coarse_idx in candidates:
-            cx, cy = int(round(centroids[i, 0])), int(round(centroids[i, 1]))
-            y0, y1 = cy - half, cy + half
-            x0, x1 = cx - half, cx + half
-            if y0 < 0 or x0 < 0 or y1 > h or x1 > w:
-                n_skipped_oob += 1
-                continue
-            patch = dapi_norm[y0:y1, x0:x1]
-            if patch.shape != (patch_size, patch_size):
-                n_skipped_oob += 1
-                continue
-            patch_uint16 = (patch * 65535).clip(0, 65535).astype(np.uint16)
-            label_bytes = np.array([coarse_idx], dtype=np.int64).tobytes()
-            value = label_bytes + patch_uint16.tobytes()
-            txn.put(struct.pack(">Q", idx), value)
-            all_labels.append(coarse_idx)
-            all_sources.append(f"xenium_{rep_name}")
-            idx += 1
-            n_written += 1
+    idx = patch_idx_start
+    with open_xenium_mosaic(reader.image_path) as mosaic:
+        h, w = mosaic.shape
+        p_low, p_high = mosaic.subsample_percentiles(1.0, 99.5)
+        norm_stats = {"p_low": p_low, "p_high": p_high}
+        txn = env.begin(write=True)
+        try:
+            for i, coarse_idx in candidates:
+                cx, cy = int(round(centroids[i, 0])), int(round(centroids[i, 1]))
+                y0, y1 = cy - half, cy + half
+                x0, x1 = cx - half, cx + half
+                if y0 < 0 or x0 < 0 or y1 > h or x1 > w:
+                    n_skipped_oob += 1
+                    continue
+                crop = mosaic.read(y0, y1, x0, x1)
+                if crop.shape != (patch_size, patch_size):
+                    n_skipped_oob += 1
+                    continue
+                patch_uint16 = normalize_crop(crop, p_low, p_high)
+                label_bytes = np.array([coarse_idx], dtype=np.int64).tobytes()
+                txn.put(struct.pack(">Q", idx), label_bytes + patch_uint16.tobytes())
+                all_labels.append(coarse_idx)
+                all_sources.append(f"xenium_{rep_name}")
+                all_cell_ids.append(str(cell_ids[i]))
+                idx += 1
+                n_written += 1
+                if n_written % LMDB_TXN_CHUNK == 0:
+                    txn.commit()
+                    txn = env.begin(write=True)
+            txn.commit()
+        except BaseException:
+            txn.abort()
+            raise
 
     logger.info(
         f"  {rep_name}: wrote {n_written} cells "
@@ -216,6 +239,7 @@ def extract_xenium_breast(
         "source": f"xenium_{rep_name}",
         "n_written": n_written,
         "n_total": len(cell_ids),
+        "centroid_source": "nucleus" if nucleus_centered else "cell",
         "norm": norm_stats,
     }
 
@@ -227,9 +251,10 @@ def extract_sthelar_breast(
     patch_idx_start: int,
     all_labels: list[int],
     all_sources: list[str],
+    all_cell_ids: list[str],
     max_cells: int = 0,
 ) -> tuple[int, dict]:
-    """Extract DAPI patches from one STHELAR breast slide."""
+    """Extract DAPI patches from one STHELAR breast slide (already nucleus-centered)."""
     half = patch_size // 2
     slide_name = slide_zarr.name.replace("sdata_", "").replace(".zarr", "")
     logger.info(f"=== STHELAR {slide_name}: {slide_zarr} ===")
@@ -260,18 +285,20 @@ def extract_sthelar_breast(
         nuc_df = pl.concat(sampled).sample(fraction=1.0, seed=42)
         logger.info(f"  Capped to {len(nuc_df)} cells (max_cells={max_cells})")
 
-    dapi = reader.image
-    h, w = dapi.shape
-    dapi_norm, norm_stats = normalize_dapi(dapi)
-
     centroids = reader.get_centroids_pixels()
-    all_cell_ids = reader.get_cell_ids()
-    centroid_map = {cid: (centroids[i, 0], centroids[i, 1]) for i, cid in enumerate(all_cell_ids)}
+    reader_cell_ids = reader.get_cell_ids()  # renamed: avoid shadowing the all_cell_ids registry param
+    centroid_map = {cid: (centroids[i, 0], centroids[i, 1]) for i, cid in enumerate(reader_cell_ids)}
 
+    # Lazy (1,H,W) DAPI zarr -> per-crop read + normalize, no full ~5 GB load (review B8).
     n_written = 0
     n_skipped_oob = 0
-    with env.begin(write=True) as txn:
-        idx = patch_idx_start
+    idx = patch_idx_start
+    mosaic = LazyMosaic(reader.dapi_lazy)
+    h, w = mosaic.shape
+    p_low, p_high = mosaic.subsample_percentiles(1.0, 99.5)
+    norm_stats = {"p_low": p_low, "p_high": p_high}
+    txn = env.begin(write=True)
+    try:
         for row in nuc_df.iter_rows(named=True):
             cid = row["cell_id"]
             coarse = row["coarse"]
@@ -284,18 +311,25 @@ def extract_sthelar_breast(
             if y0 < 0 or x0 < 0 or y1 > h or x1 > w:
                 n_skipped_oob += 1
                 continue
-            patch = dapi_norm[y0:y1, x0:x1]
-            if patch.shape != (patch_size, patch_size):
+            crop = mosaic.read(y0, y1, x0, x1)
+            if crop.shape != (patch_size, patch_size):
                 n_skipped_oob += 1
                 continue
-            patch_uint16 = (patch * 65535).clip(0, 65535).astype(np.uint16)
+            patch_uint16 = normalize_crop(crop, p_low, p_high)
             label_bytes = np.array([COARSE_TO_IDX[coarse]], dtype=np.int64).tobytes()
-            value = label_bytes + patch_uint16.tobytes()
-            txn.put(struct.pack(">Q", idx), value)
+            txn.put(struct.pack(">Q", idx), label_bytes + patch_uint16.tobytes())
             all_labels.append(COARSE_TO_IDX[coarse])
             all_sources.append(f"sthelar_{slide_name}")
+            all_cell_ids.append(str(cid))
             idx += 1
             n_written += 1
+            if n_written % LMDB_TXN_CHUNK == 0:
+                txn.commit()
+                txn = env.begin(write=True)
+        txn.commit()
+    except BaseException:
+        txn.abort()
+        raise
 
     logger.info(
         f"  {slide_name}: wrote {n_written} cells (skipped {n_skipped_oob} OOB)"
@@ -304,6 +338,7 @@ def extract_sthelar_breast(
         "source": f"sthelar_{slide_name}",
         "n_written": n_written,
         "n_total": len(nuc_df),
+        "centroid_source": "nucleus",
         "norm": norm_stats,
     }
 
@@ -314,6 +349,10 @@ def main() -> None:
                     choices=[32, 64, 128, 256])
     ap.add_argument("--output", default=None,
                     help="Output dir name under /mnt/work/datasets/derived/")
+    ap.add_argument("--nucleus-centered", action="store_true",
+                    help="Crop Xenium on the nucleus polygon centroid (review B2 / spec "
+                         "2026-05-25). STHELAR is already nucleus-centered. Persists a "
+                         "patch_registry.parquet + cell_ids.npy so cross-LMDB A/B can pair by cell_id.")
     ap.add_argument("--no-xenium", action="store_true", help="Skip rep1+rep2")
     ap.add_argument("--no-sthelar", action="store_true", help="Skip STHELAR breast slides")
     ap.add_argument("--map-size-gb", type=int, default=80,
@@ -324,7 +363,10 @@ def main() -> None:
                          "and balance source sizes for fair cross-source comparison.")
     args = ap.parse_args()
 
-    output = args.output or f"breast-multisource-dapi-p{args.patch_size}"
+    default_name = f"breast-multisource-dapi-p{args.patch_size}"
+    if args.nucleus_centered:
+        default_name += "-nuc"
+    output = args.output or default_name
     out_dir = DERIVED / output
     out_dir.mkdir(parents=True, exist_ok=True)
     lmdb_path = out_dir / "patches.lmdb"
@@ -332,6 +374,7 @@ def main() -> None:
     env = lmdb.open(str(lmdb_path), map_size=args.map_size_gb * 1024**3)
     all_labels: list[int] = []
     all_sources: list[str] = []
+    all_cell_ids: list[str] = []
     slide_stats: list[dict] = []
     idx = 0
 
@@ -343,8 +386,9 @@ def main() -> None:
                 continue
             idx, st = extract_xenium_breast(
                 rep_name, raw_dir, args.patch_size, env, idx,
-                all_labels, all_sources,
+                all_labels, all_sources, all_cell_ids,
                 max_cells=args.max_cells_per_source,
+                nucleus_centered=args.nucleus_centered,
             )
             if st:
                 slide_stats.append(st)
@@ -355,18 +399,38 @@ def main() -> None:
         for slide_zarr in breast_zarrs:
             idx, st = extract_sthelar_breast(
                 slide_zarr, args.patch_size, env, idx,
-                all_labels, all_sources,
+                all_labels, all_sources, all_cell_ids,
                 max_cells=args.max_cells_per_source,
             )
             if st:
                 slide_stats.append(st)
 
+    # Stamp the self-describing format tag (B10) so the QC reader never has to
+    # guess the layout from key bytes (Format B: >Q keys, int64 label + square).
+    with env.begin(write=True) as txn:
+        txn.put(FORMAT_KEY, FORMAT_U64KEY_SQUARE)
     env.close()
 
     np.save(out_dir / "labels.npy", np.array(all_labels, dtype=np.int64))
+    # sources.npy (index-aligned) — breast_pooled_train.load_indices_for_sources
+    # reads this; the registry refactor dropped it, breaking training (2026-06-06).
+    np.save(out_dir / "sources.npy", np.array(all_sources, dtype=object))
     (out_dir / "class_mapping.json").write_text(
         json.dumps(COARSE_TO_IDX, indent=2)
     )
+
+    # cell_id provenance (review B2): persist a registry so cross-LMDB A/B
+    # (M_cell vs M_nuc_full) can pair by (source, cell_id) and splits can be
+    # derived from hash(cell_id) instead of a fragile positional index.
+    assert len(all_cell_ids) == len(all_labels) == idx, \
+        f"registry desync: cell_ids={len(all_cell_ids)} labels={len(all_labels)} idx={idx}"
+    np.save(out_dir / "cell_ids.npy", np.array(all_cell_ids, dtype=object))
+    pl.DataFrame({
+        "row_idx": np.arange(idx, dtype=np.int64),
+        "source": all_sources,
+        "cell_id": all_cell_ids,
+        "coarse_idx": np.array(all_labels, dtype=np.int64),
+    }).write_parquet(out_dir / "patch_registry.parquet")
 
     from collections import Counter
     class_counts = dict(Counter(all_labels))
@@ -385,6 +449,9 @@ def main() -> None:
         "class_counts": {COARSE_CLASSES[k]: v for k, v in class_counts.items()},
         "source_counts": src_counts,
         "n_sources": len(slide_stats),
+        "nucleus_centered": bool(args.nucleus_centered),
+        "centroid_source": {s["source"]: s.get("centroid_source", "?") for s in slide_stats},
+        "has_registry": True,
     }
     (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
     (lmdb_path / "metadata.json").write_text(json.dumps(metadata, indent=2))

@@ -445,7 +445,9 @@ def get_train_transforms(
                     contrast_limit=0.2,
                     p=0.5,
                 ),
-                A.GaussNoise(var_limit=(0.001, 0.01), p=0.3),
+                # std_range = sqrt(var (0.001, 0.01)); albumentations 2.x replaced
+                # the old var_limit kwarg with std_range (noise std, not variance).
+                A.GaussNoise(std_range=(0.0316228, 0.1), p=0.3),
                 A.GaussianBlur(blur_limit=(3, 5), p=0.2),
                 # Convert to tensor
                 ToTensorV2(),
@@ -481,7 +483,8 @@ def get_train_transforms(
                     contrast_limit=0.2,
                     p=0.5,
                 ),
-                A.GaussNoise(var_limit=(0.001, 0.01), p=0.3),  # Variance for [0,1] range
+                # std_range = sqrt(var (0.001, 0.01)) for the [0,1] float range.
+                A.GaussNoise(std_range=(0.0316228, 0.1), p=0.3),
                 A.GaussianBlur(blur_limit=(3, 5), p=0.2),
                 # Normalize
                 A.Normalize(mean=0.5, std=0.25, max_pixel_value=1.0),
@@ -647,7 +650,8 @@ def get_heavy_augmentation_transforms(
                     contrast_limit=0.3,    # Increased from 0.2
                     p=0.7,  # Increased from 0.5
                 ),
-                A.GaussNoise(var_limit=(0.005, 0.02), p=0.5),  # Increased
+                # std_range = sqrt(var (0.005, 0.02)); heavier noise for rare classes.
+                A.GaussNoise(std_range=(0.0707107, 0.1414214), p=0.5),
                 A.GaussianBlur(blur_limit=(3, 7), p=0.3),  # Increased blur
                 # Additional augmentations for rare classes
                 A.RandomGamma(gamma_limit=(80, 120), p=0.3),
@@ -687,7 +691,8 @@ def get_heavy_augmentation_transforms(
                     contrast_limit=0.3,
                     p=0.7,
                 ),
-                A.GaussNoise(var_limit=(0.005, 0.02), p=0.5),
+                # std_range = sqrt(var (0.005, 0.02)); heavier noise for rare classes.
+                A.GaussNoise(std_range=(0.0707107, 0.1414214), p=0.5),
                 A.GaussianBlur(blur_limit=(3, 7), p=0.3),
                 A.RandomGamma(gamma_limit=(80, 120), p=0.3),
                 A.Normalize(mean=0.5, std=0.25, max_pixel_value=1.0),

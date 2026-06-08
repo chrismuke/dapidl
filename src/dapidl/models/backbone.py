@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 from loguru import logger
 
+from dapidl.models.nuclass import create_nuclass
+from dapidl.models.nuspire import NuSPIReBackbone
 
 # Available backbone presets for easy selection
 BACKBONE_PRESETS = {
@@ -35,6 +37,19 @@ BACKBONE_PRESETS = {
         "description": "ConvNeXt-Small (larger modern, ~50M params)",
         "pretrained": True,
         "native_channels": 3,
+    },
+    # DAPI-native foundation model (single-channel ViT-MAE, 112x112)
+    "nuspire": {
+        "description": "NuSPIRe ViT-MAE DAPI foundation model (~85M params, native 1-channel)",
+        "pretrained": True,
+        "native_channels": 1,
+        "foundation_model": True,
+        "hf_repo": "TongjiZhanglab/NuSPIRe",
+    },
+    "nuclass": {
+        "description": "NuClass two-stream: NuSPIRe nucleus + microscopy-CNN context, gated fusion (native 1-channel)",
+        "pretrained": True,
+        "native_channels": 1,
     },
     # Custom microscopy-optimized (native single-channel)
     "microscopy_cnn": {
@@ -121,6 +136,28 @@ def create_backbone(
         logger.info(
             f"Created backbone: {model_name}, "
             f"in_channels={in_channels}, num_features={num_features}"
+        )
+        return backbone, num_features
+
+    # DAPI-native foundation model. Handled before the generic foundation-model
+    # branch below, which assumes 3-channel pathology ViTs (Phikon/UNI).
+    elif model_name == "nuspire":
+        backbone = NuSPIReBackbone(pretrained=pretrained)
+        num_features = backbone.num_features
+        logger.info(
+            f"Created NuSPIRe backbone: pretrained={pretrained}, "
+            f"num_features={num_features}"
+        )
+        return backbone, num_features
+
+    # NuClass two-stream (nucleus + context). Builds its own sub-backbones, so it
+    # is routed here rather than through the generic foundation-model branch.
+    elif model_name == "nuclass":
+        backbone = create_nuclass(pretrained=pretrained)
+        num_features = backbone.num_features
+        logger.info(
+            f"Created NuClass two-stream backbone: pretrained={pretrained}, "
+            f"num_features={num_features}"
         )
         return backbone, num_features
 

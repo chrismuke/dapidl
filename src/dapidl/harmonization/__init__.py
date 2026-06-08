@@ -1,4 +1,11 @@
-"""Cell type label harmonization across annotation sources.
+""".. deprecated::
+    Superseded by :mod:`dapidl.ontology` (CL-anchored coarse/medium/fine tiers,
+    the single source of truth for training + evaluation; ~26 importers). This
+    module's broad/mid/fine string-tree hierarchy carries no Cell Ontology IDs and
+    is retained only for the legacy ``dapidl compare-labels`` CLI command. Do NOT
+    use it in new code — use ``dapidl.ontology`` instead (review 2026-05-29 §4).
+
+Cell type label harmonization across annotation sources.
 
 This module provides tools to harmonize cell type labels from different
 annotation sources (CellTypist, popV, ground truth) for meaningful comparison.
@@ -63,3 +70,14 @@ __all__ = [
     "print_evaluation_report",
     "create_mapping_from_annotations",
 ]
+
+import warnings as _warnings
+
+# Non-fatal signal (no pytest -W error in this repo): nudge new code to the
+# CL-anchored dapidl.ontology. compare-labels keeps working unchanged.
+_warnings.warn(
+    "dapidl.harmonization is deprecated (broad/mid/fine, no CL IDs); use the "
+    "CL-anchored dapidl.ontology instead. Retained only for `dapidl compare-labels`.",
+    DeprecationWarning,
+    stacklevel=2,
+)

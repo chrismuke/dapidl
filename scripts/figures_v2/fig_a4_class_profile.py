@@ -118,7 +118,8 @@ def main() -> None:
 
     fig.text(0.99, 0.005,
              "DAPI model: per-class mean over 4 STHELAR test slides (s0/s1/s3/s6). "
-             "Annotation methods: per-class mean over 6 slides (rep1+rep2 + 4 STHELAR) using cells_label2 GT.",
+             "Annotation methods: per-class mean over slides with that class in GT "
+             "(≤6: rep1+rep2 + 4 STHELAR; Endothelial only s0/rep1/rep2). cells_label2 GT.",
              ha="right", va="bottom", fontsize=8.5, color="#666")
 
     plt.tight_layout()
