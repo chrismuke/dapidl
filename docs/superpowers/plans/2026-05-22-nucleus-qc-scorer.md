@@ -259,15 +259,20 @@ def structure_raw(patch: np.ndarray, mask: np.ndarray, cfg: SegQCConfig) -> floa
     """MAD-normalized high-frequency (LoG) energy inside the eroded nucleus mask.
 
     Robust-normalizing by the interior MAD makes it invariant to per-slide
-    brightness/contrast. Returns 0 if the eroded interior is too small to judge.
+    brightness/contrast. A near-flat interior (MAD < 1 intensity unit) has no
+    subnuclear structure and scores 0. The normalized patch is clipped to +/-8
+    MAD before the LoG so the nucleus/background intensity step cannot dominate
+    the in-mask energy. Returns 0 if the eroded interior is too small to judge.
     """
     interior_mask = _eroded_interior(mask, cfg)
     if interior_mask.sum() < cfg.min_interior_px:
         return 0.0
     vals = patch[interior_mask].astype(np.float64)
     med = np.median(vals)
-    mad = np.median(np.abs(vals - med)) + 1e-6
-    norm = (patch.astype(np.float64) - med) / mad
+    mad = np.median(np.abs(vals - med))
+    if mad < 1.0:
+        return 0.0
+    norm = np.clip((patch.astype(np.float64) - med) / mad, -8.0, 8.0)
     lap = ndimage.gaussian_laplace(norm, sigma=1.0)
     return float(np.mean(lap[interior_mask] ** 2))
 
@@ -797,14 +802,18 @@ REFERENCE_SAMPLE = 2000
 
 
 def stratified_audit(df: pl.DataFrame, n_size_bins: int = 4) -> pl.DataFrame:
-    """Broken-rate by source x cell_type x size bin (the censoring guardrail)."""
+    """Broken-rate by source x cell_type x size bin (the censoring guardrail).
+
+    qcut WITHOUT explicit labels avoids a label/bin-count mismatch when area is
+    near-constant or has few unique values; bins are cast to string for grouping.
+    """
     df = df.with_columns(
-        pl.col("area_um2").qcut(n_size_bins, allow_duplicates=True, labels=[
-            f"q{i}" for i in range(n_size_bins)]).alias("size_bin")
+        pl.col("area_um2").qcut(n_size_bins, allow_duplicates=True)
+        .cast(pl.Utf8).alias("size_bin")
     )
     return (df.group_by(["source", "cell_type", "size_bin"])
               .agg(pl.len().alias("n"),
-                   pl.col("broken").mean().alias("broken_rate"))
+                   pl.col("broken").cast(pl.Float64).mean().alias("broken_rate"))
               .sort(["source", "cell_type", "size_bin"]))
 
 
