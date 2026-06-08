@@ -412,6 +412,9 @@ def main() -> None:
     env.close()
 
     np.save(out_dir / "labels.npy", np.array(all_labels, dtype=np.int64))
+    # sources.npy (index-aligned) — breast_pooled_train.load_indices_for_sources
+    # reads this; the registry refactor dropped it, breaking training (2026-06-06).
+    np.save(out_dir / "sources.npy", np.array(all_sources, dtype=object))
     (out_dir / "class_mapping.json").write_text(
         json.dumps(COARSE_TO_IDX, indent=2)
     )

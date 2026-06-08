@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
 import struct
 import time
@@ -42,7 +43,10 @@ from dapidl.models.backbone import create_backbone
 from dapidl.models.nuspire import NUSPIRE_NORM_MEAN, NUSPIRE_NORM_STD
 
 DERIVED = Path("/mnt/work/datasets/derived")
-LMDB_DIR = DERIVED / "breast-6source-dapi-p128"
+# LMDB_DIR is overridable via env so the 3 gnp-v1 arms (cell / nuc / nuc-filt)
+# can each point at their own LMDB without editing this module. Default
+# unchanged for all existing callers.
+LMDB_DIR = Path(os.environ.get("DAPIDL_LMDB_DIR", str(DERIVED / "breast-6source-dapi-p128")))
 
 
 def warmup_cosine_lr(step, warmup_steps, total_steps, peak_lr, min_lr=0.0):
