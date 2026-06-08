@@ -124,7 +124,14 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "TID"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line length (enforced by the formatter, not the linter)
+    # --- Scientific/ML naming conventions: intentional domain idiom, not bugs ---
+    "N806",   # non-lowercase var in function: X (feature matrix), W/H/T (tensor dims)
+    "N812",   # lowercase imported as non-lowercase: F (torch.nn.functional), A (albumentations)
+    "E741",   # ambiguous name l/I/O: used as scientific temp vars (label, line)
+    "UP042",  # (str, Enum) is deliberate; StrEnum (3.11+) changes str()/format() semantics
+]
 
 # Prefer polars over pandas - see CLAUDE.md "DataFrame Library Standard"
 # TID251 checks for banned module imports
@@ -142,6 +149,7 @@ ignore = ["E501"]
 "src/dapidl/pipeline/steps/popv_annotation.py" = ["TID251"]
 "src/dapidl/pipeline/components/annotators/ground_truth.py" = ["TID251"]
 "src/dapidl/pipeline/components/annotators/azimuth.py" = ["TID251"]
+"src/dapidl/pipeline/components/annotators/sctype_db.py" = ["TID251"]  # pd.read_excel (polars Excel support limited)
 
 [tool.mypy]
 python_version = "3.11"
