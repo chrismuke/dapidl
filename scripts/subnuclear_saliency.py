@@ -88,7 +88,7 @@ def _summarize(records, names, path, args):
                                   "mean_concentration": float(cc.mean()) if cc.size else float("nan"),
                                   "iqr": _iqr(cc)}
     for ok in (True, False):
-        cc = np.array([r["concentration"] for r in records if r["correct"] is ok], float)
+        cc = np.array([r["concentration"] for r in records if r["correct"] == ok], float)
         summary["by_correct"]["correct" if ok else "incorrect"] = {
             "n": int(cc.size), "mean_concentration": float(cc.mean()) if cc.size else float("nan")}
     Path(path).write_text(json.dumps(summary, indent=2))
