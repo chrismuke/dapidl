@@ -1,6 +1,12 @@
 import numpy as np
+from starpose.qc.segmentation_grounded import SegQCConfig
 
-from dapidl.qc.patch_features import haralick_features
+from dapidl.qc.patch_features import (
+    CTX_COLUMNS,
+    NUC_COLUMNS,
+    haralick_features,
+    nucleus_feature_vector,
+)
 
 
 def _disc(textured, size=128, r=20, seed=0):
@@ -36,3 +42,39 @@ def test_haralick_degenerate_small_mask_is_smooth():
     tiny[0, 0] = True
     h = haralick_features(patch, tiny)
     assert h["entropy"] == 0.0 and h["asm"] == 1.0
+
+
+def test_feature_vector_textured_has_more_structure_than_flat():
+    pt, m = _disc(True)
+    pf, _ = _disc(False)
+    ft = nucleus_feature_vector(pt, m, 0.9, SegQCConfig(), 0.2125)
+    ff = nucleus_feature_vector(pf, m, 0.9, SegQCConfig(), 0.2125)
+    assert ft["has_nucleus"] == 1.0
+    assert ft["nuc_structure_raw"] > ff["nuc_structure_raw"]
+    assert ft["nuc_contrast"] > ff["nuc_contrast"]
+
+
+def test_feature_vector_area_fraction_exact():
+    patch = np.ones((128, 128)) * 1000.0
+    m = np.zeros((128, 128), bool)
+    m[50:60, 50:70] = True  # 200 px
+    f = nucleus_feature_vector(patch, m, 0.5, SegQCConfig(), 0.2125)
+    assert abs(f["nuc_area_fraction"] - 200.0 / (128 * 128)) < 1e-9
+
+
+def test_feature_vector_no_nucleus_is_nan_but_keeps_context():
+    patch = np.ones((128, 128)) * 1000.0
+    f = nucleus_feature_vector(patch, None, 0.0, SegQCConfig(), 0.2125)
+    assert f["has_nucleus"] == 0.0
+    assert np.isnan(f["nuc_area_fraction"])
+    assert np.isnan(f["nuc_structure_raw"])
+    assert "ctx_int_mean" in f and not np.isnan(f["ctx_int_mean"])
+
+
+def test_feature_vector_stable_columns():
+    pt, m = _disc(True)
+    with_nuc = nucleus_feature_vector(pt, m, 0.9, SegQCConfig(), 0.2125)
+    without = nucleus_feature_vector(pt, None, 0.0, SegQCConfig(), 0.2125)
+    assert set(with_nuc) == set(without)
+    for c in NUC_COLUMNS + CTX_COLUMNS + ["has_nucleus"]:
+        assert c in with_nuc
