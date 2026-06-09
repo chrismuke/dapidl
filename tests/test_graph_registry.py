@@ -1,7 +1,12 @@
 # tests/test_graph_registry.py
 import numpy as np
 import pytest
-from dapidl.graph.registry import replay_xenium, replay_sthelar, verify_alignment
+from dapidl.graph.registry import (
+    patch_correlation,
+    replay_xenium,
+    verify_content,
+    verify_counts,
+)
 
 
 def test_replay_xenium_filters_and_bounds():
@@ -18,12 +23,26 @@ def test_replay_xenium_filters_and_bounds():
     assert [r[3] for r in rows] == [0, 1]
 
 
-def test_verify_alignment_raises_on_desync():
-    rows = [("a", 100.0, 100.0, 0), ("d", 200.0, 200.0, 1)]
-    sources = np.array(["xenium_rep1", "xenium_rep1"])
-    labels = np.array([0, 1])
-    verify_alignment(rows, sources_seq=["xenium_rep1", "xenium_rep1"],
-                     stored_sources=sources, stored_labels=labels)  # ok, no raise
+def test_verify_counts_raises_on_desync():
+    src = np.array(["xenium_rep1", "xenium_rep1", "sthelar_breast_s0"])
+    verify_counts(["xenium_rep1", "xenium_rep1", "sthelar_breast_s0"], src)  # ok, no raise
+    with pytest.raises(AssertionError):  # length mismatch
+        verify_counts(["xenium_rep1", "xenium_rep1"], src)
+    with pytest.raises(AssertionError):  # per-source count/order mismatch
+        verify_counts(["xenium_rep1", "sthelar_breast_s0", "sthelar_breast_s0"], src)
+
+
+def test_patch_correlation_high_for_same_low_for_different():
+    rng = np.random.default_rng(0)
+    a = rng.normal(size=(8, 8))
+    assert patch_correlation(a, a) > 0.99                         # identical -> 1
+    assert patch_correlation(a, a + 0.01 * rng.normal(size=(8, 8))) > 0.9   # same cell, noise
+    assert abs(patch_correlation(a, rng.normal(size=(8, 8)))) < 0.6         # different cell
+    assert patch_correlation(np.ones((4, 4)), a[:4, :4]) == 0.0   # constant -> 0
+    assert patch_correlation(a, a[:4]) == 0.0                     # size mismatch -> 0
+
+
+def test_verify_content_raises_below_threshold():
+    verify_content({"xenium_rep1": 0.98, "sthelar_breast_s0": 0.95}, threshold=0.9)  # ok
     with pytest.raises(AssertionError):
-        verify_alignment(rows, sources_seq=["xenium_rep1", "xenium_rep1"],
-                         stored_sources=sources, stored_labels=np.array([0, 2]))
+        verify_content({"xenium_rep1": 0.98, "sthelar_breast_s0": 0.40}, threshold=0.9)
