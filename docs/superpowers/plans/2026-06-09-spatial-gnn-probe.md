@@ -893,10 +893,11 @@ def phase_stage1() -> None:
     coords = reg.select(["x_px", "y_px"]).to_numpy()
     labels = reg["coarse_idx"].to_numpy()
 
-    edge_index = build_within_slide_knn(coords, src, k=8)
-    test_mask = src == "xenium_rep2"
-    val_mask = src == "sthelar_breast_s3"
-    train_mask = ~test_mask & ~val_mask
+    edge_index = build_within_slide_knn(coords, src, k=8)   # graph over ALL cells (incl -1 = context)
+    labeled = labels != -1                                   # -1 cells are context nodes only, never train/test
+    test_mask = (src == "xenium_rep2") & labeled
+    val_mask = (src == "sthelar_breast_s3") & labeled
+    train_mask = ~(src == "xenium_rep2") & ~(src == "sthelar_breast_s3") & labeled
 
     results = {}
     for lam in [0.0, 0.2, 0.5, 0.8]:
@@ -960,6 +961,8 @@ Run: `uv run python scripts/spatial_gnn_probe.py --phase gate` (add `"gate": pha
 Expected: `stage1_gate.json`; the `proceed` flag decides whether Step 4 runs.
 
 - [ ] **Step 4: Add `phase_stage2` (gated)** — nucleus-local CNN + GraphSAGE, full-slide-graph training, rep2 eval
+
+> **`-1` handling (registry includes 333,362 unlabeled cells):** build the slide graph over **all** cells in a slide (they are real context nodes), but compute the loss and all metrics **only on labelled nodes** (`label != -1`). `nn.CrossEntropyLoss` rejects `-1` and `class_weights`/`np.bincount` reject negatives, so derive class weights from `labels[labels != -1]` and index `logits[keep]/lab[keep]` with `keep = lab != -1` in train, val, and test.
 
 ```python
 def phase_stage2() -> None:

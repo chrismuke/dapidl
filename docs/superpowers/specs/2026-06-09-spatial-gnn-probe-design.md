@@ -48,7 +48,7 @@ Literature scan (2026-06-09, OpenAlex + fetched sources): the two halves are ind
 | sthelar_breast_s6 | train | 360,923 |
 | **xenium_rep2** | **test** | **113,726** |
 
-Class counts (whole set): Epithelial 1,235,481 / Immune 486,151 / Stromal 431,970 / Endothelial 124,275.
+Class counts (authoritative `labels.npy` bincount; `metadata.json` is stale): **Endothelial 48,086 / Epithelial 993,342 / Immune 521,543 / Stromal 381,544 / unlabeled (-1) 333,362**. The 333,362 `-1` cells are real nuclei whose fine annotation was unmapped — they are **graph nodes (spatial context) but masked out of train/val/test/eval** (the probe classifies the 4 labelled classes only).
 
 Baseline to beat: EfficientNet-V2-S, **macro-F1 0.619** on rep2 (per-class Endo 0.31 / Epi 0.86 / Imm 0.66 / Str 0.65). Checkpoint: `pipeline_output/h2h_2026_05_30/efficientnetv2_rw_s/best_model.pt`.
 
@@ -60,11 +60,11 @@ LMDB read format (Format B): key `struct.pack(">Q", row_idx)`; value = `int64 la
 
 `src/dapidl/graph/registry.py :: build_spatial_registry(lmdb_dir) -> pl.DataFrame`
 
-Replay the **deterministic** build order of `scripts/breast_dapi_lmdb.py` *without re-extracting patches*: iterate rep1 → rep2 → `sorted(STHELAR glob)`, apply the identical class filters (Xenium consensus/coarse map; STHELAR `STHELAR_LABEL1_TO_COARSE`), no caps (the source counts above confirm uncapped). For each emitted cell record `(row_idx, source, cell_id, x_px, y_px)` where centroids come from the same readers (`XeniumDataReader` for rep1/rep2; `SthelarDataReader.get_centroids_pixels()` for STHELAR).
+**Data reality correction (discovered 2026-06-09 via systematic debugging).** This LMDB was **not** built by the current `scripts/breast_dapi_lmdb.py`. Its STHELAR labels came from a *finer* annotation (preserved in `raw_labels.npy`: `CAF`, `Mammary_luminal_cell`, `Endothelial_Pericyte_Smooth_muscle`, …), and the STHELAR source annotations have since **drifted** — so replaying the current script recomputes ~509k STHELAR coarse labels *wrongly* (the stable `label1` column disagrees with the build's fine column, e.g. `Endothelial_Pericyte_Smooth_muscle`→Endothelial vs `Perivascular`→Stromal). Two layers of drift (script + source data) mean **no label-based replay can reproduce the stored labels.** However, the per-source cell **set and order are stable** (the `label1 != "less10"` filter + deterministic `nucleus_df` order), so replaying the iteration still recovers the **correct `(cell_id, centroid)` for each LMDB row**.
 
-**Alignment proof (the test that de-risks everything):** assert the replayed `source` sequence equals stored `sources.npy` and the replayed coarse-label sequence equals `labels.npy`, element-for-element. If they match, the `(cell_id, centroid)` join is proven aligned to the existing LMDB rows. If they mismatch → hard error (fall back to a full rebuild; do not silently proceed).
+So the registry: (1) replays rep1 → rep2 → `sorted(STHELAR glob)` to get per-row `(cell_id, x_px, y_px)`; (2) attaches the coarse label from the **authoritative `labels.npy`** (what the 0.619 baseline trained on, incl. `-1`); (3) **proves alignment by content, not labels** — `verify_counts` asserts exact per-source counts/order, and `verify_content` crops the source DAPI at each replayed centroid and asserts the **mean Pearson correlation against the stored LMDB patch > 0.9** per source (a sampled spot-check; drift-proof because it compares pixels, not annotations). On real data all 6 sources clear 0.9.
 
-Output: `pipeline_output/spatial_gnn_probe_2026_06/spatial_registry.parquet`. Also record per-source µm/px (Xenium 0.2125; STHELAR from reader) for optional future radius-graphs.
+Output: `pipeline_output/spatial_gnn_probe_2026_06/spatial_registry.parquet` (`row_idx, source, cell_id, x_px, y_px, coarse_idx`). Pixel coords suffice (k-NN scale-invariant).
 
 ---
 
