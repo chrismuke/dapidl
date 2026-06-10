@@ -583,15 +583,15 @@ def phase_stage3_readout() -> None:
     tiers, and the GNN-vs-smoother comparison.
 
     FEATURE_CLEAN: slides the frozen extractor did NOT train on (absolute F1 honest).
-    Determine from the checkpoint's training config under
-    pipeline_output/h2h_2026_05_30/ (e.g. a config.json / args listing the train slides).
-    If it cannot be recovered, LEAVE THIS EMPTY: the readout then reports all folds
-    Δ-clean only and labels every absolute F1 'extractor-membership unverified'. The Δ
-    claim never depends on this set."""
+    Verified from pipeline_output/h2h_2026_05_30/efficientnetv2_rw_s/summary.json: the
+    EffNet trained on rep1 + sthelar_breast_s0/s1/s3/s6 and held out xenium_rep2, so rep2
+    is the sole feature-clean fold. The delta (graph - no-graph) is leakage-immune regardless."""
     e1 = json.loads((OUT / "stage3_loso_metrics.json").read_text())
     e2 = json.loads((OUT / "cands_loso_metrics.json").read_text())
 
-    FEATURE_CLEAN: set[str] = set()   # populate from h2h training config if recoverable; else empty
+    # Verified from the h2h summary.json: EffNet train_sources = rep1 + sthelar s0/s1/s3/s6,
+    # test = rep2. So rep2 is the ONLY feature-clean fold; the other 5 are delta-clean.
+    FEATURE_CLEAN: set[str] = {"xenium_rep2"}
 
     lines = ["# Graph-Arm Stage 3 — Readout (LOSO)\n",
              "## E1 — Frozen-EffNet features in the learned graph (two-arm, leave-one-slide-out)\n",
@@ -599,7 +599,7 @@ def phase_stage3_readout() -> None:
              "| Held-out slide | tier | no-graph | graph | delta macro | McNemar p |",
              "|---|---|---|---|---|---|"]
     for name, f in e1["folds"].items():
-        tier = "feature-clean" if name in FEATURE_CLEAN else "delta-clean (abs F1 optimistic/unverified)"
+        tier = "feature-clean" if name in FEATURE_CLEAN else "delta-clean (extractor trained on slide; abs F1 optimistic)"
         mp = f.get("mcnemar_graph_vs_nograph", {}).get("p_value")
         lines.append(f"| {name} | {tier} | {f['nograph']['macro_f1']:.4f} | "
                      f"{f['graph']['macro_f1']:.4f} | {f.get('delta_macro'):+.4f} | {mp} |")
@@ -623,9 +623,10 @@ def phase_stage3_readout() -> None:
               "smoothing is the production-faithful number.\n",
               "- Ceiling ~0.68-0.73 macro; not 0.80. Flag any fold whose gain looks too good "
               "(composition leakage).\n"]
-    if not FEATURE_CLEAN:
-        lines.append("\n> NOTE: extractor training set unverified — all absolute F1 are "
-                     "'extractor-membership unverified'; only delta is asserted.\n")
+    lines.append("\n> NOTE: the frozen EffNet trained on rep1 + sthelar_breast_s0/s1/s3/s6 "
+                 "(held out xenium_rep2). Only the **xenium_rep2** fold is feature-clean "
+                 "(honest absolute F1); the other 5 folds' absolute F1 is extractor-optimistic. "
+                 "The delta is leakage-immune in every fold.\n")
     (OUT / "stage3_readout.md").write_text("\n".join(lines))
     logger.info("stage3 readout -> stage3_readout.md")
 
