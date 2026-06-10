@@ -55,3 +55,21 @@ class SageCellTyper(nn.Module):
         for layer in self.sage:
             h = torch.relu(layer(h, edge_index))
         return self.head(h)
+
+
+class NoGraphAggregator(nn.Module):
+    """No-graph arm: ignores neighbours, returns zeros so the model sees only `se`."""
+    needs_neighbours = False
+
+    def forward(self, se, ne, valid):
+        return torch.zeros_like(se)
+
+
+class MeanAggregator(nn.Module):
+    """Masked mean of neighbour features (the GraphSAGE-mean aggregation). `valid` is
+    1.0 where a neighbour exists, 0.0 for -1 padding."""
+    needs_neighbours = True
+
+    def forward(self, se, ne, valid):
+        cnt = valid.sum(1, keepdim=True).clamp_min(1.0)
+        return (ne * valid[:, :, None]).sum(1) / cnt

@@ -25,3 +25,28 @@ def test_sage_celltyper_forward_shape():
     edge_index = torch.tensor([[0, 1, 2, 3, 4, 5], [1, 2, 3, 4, 5, 0]])
     logits = model(crops, edge_index)
     assert logits.shape == (6, 4)
+
+
+def test_nograph_aggregator_returns_zeros():
+    import torch
+    from dapidl.graph.gnn import NoGraphAggregator
+    agg = NoGraphAggregator()
+    se = torch.randn(3, 5)
+    ne = torch.randn(3, 4, 5)
+    valid = torch.ones(3, 4)
+    out = agg(se, ne, valid)
+    assert out.shape == se.shape
+    assert torch.all(out == 0)
+    assert agg.needs_neighbours is False
+
+
+def test_mean_aggregator_masked_mean():
+    import torch
+    from dapidl.graph.gnn import MeanAggregator
+    agg = MeanAggregator()
+    se = torch.zeros(1, 2)
+    ne = torch.tensor([[[1.0, 1.0], [3.0, 3.0], [9.0, 9.0]]])   # 3 neighbours
+    valid = torch.tensor([[1.0, 1.0, 0.0]])                      # 3rd is padding -> ignored
+    out = agg(se, ne, valid)
+    assert torch.allclose(out, torch.tensor([[2.0, 2.0]]))       # mean of first two
+    assert agg.needs_neighbours is True
