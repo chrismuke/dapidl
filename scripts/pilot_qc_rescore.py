@@ -99,9 +99,10 @@ class XeniumBoundaryCache:
         df = pl.read_parquet(parquet)
         # Build dict[cell_id -> (K,2) array (x,y) in microns]
         poly_map: dict = {}
-        for cell_id, group in df.group_by("cell_id"):
+        for key, group in df.group_by("cell_id"):
+            cid_val = key[0] if isinstance(key, tuple) else key  # polars group key is a tuple
             pts = group.select(["vertex_x", "vertex_y"]).to_numpy()
-            poly_map[int(cell_id)] = pts.astype(np.float64)
+            poly_map[int(cid_val)] = pts.astype(np.float64)
         self._cache[slide] = poly_map
         print(f"[bound] loaded {len(poly_map):,} cells for {slide}", flush=True)
         return poly_map
