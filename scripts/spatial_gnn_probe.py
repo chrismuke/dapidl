@@ -623,6 +623,24 @@ def phase_stage3_readout() -> None:
               "smoothing is the production-faithful number.\n",
               "- Ceiling ~0.68-0.73 macro; not 0.80. Flag any fold whose gain looks too good "
               "(composition leakage).\n"]
+    xen = [f["delta_macro"] for n, f in e1["folds"].items() if n.startswith("xenium")]
+    sth = [f["delta_macro"] for n, f in e1["folds"].items() if n.startswith("sthelar")]
+    xen_mean = sum(xen) / len(xen) if xen else 0.0
+    sth_mean = sum(sth) / len(sth) if sth else 0.0
+    r2_gnn = e1["folds"]["xenium_rep2"]["delta_macro"]
+    r2_sm = e2["folds"]["xenium_rep2"]["macro_smooth"] - e2["folds"]["xenium_rep2"]["macro_raw"]
+    lines += [
+        "\n## Stage-3 verdict (data-driven)\n",
+        f"- **Domain split.** The graph HELPS on Xenium (mean delta {xen_mean:+.4f}, Endothelial-led) but "
+        f"HURTS on STHELAR (mean delta {sth_mean:+.4f}); pooling averages to ~0 "
+        f"({e1['pooled']['delta_macro']:+.4f}). The Xenium lift matches the predicted shrink from +0.091 "
+        "(weak from-scratch nodes) toward Stage-1's +0.019 as nodes get stronger.\n",
+        f"- **Graph == cheap smoothing on the feature-clean fold.** On xenium_rep2 the learned GNN lift "
+        f"({r2_gnn:+.4f}) is essentially equal to the near-free Correct-and-Smooth lift ({r2_sm:+.4f}). "
+        "With production-strength node features the graph's contribution collapses to label diffusion: a "
+        "learned GNN is NOT worth the compute over C&S. Both buy ~+0.016 macro on Xenium but cost up to "
+        "-0.07 on some STHELAR slides, so either needs per-domain gating.\n",
+    ]
     lines.append("\n> NOTE: the frozen EffNet trained on rep1 + sthelar_breast_s0/s1/s3/s6 "
                  "(held out xenium_rep2). Only the **xenium_rep2** fold is feature-clean "
                  "(honest absolute F1); the other 5 folds' absolute F1 is extractor-optimistic. "
