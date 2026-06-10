@@ -243,13 +243,160 @@ def phase_stage2() -> None:
     logger.info(f"stage2 done -> stage2_metrics.json (best val {best_val:.4f})")
 
 
+def phase_stage2_proper() -> None:
+    """Proper Stage 2: nucleus-local CNN with a within-Stage-2 NO-GRAPH ablation and
+    SAME-DOMAIN (Xenium rep1 spatial hold-out) validation. All sources are 0.2125
+    um/px, so the 40px crop is already a fixed ~8.5um FoV. Trains TWO equal-capacity
+    arms (no-graph: neighbour term zeroed; graph: 1-hop neighbour-mean) -> the arm
+    delta isolates the spatial graph's contribution for context-poor nucleus nodes.
+    Graph over ALL cells (context); loss/metrics on labelled nodes only."""
+    import struct
+    import sys
+
+    import lmdb
+    import numpy as np
+    import polars as pl
+    import torch
+    from scipy.spatial import cKDTree
+    from sklearn.metrics import f1_score, precision_recall_fscore_support
+    from torch import nn
+
+    from dapidl.graph.embed import decode_record
+    from dapidl.graph.gnn import NucleusNodeCNN
+    sys.path.insert(0, "scripts")
+    from breast_pooled_train import class_weights
+
+    reg = pl.read_parquet(OUT / "spatial_registry.parquet")
+    src = reg["source"].to_numpy()
+    coords = reg.select(["x_px", "y_px"]).to_numpy()
+    labels = reg["coarse_idx"].to_numpy()
+    n, k, crop, off = len(reg), 8, 40, (128 - 40) // 2
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    nbr = np.full((n, k), -1, dtype=np.int64)
+    for s in np.unique(src):
+        idx = np.where(src == s)[0]
+        if len(idx) < 2:
+            continue
+        kk = min(k, len(idx) - 1)
+        _, nn_ = cKDTree(coords[idx]).query(coords[idx], k=kk + 1)
+        nn_ = np.atleast_2d(nn_)
+        for c in range(kk):
+            nbr[idx, c] = idx[nn_[:, c + 1]]
+
+    crops = np.empty((n, crop, crop), dtype=np.uint16)
+    env = lmdb.open(str(LMDB_DIR / "patches.lmdb"), readonly=True, lock=False)
+    with env.begin() as txn:
+        for i in range(n):
+            _, p = decode_record(txn.get(struct.pack(">Q", i)), 128)
+            crops[i] = p[off:off + crop, off:off + crop]
+    env.close()
+
+    # same-domain Xenium val: top-20% y-stripe of rep1 (spatially separated from rep1 train)
+    rep1 = (src == "xenium_rep1") & (labels != -1)
+    y80 = np.quantile(coords[rep1, 1], 0.80)
+    val_idx = np.where(rep1 & (coords[:, 1] > y80))[0]
+    train_idx = np.where((rep1 & (coords[:, 1] <= y80)) |
+                         ((src != "xenium_rep1") & (src != "xenium_rep2") & (labels != -1)))[0]
+    test_idx = np.where((src == "xenium_rep2") & (labels != -1))[0]
+    logger.info(f"stage2-proper split: train={len(train_idx)} val(rep1-stripe)={len(val_idx)} test(rep2)={len(test_idx)}")
+
+    class Arm(nn.Module):
+        def __init__(self, use_graph):
+            super().__init__()
+            self.use_graph = use_graph
+            self.cnn = NucleusNodeCNN(out_dim=128)
+            self.lin = nn.Linear(256, 64)
+            self.head = nn.Linear(64, 4)
+
+        def forward(self, self_crops, nbr_crops, nbr_valid):
+            se = self.cnn(self_crops)
+            if self.use_graph:
+                ne = self.cnn(nbr_crops).reshape(se.shape[0], k, 128)
+                cnt = nbr_valid.sum(1, keepdim=True).clamp_min(1.0)
+                agg = (ne * nbr_valid[:, :, None]).sum(1) / cnt
+            else:
+                agg = torch.zeros_like(se)
+            return self.head(torch.relu(self.lin(torch.cat([se, agg], 1))))
+
+    def to_crop(rows):
+        x = crops[rows].astype(np.float32) / 65535.0
+        x = (x - 0.485) / 0.229
+        return torch.from_numpy(x)[:, None].to(device)
+
+    w = class_weights(labels[labels != -1], 4, max_ratio=10.0).to(device)
+    CL = ["Endothelial", "Epithelial", "Immune", "Stromal"]
+    batch = 256
+    arms = {}
+    for use_graph in [False, True]:
+        tag = "graph" if use_graph else "nograph"
+        torch.manual_seed(0)
+        model = Arm(use_graph).to(device)
+        opt = torch.optim.Adam(model.parameters(), lr=3e-4)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=40)
+        lossf = nn.CrossEntropyLoss(weight=w)
+        rng = np.random.default_rng(0)
+
+        def run(targets, train):
+            nb = nbr[targets]
+            valid = torch.from_numpy((nb >= 0).astype(np.float32)).to(device)
+            sc = to_crop(targets)
+            nc = to_crop(np.where(nb >= 0, nb, targets[:, None]).reshape(-1)) if model.use_graph else None
+            logits = model(sc, nc, valid)
+            if train:
+                yv = torch.from_numpy(labels[targets]).long().to(device)
+                loss = lossf(logits, yv)
+                opt.zero_grad(); loss.backward(); opt.step()
+            return logits.argmax(1).detach().cpu().numpy()
+
+        @torch.no_grad()
+        def evaluate(idx):
+            model.eval()
+            pred = np.concatenate([run(idx[i:i + batch], False) for i in range(0, len(idx), batch)])
+            model.train()
+            return f1_score(labels[idx], pred, average="macro", zero_division=0), pred
+
+        best_val, patience, best_state = -1.0, 0, None
+        for epoch in range(40):
+            order = rng.permutation(train_idx)
+            for i in range(0, len(order), batch):
+                run(order[i:i + batch], True)
+            sched.step()
+            vf1, _ = evaluate(val_idx)
+            logger.info(f"stage2-{tag} epoch {epoch}: val_macro_f1={vf1:.4f}")
+            if vf1 > best_val:
+                best_val, patience = vf1, 0
+                best_state = {kk: v.cpu().clone() for kk, v in model.state_dict().items()}
+            else:
+                patience += 1
+                if patience >= 5:
+                    break
+        model.load_state_dict(best_state)
+        model.eval()
+        _, tpred = evaluate(test_idx)
+        truth = labels[test_idx]
+        _, _, f1, sup = precision_recall_fscore_support(truth, tpred, labels=[0, 1, 2, 3], zero_division=0)
+        arms[tag] = {"macro_f1": float(f1_score(truth, tpred, average="macro", zero_division=0)),
+                     "per_class": {CL[c]: {"f1": float(f1[c]), "support": int(sup[c])} for c in range(4)},
+                     "val_macro_f1": float(best_val)}
+        np.save(OUT / f"stage2proper_pred_{tag}.npy", tpred)
+        logger.info(f"stage2-{tag} TEST macro_f1={arms[tag]['macro_f1']:.4f}")
+
+    delta = {c: round(arms["graph"]["per_class"][c]["f1"] - arms["nograph"]["per_class"][c]["f1"], 4) for c in CL}
+    delta["macro"] = round(arms["graph"]["macro_f1"] - arms["nograph"]["macro_f1"], 4)
+    (OUT / "stage2_proper_metrics.json").write_text(json.dumps(
+        {"arms": arms, "graph_minus_nograph": delta, "baseline_effnet_macro_f1": 0.619}, indent=2))
+    logger.info(f"stage2-proper done: nograph={arms['nograph']['macro_f1']:.4f} "
+                f"graph={arms['graph']['macro_f1']:.4f} delta_macro={delta['macro']:+.4f} -> stage2_proper_metrics.json")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--phase", required=True,
-                    choices=["registry", "embed", "stage1", "gate", "stage2"])
+                    choices=["registry", "embed", "stage1", "gate", "stage2", "stage2_proper"])
     args = ap.parse_args()
     phases = {"registry": phase_registry, "embed": phase_embed, "stage1": phase_stage1,
-              "gate": phase_gate, "stage2": phase_stage2}
+              "gate": phase_gate, "stage2": phase_stage2, "stage2_proper": phase_stage2_proper}
     phases.get(args.phase, lambda: logger.error("phase not yet implemented"))()
 
 
