@@ -390,13 +390,258 @@ def phase_stage2_proper() -> None:
                 f"graph={arms['graph']['macro_f1']:.4f} delta_macro={delta['macro']:+.4f} -> stage2_proper_metrics.json")
 
 
+def phase_logits() -> None:
+    """[GPU] Dump the production EffNet's softmax class probabilities per cell -> (N,4).
+    The honest Correct-and-Smooth base predictor (pca128 is lossy and cannot reconstruct
+    logits). Mirrors embed.extract_embeddings but applies model.head + softmax."""
+    import struct
+    import sys
+
+    import lmdb
+    import numpy as np
+    import torch
+
+    from dapidl.graph.embed import decode_record
+    sys.path.insert(0, "scripts")
+    from breast_pooled_train import DapiClassifier
+
+    n = int(np.load(LMDB_DIR / "labels.npy").shape[0])
+    ckpt = Path("pipeline_output/h2h_2026_05_30/efficientnetv2_rw_s/best_model.pt")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = DapiClassifier(num_classes=4, backbone="efficientnetv2_rw_s")
+    state = torch.load(ckpt, map_location="cpu", weights_only=True)
+    model.load_state_dict(state.get("model_state_dict") or state.get("model") or state)
+    model.eval().to(device)
+
+    probs = np.empty((n, 4), dtype=np.float32)
+    env = lmdb.open(str(LMDB_DIR / "patches.lmdb"), readonly=True, lock=False)
+    buf: list[np.ndarray] = []
+    rows: list[int] = []
+
+    def flush():
+        if not rows:
+            return
+        x = np.stack(buf).astype(np.float32) / 65535.0
+        x = (x - 0.485) / 0.229
+        t = torch.from_numpy(x)[:, None, :, :].to(device)
+        with torch.no_grad():
+            p = torch.softmax(model.head(model.backbone(t.expand(-1, 3, -1, -1))), dim=1)
+        probs[rows] = p.cpu().numpy().astype(np.float32)
+        buf.clear(); rows.clear()
+
+    with env.begin() as txn:
+        for i in range(n):
+            _, patch = decode_record(txn.get(struct.pack(">Q", i)), 128)
+            buf.append(patch); rows.append(i)
+            if len(rows) == 256:
+                flush()
+        flush()
+    env.close()
+    np.save(OUT / "probs_production.npy", probs)
+    logger.info(f"logits: production softmax probs {probs.shape} -> probs_production.npy")
+
+
+def phase_stage3_loso() -> None:
+    """[CONTROLLER RUN] E1: frozen-EffNet features into the learned graph, two-arm
+    (nograph=NoGraph, graph=Mean) ablation under leave-one-slide-out over all slides.
+    Features preloaded to device once and shared across arms/folds."""
+    import numpy as np
+    import polars as pl
+    import torch
+
+    from dapidl.graph.encoders import FrozenFeatureEncoder
+    from dapidl.graph.gnn import MeanAggregator, NoGraphAggregator
+    from dapidl.graph.harness import run_ablation
+    from dapidl.graph.knn_graph import build_within_slide_nbr_table
+    from dapidl.graph.splits import LOSOSplit
+
+    reg = pl.read_parquet(OUT / "spatial_registry.parquet")
+    src = reg["source"].to_numpy()
+    coords = reg.select(["x_px", "y_px"]).to_numpy()
+    labels = reg["coarse_idx"].to_numpy()
+    pca = np.load(OUT / "embeddings_pca128.npy")
+
+    nbr = build_within_slide_nbr_table(coords, src, k=8)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    feats_dev = torch.from_numpy(np.ascontiguousarray(pca, dtype=np.float32)).to(device)  # once
+
+    res = run_ablation(lambda: FrozenFeatureEncoder(feats_dev, device),
+                       {"nograph": NoGraphAggregator(), "graph": MeanAggregator()},
+                       LOSOSplit(src, coords, labels, val_frac=0.20),
+                       nbr=nbr, labels=labels, device=device)
+    res["baseline_effnet_macro_f1"] = 0.619
+    (OUT / "stage3_loso_metrics.json").write_text(json.dumps(res, indent=2))
+    p = res.get("pooled", {})
+    logger.info(f"stage3-loso pooled: nograph={p.get('macro_nograph')} "
+                f"graph={p.get('macro_graph')} delta_macro={p.get('delta_macro')}")
+
+
+def phase_cands_loso() -> None:
+    """[CONTROLLER RUN] E2: smooth the production EffNet probabilities over each held-out
+    slide's within-slide graph (held-out => Correct step inert => smoothing-only), versus
+    raw argmax; plus a within-slide TRANSDUCTIVE upper bound (reveal 20% of the held-out
+    slide's labels, run full C&S, score the other 80%) — a diagnostic, not production."""
+    import numpy as np
+    import polars as pl
+    from sklearn.metrics import f1_score
+
+    from dapidl.graph.knn_graph import build_within_slide_knn
+    from dapidl.graph.probe_eval import mcnemar_test
+    from dapidl.graph.smooth import correct_and_smooth, smooth, transition_matrix
+    from dapidl.graph.splits import LOSOSplit
+
+    reg = pl.read_parquet(OUT / "spatial_registry.parquet")
+    src = reg["source"].to_numpy()
+    coords = reg.select(["x_px", "y_px"]).to_numpy()
+    labels = reg["coarse_idx"].to_numpy()
+    probs = np.load(OUT / "probs_production.npy")
+    n = len(labels)
+
+    edge = build_within_slide_knn(coords, src, k=8)
+    T = transition_matrix(edge, n)
+    sm_full = smooth(probs, T, alpha=0.8, iters=30)         # global; held-out slide is its own component
+
+    folds: dict = {}
+    pooled_truth, pooled_raw, pooled_sm = [], [], []
+    for name, _tr, _va, te in LOSOSplit(src, coords, labels, val_frac=0.20).folds():
+        truth = labels[te]
+        raw = probs[te].argmax(1)
+        sm = sm_full[te].argmax(1)
+        # transductive upper bound: reveal a 20% sample of THIS slide's labels, score the rest
+        rng = np.random.default_rng(0)
+        reveal = rng.permutation(te)[: max(1, len(te) // 5)]
+        held = np.setdiff1d(te, reveal)
+        cs_full = correct_and_smooth(probs, reveal, labels[reveal], T, iters=30)
+        cs = cs_full[held].argmax(1)
+        folds[name] = {
+            "macro_raw": float(f1_score(truth, raw, average="macro", zero_division=0)),
+            "macro_smooth": float(f1_score(truth, sm, average="macro", zero_division=0)),
+            "macro_cs_transductive_ub": float(f1_score(labels[held], cs, average="macro", zero_division=0)),
+            "mcnemar_smooth_vs_raw": mcnemar_test(truth, raw, sm),
+        }
+        pooled_truth.append(truth); pooled_raw.append(raw); pooled_sm.append(sm)
+
+    PT = np.concatenate(pooled_truth); PR = np.concatenate(pooled_raw); PS = np.concatenate(pooled_sm)
+    out = {"folds": folds, "pooled": {
+        "macro_raw": float(f1_score(PT, PR, average="macro", zero_division=0)),
+        "macro_smooth": float(f1_score(PT, PS, average="macro", zero_division=0)),
+        "mcnemar_smooth_vs_raw": mcnemar_test(PT, PR, PS)}}
+    (OUT / "cands_loso_metrics.json").write_text(json.dumps(out, indent=2))
+    logger.info(f"cands-loso pooled: raw={out['pooled']['macro_raw']} smooth={out['pooled']['macro_smooth']}")
+
+
+def phase_stage2_proper_harness() -> None:
+    """[CONTROLLER RUN] Characterization: reproduce phase_stage2_proper through the new
+    harness (CropCNNEncoder + {NoGraph, Mean} + Stage2ProperSplit) to prove the refactor
+    is faithful. Writes stage2_proper_harness_metrics.json for comparison with the
+    committed stage2_proper_metrics.json."""
+    import struct
+    import sys
+
+    import lmdb
+    import numpy as np
+    import polars as pl
+    import torch
+
+    from dapidl.graph.embed import decode_record
+    from dapidl.graph.encoders import CropCNNEncoder
+    from dapidl.graph.gnn import MeanAggregator, NoGraphAggregator
+    from dapidl.graph.harness import run_ablation
+    from dapidl.graph.knn_graph import build_within_slide_nbr_table
+    from dapidl.graph.splits import Stage2ProperSplit
+    sys.path.insert(0, "scripts")
+
+    reg = pl.read_parquet(OUT / "spatial_registry.parquet")
+    src = reg["source"].to_numpy()
+    coords = reg.select(["x_px", "y_px"]).to_numpy()
+    labels = reg["coarse_idx"].to_numpy()
+    n, crop, off = len(reg), 40, (128 - 40) // 2
+
+    crops = np.empty((n, crop, crop), dtype=np.uint16)
+    env = lmdb.open(str(LMDB_DIR / "patches.lmdb"), readonly=True, lock=False)
+    with env.begin() as txn:
+        for i in range(n):
+            _, p = decode_record(txn.get(struct.pack(">Q", i)), 128)
+            crops[i] = p[off:off + crop, off:off + crop]
+    env.close()
+
+    nbr = build_within_slide_nbr_table(coords, src, k=8)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    res = run_ablation(lambda: CropCNNEncoder(crops, device, out_dim=128),
+                       {"nograph": NoGraphAggregator(), "graph": MeanAggregator()},
+                       Stage2ProperSplit(src, coords, labels, val_frac=0.20),
+                       nbr=nbr, labels=labels, device=device)
+    (OUT / "stage2_proper_harness_metrics.json").write_text(json.dumps(res, indent=2))
+    f = res["folds"]["xenium_rep2"]
+    logger.info(f"stage2-proper-harness: nograph={f['nograph']['macro_f1']:.4f} "
+                f"graph={f['graph']['macro_f1']:.4f} (committed ref: 0.537 / 0.628)")
+
+
+def phase_stage3_readout() -> None:
+    """[CONTROLLER RUN] Compose stage3_readout.md from stage3_loso_metrics.json (E1) and
+    cands_loso_metrics.json (E2): per-fold + pooled macro/delta, feature-clean vs Δ-clean
+    tiers, and the GNN-vs-smoother comparison.
+
+    FEATURE_CLEAN: slides the frozen extractor did NOT train on (absolute F1 honest).
+    Determine from the checkpoint's training config under
+    pipeline_output/h2h_2026_05_30/ (e.g. a config.json / args listing the train slides).
+    If it cannot be recovered, LEAVE THIS EMPTY: the readout then reports all folds
+    Δ-clean only and labels every absolute F1 'extractor-membership unverified'. The Δ
+    claim never depends on this set."""
+    e1 = json.loads((OUT / "stage3_loso_metrics.json").read_text())
+    e2 = json.loads((OUT / "cands_loso_metrics.json").read_text())
+
+    FEATURE_CLEAN: set[str] = set()   # populate from h2h training config if recoverable; else empty
+
+    lines = ["# Graph-Arm Stage 3 — Readout (LOSO)\n",
+             "## E1 — Frozen-EffNet features in the learned graph (two-arm, leave-one-slide-out)\n",
+             "Delta = graph - no-graph is **leakage-immune** (both arms share identical frozen features).\n",
+             "| Held-out slide | tier | no-graph | graph | delta macro | McNemar p |",
+             "|---|---|---|---|---|---|"]
+    for name, f in e1["folds"].items():
+        tier = "feature-clean" if name in FEATURE_CLEAN else "delta-clean (abs F1 optimistic/unverified)"
+        mp = f.get("mcnemar_graph_vs_nograph", {}).get("p_value")
+        lines.append(f"| {name} | {tier} | {f['nograph']['macro_f1']:.4f} | "
+                     f"{f['graph']['macro_f1']:.4f} | {f.get('delta_macro'):+.4f} | {mp} |")
+    p = e1.get("pooled", {})
+    lines += [f"\n**Pooled:** no-graph {p.get('macro_nograph')}, graph {p.get('macro_graph')}, "
+              f"delta {p.get('delta_macro')}, pooled McNemar p="
+              f"{p.get('mcnemar_graph_vs_nograph', {}).get('p_value')}. EffNet baseline 0.619.\n",
+              "## E2 — Spatial smoothing of production probabilities (near-free)\n",
+              "| Held-out slide | raw | smooth | C&S transductive UB |",
+              "|---|---|---|---|"]
+    for name, f in e2["folds"].items():
+        lines.append(f"| {name} | {f['macro_raw']:.4f} | {f['macro_smooth']:.4f} | "
+                     f"{f['macro_cs_transductive_ub']:.4f} |")
+    pe = e2.get("pooled", {})
+    lines += [f"\n**Pooled:** raw {pe.get('macro_raw')}, smooth {pe.get('macro_smooth')}, "
+              f"smooth-vs-raw McNemar p={pe.get('mcnemar_smooth_vs_raw', {}).get('p_value')}.\n",
+              "## Honest framing\n",
+              "- Delta (graph lift) is the scientific claim; expected small (~+0.02) on strong frozen "
+              "features (vs +0.091 on the from-scratch CNN) — both arms now start strong.\n",
+              "- If E2's transductive UB >> smooth, the gain needs same-slide labels (not production); "
+              "smoothing is the production-faithful number.\n",
+              "- Ceiling ~0.68-0.73 macro; not 0.80. Flag any fold whose gain looks too good "
+              "(composition leakage).\n"]
+    if not FEATURE_CLEAN:
+        lines.append("\n> NOTE: extractor training set unverified — all absolute F1 are "
+                     "'extractor-membership unverified'; only delta is asserted.\n")
+    (OUT / "stage3_readout.md").write_text("\n".join(lines))
+    logger.info("stage3 readout -> stage3_readout.md")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--phase", required=True,
-                    choices=["registry", "embed", "stage1", "gate", "stage2", "stage2_proper"])
+                    choices=["registry", "embed", "stage1", "gate", "stage2", "stage2_proper",
+                             "logits", "stage3_loso", "cands_loso", "stage2_proper_harness",
+                             "stage3_readout"])
     args = ap.parse_args()
     phases = {"registry": phase_registry, "embed": phase_embed, "stage1": phase_stage1,
-              "gate": phase_gate, "stage2": phase_stage2, "stage2_proper": phase_stage2_proper}
+              "gate": phase_gate, "stage2": phase_stage2, "stage2_proper": phase_stage2_proper,
+              "logits": phase_logits, "stage3_loso": phase_stage3_loso,
+              "cands_loso": phase_cands_loso, "stage2_proper_harness": phase_stage2_proper_harness,
+              "stage3_readout": phase_stage3_readout}
     phases.get(args.phase, lambda: logger.error("phase not yet implemented"))()
 
 

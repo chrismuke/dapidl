@@ -1,8 +1,15 @@
+import json
+from pathlib import Path
+
 import numpy as np
+import pytest
 import torch
+
 from dapidl.graph.encoders import FrozenFeatureEncoder
 from dapidl.graph.gnn import MeanAggregator, NoGraphAggregator
 from dapidl.graph.harness import GraphArmModel, run_ablation
+
+_OUT = Path("pipeline_output/spatial_gnn_probe_2026_06")
 
 
 def test_graph_arm_model_forward_shape_and_aggregator_swap():
@@ -44,3 +51,12 @@ def test_run_ablation_two_arms_on_synthetic_separable_graph():
                                              "mcnemar_graph_vs_nograph"}
     assert res["folds"]["b"]["nograph"]["macro_f1"] > 0.6   # learns the separable signal
     assert "pooled" in res and "macro_graph" in res["pooled"]
+
+
+@pytest.mark.skipif(not (_OUT / "stage2_proper_harness_metrics.json").exists(),
+                    reason="run `--phase stage2_proper_harness` first (controller/GPU step)")
+def test_characterization_reproduces_committed_stage2_proper():
+    h = json.loads((_OUT / "stage2_proper_harness_metrics.json").read_text())["folds"]["xenium_rep2"]
+    assert abs(h["nograph"]["macro_f1"] - 0.537) <= 0.02   # refactor faithful (no-graph arm)
+    assert abs(h["graph"]["macro_f1"] - 0.628) <= 0.02     # refactor faithful (graph arm)
+    assert h["graph"]["macro_f1"] > h["nograph"]["macro_f1"]
