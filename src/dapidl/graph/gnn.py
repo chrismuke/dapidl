@@ -73,3 +73,34 @@ class MeanAggregator(nn.Module):
     def forward(self, se, ne, valid):
         cnt = valid.sum(1, keepdim=True).clamp_min(1.0)
         return (ne * valid[:, :, None]).sum(1) / cnt
+
+
+class EdgeGATv2Aggregator(nn.Module):
+    """GATv2 (Brody et al. 2022) attention over the k neighbour slots, with edge features
+    in the score. Multi-head; heads*head_dim == node_dim so the output matches Mean/NoGraph
+    width. needs_edge_attr -> GraphArmModel passes edge_attr (B,k,edge_dim)."""
+    needs_neighbours = True
+    needs_edge_attr = True
+
+    def __init__(self, node_dim: int, edge_dim: int, heads: int = 4):
+        super().__init__()
+        assert node_dim % heads == 0, "node_dim must be divisible by heads"
+        self.heads = heads
+        self.hd = node_dim // heads
+        self.w = nn.Linear(2 * node_dim + edge_dim, heads * self.hd)   # GATv2 shared transform
+        self.a = nn.Parameter(torch.empty(heads, self.hd))             # per-head attention vector
+        self.wv = nn.Linear(node_dim, heads * self.hd)                 # value projection
+        nn.init.xavier_uniform_(self.a)
+
+    def forward(self, se, ne, valid, edge_attr):
+        b, k, _ = ne.shape
+        se_exp = se[:, None, :].expand(-1, k, -1)                      # [B,k,nd]
+        h = torch.cat([se_exp, ne, edge_attr], dim=2)                  # [B,k,2nd+ed]
+        h = torch.nn.functional.leaky_relu(self.w(h)).view(b, k, self.heads, self.hd)
+        score = (h * self.a).sum(-1)                                   # [B,k,heads]
+        mask = valid[:, :, None] == 0
+        score = score.masked_fill(mask, -1e9)
+        alpha = torch.softmax(score, dim=1) * valid[:, :, None]        # zero invalid; all-invalid -> 0
+        v = self.wv(ne).view(b, k, self.heads, self.hd)               # [B,k,heads,hd]
+        out = (alpha[..., None] * v).sum(1)                           # [B,heads,hd]
+        return out.reshape(b, self.heads * self.hd)                   # [B, node_dim]
