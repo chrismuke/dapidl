@@ -649,18 +649,170 @@ def phase_stage3_readout() -> None:
     logger.info("stage3 readout -> stage3_readout.md")
 
 
+def phase_node_geometry() -> None:
+    """[GPU+CPU] Per-cell nuclear (angle, eccentricity, log_area) -> node_geom.npy (N,3).
+    Xenium: StarDist the DAPI patch, central nucleus nearest the patch centre. STHELAR:
+    native nucleus polygons. Cells with no nucleus -> [nan, 0, median_log_area]."""
+    import struct
+    import sys
+
+    import lmdb
+    import numpy as np
+    import polars as pl
+    from skimage.measure import regionprops
+
+    from dapidl.graph.embed import decode_record
+    from dapidl.graph.geometry import ellipse_from_points
+    sys.path.insert(0, "scripts")
+
+    reg = pl.read_parquet(OUT / "spatial_registry.parquet")
+    src = reg["source"].to_numpy()
+    cell_id = reg["cell_id"].to_numpy()
+    n = len(reg)
+    node_geom = np.full((n, 3), np.nan, dtype=np.float32)
+    node_geom[:, 1] = 0.0                                      # ecc default 0
+
+    # --- Xenium rows via StarDist on the 128px patch ---
+    xen_rows = np.where(np.char.startswith(src.astype(str), "xenium"))[0]
+    if len(xen_rows):
+        from starpose.qc import SegmentationGroundedScorer, SegQCConfig
+        scorer = SegmentationGroundedScorer(SegQCConfig(erode_px=1), gpu=True, pixel_size=0.2125)
+        env = lmdb.open(str(LMDB_DIR / "patches.lmdb"), readonly=True, lock=False)
+        ctr = np.array([64.0, 64.0])
+        miss = 0
+        with env.begin() as txn:
+            for ri in xen_rows:
+                _, patch = decode_record(txn.get(struct.pack(">Q", int(ri))), 128)
+                masks, _ = scorer._segment(patch)
+                if masks.max() == 0:
+                    miss += 1
+                    continue
+                props = regionprops(masks)
+                best = min(props, key=lambda p: np.hypot(p.centroid[0] - ctr[0], p.centroid[1] - ctr[1]))
+                pts = np.argwhere(masks == best.label)[:, ::-1].astype(float)   # (y,x)->(x,y)
+                ang, ecc = ellipse_from_points(pts)
+                node_geom[ri] = (ang, ecc, float(np.log1p(best.area)))
+        env.close()
+        logger.info(f"node_geometry xenium: {len(xen_rows)} cells, {miss} no-nucleus")
+
+    # --- STHELAR rows via native nucleus polygons (per slide) ---
+    from dapidl.data.sthelar import load_nucleus_geometry_with_labels
+    sthelar_base = Path("/mnt/work/datasets/STHELAR/sdata_slides")
+    for s in [v for v in np.unique(src) if str(v).startswith("sthelar")]:
+        name = str(s).replace("sthelar_", "")                 # e.g. breast_s0
+        outer = sthelar_base / f"sdata_{name}.zarr"
+        slide_root = outer / outer.name if (outer / outer.name / "shapes").is_dir() else outer
+        gdf = load_nucleus_geometry_with_labels(slide_root, [])
+        geom = gdf["geometry"]
+        rows = np.where(src == s)[0]
+        miss = 0
+        for ri in rows:
+            cid = str(cell_id[ri])
+            if cid not in geom.index:
+                miss += 1
+                continue
+            poly = geom.loc[cid]
+            pts = np.asarray(poly.exterior.coords, dtype=float)
+            ang, ecc = ellipse_from_points(pts)
+            node_geom[ri] = (ang, ecc, float(np.log1p(poly.area)))
+        logger.info(f"node_geometry {s}: {len(rows)} cells, {miss} unmatched")
+
+    la = node_geom[:, 2]
+    med = float(np.nanmedian(la))
+    la[np.isnan(la)] = med
+    node_geom[:, 2] = la
+    np.save(OUT / "node_geom.npy", node_geom)
+    logger.info(f"node_geom {node_geom.shape} -> node_geom.npy "
+                f"({int(np.isnan(node_geom[:, 0]).sum())} cells without orientation)")
+
+
+def phase_stage4_gatv2() -> None:
+    """[CONTROLLER RUN] 3-arm LOSO (nograph / mean / gatv2). nograph+mean ignore edge_attr
+    (apples-to-apples with Stage-3 E1); gatv2 uses rotation-invariant edge geometry."""
+    import numpy as np
+    import polars as pl
+    import torch
+
+    from dapidl.graph.edge_geometry import build_edge_attr
+    from dapidl.graph.encoders import FrozenFeatureEncoder
+    from dapidl.graph.gnn import EdgeGATv2Aggregator, MeanAggregator, NoGraphAggregator
+    from dapidl.graph.harness import run_ablation
+    from dapidl.graph.knn_graph import build_within_slide_nbr_table
+    from dapidl.graph.splits import LOSOSplit
+
+    reg = pl.read_parquet(OUT / "spatial_registry.parquet")
+    src = reg["source"].to_numpy()
+    coords = reg.select(["x_px", "y_px"]).to_numpy()
+    labels = reg["coarse_idx"].to_numpy()
+    pca = np.load(OUT / "embeddings_pca128.npy")
+    node_geom = np.load(OUT / "node_geom.npy")
+
+    nbr = build_within_slide_nbr_table(coords, src, k=8)
+    edge_attr = build_edge_attr(coords, node_geom, nbr)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    feats_dev = torch.from_numpy(np.ascontiguousarray(pca, dtype=np.float32)).to(device)
+
+    res = run_ablation(
+        lambda: FrozenFeatureEncoder(feats_dev, device),
+        {"nograph": NoGraphAggregator, "mean": MeanAggregator,
+         "gatv2": lambda: EdgeGATv2Aggregator(node_dim=128, edge_dim=edge_attr.shape[2], heads=4)},
+        LOSOSplit(src, coords, labels, val_frac=0.20),
+        nbr=nbr, labels=labels, edge_attr=edge_attr, device=device,
+        compare_pairs=[("nograph", "mean"), ("mean", "gatv2"), ("nograph", "gatv2")])
+    res["baseline_effnet_macro_f1"] = 0.619
+    (OUT / "stage4_gatv2_metrics.json").write_text(json.dumps(res, indent=2))
+    p = res.get("pooled", {})
+    logger.info(f"stage4 pooled: nograph={p.get('macro_nograph')} mean={p.get('macro_mean')} "
+                f"gatv2={p.get('macro_gatv2')} d(gatv2-mean)={p.get('delta_gatv2_vs_mean')}")
+
+
+def phase_stage4_readout() -> None:
+    """[CONTROLLER RUN] stage4_readout.md: per-fold + pooled nograph/mean/gatv2, the
+    gatv2-vs-mean delta (the isolation), feature-clean tiering, and the verdict vs E1/E2."""
+    d = json.loads((OUT / "stage4_gatv2_metrics.json").read_text())
+    FEATURE_CLEAN = {"xenium_rep2"}   # EffNet trained on the other 5 slides (h2h summary)
+
+    lines = ["# Graph-Arm Stage 4 — Edge-Geometry GATv2 Readout (LOSO)\n",
+             "Node features = frozen-EffNet PCA-128 for all arms; only `gatv2` sees edge geometry.\n",
+             "| Held-out slide | tier | nograph | mean | gatv2 | d(gatv2-mean) | McNemar p |",
+             "|---|---|---|---|---|---|---|"]
+    for name, f in d["folds"].items():
+        tier = "feature-clean" if name in FEATURE_CLEAN else "delta-clean"
+        mp = f.get("mcnemar_gatv2_vs_mean", {}).get("p_value")
+        lines.append(f"| {name} | {tier} | {f['nograph']['macro_f1']:.4f} | {f['mean']['macro_f1']:.4f} "
+                     f"| {f['gatv2']['macro_f1']:.4f} | {f.get('delta_gatv2_vs_mean'):+.4f} | {mp} |")
+    p = d.get("pooled", {})
+    r2 = d["folds"]["xenium_rep2"]
+    r2_endo = r2["gatv2"]["per_class"]["Endothelial"]["f1"] - r2["mean"]["per_class"]["Endothelial"]["f1"]
+    lines += [
+        f"\n**Pooled:** nograph {p.get('macro_nograph')}, mean {p.get('macro_mean')}, "
+        f"gatv2 {p.get('macro_gatv2')}; d(gatv2-mean) {p.get('delta_gatv2_vs_mean')}, "
+        f"pooled McNemar p={p.get('mcnemar_gatv2_vs_mean', {}).get('p_value')}.\n",
+        "## Verdict\n",
+        f"- **Feature-clean rep2:** gatv2-vs-mean = {r2.get('delta_gatv2_vs_mean'):+.4f} macro "
+        f"(Endothelial {r2_endo:+.4f}). Stage-3 bar to clear: mean graph +0.0161 and free C&S +0.0159.\n",
+        "- If gatv2-vs-mean materially exceeds 0 on rep2 (esp. Endothelial), edge-geometry attention "
+        "is the real lever -> multi-scale follow-on justified. If ~0, the graph caps at diffusion on "
+        "these features and we stop.\n",
+        "\n> Only xenium_rep2 is feature-clean (EffNet trained on rep1 + sthelar s0/s1/s3/s6). "
+        "The gatv2-vs-mean delta is leakage-immune in every fold (same frozen nodes).\n"]
+    (OUT / "stage4_readout.md").write_text("\n".join(lines))
+    logger.info("stage4 readout -> stage4_readout.md")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--phase", required=True,
                     choices=["registry", "embed", "stage1", "gate", "stage2", "stage2_proper",
                              "logits", "stage3_loso", "cands_loso", "stage2_proper_harness",
-                             "stage3_readout"])
+                             "stage3_readout", "node_geometry", "stage4_gatv2", "stage4_readout"])
     args = ap.parse_args()
     phases = {"registry": phase_registry, "embed": phase_embed, "stage1": phase_stage1,
               "gate": phase_gate, "stage2": phase_stage2, "stage2_proper": phase_stage2_proper,
               "logits": phase_logits, "stage3_loso": phase_stage3_loso,
               "cands_loso": phase_cands_loso, "stage2_proper_harness": phase_stage2_proper_harness,
-              "stage3_readout": phase_stage3_readout}
+              "stage3_readout": phase_stage3_readout, "node_geometry": phase_node_geometry,
+              "stage4_gatv2": phase_stage4_gatv2, "stage4_readout": phase_stage4_readout}
     phases.get(args.phase, lambda: logger.error("phase not yet implemented"))()
 
 
