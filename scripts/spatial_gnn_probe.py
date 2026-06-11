@@ -466,7 +466,7 @@ def phase_stage3_loso() -> None:
     feats_dev = torch.from_numpy(np.ascontiguousarray(pca, dtype=np.float32)).to(device)  # once
 
     res = run_ablation(lambda: FrozenFeatureEncoder(feats_dev, device),
-                       {"nograph": NoGraphAggregator(), "graph": MeanAggregator()},
+                       {"nograph": NoGraphAggregator, "graph": MeanAggregator},
                        LOSOSplit(src, coords, labels, val_frac=0.20),
                        nbr=nbr, labels=labels, device=device)
     res["baseline_effnet_macro_f1"] = 0.619
@@ -568,7 +568,7 @@ def phase_stage2_proper_harness() -> None:
     nbr = build_within_slide_nbr_table(coords, src, k=8)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     res = run_ablation(lambda: CropCNNEncoder(crops, device, out_dim=128),
-                       {"nograph": NoGraphAggregator(), "graph": MeanAggregator()},
+                       {"nograph": NoGraphAggregator, "graph": MeanAggregator},
                        Stage2ProperSplit(src, coords, labels, val_frac=0.20),
                        nbr=nbr, labels=labels, device=device)
     (OUT / "stage2_proper_harness_metrics.json").write_text(json.dumps(res, indent=2))

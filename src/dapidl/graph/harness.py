@@ -26,14 +26,17 @@ class GraphArmModel(nn.Module):
         self.lin = nn.Linear(node_dim * 2, hidden)
         self.head = nn.Linear(hidden, num_classes)
 
-    def forward(self, self_rows, nbr_rows, valid):
+    def forward(self, self_rows, nbr_rows, valid, edge_attr=None):
         se = self.encoder.encode(self_rows)                              # [B, d]
         if getattr(self.aggregator, "needs_neighbours", True):
             b, k = nbr_rows.shape
             ne = self.encoder.encode(nbr_rows.reshape(-1)).reshape(b, k, -1)
         else:
             ne = se[:, None, :]                                          # placeholder, unused
-        agg = self.aggregator(se, ne, valid)                            # [B, d]
+        if getattr(self.aggregator, "needs_edge_attr", False):
+            agg = self.aggregator(se, ne, valid, edge_attr)
+        else:
+            agg = self.aggregator(se, ne, valid)
         return self.head(torch.relu(self.lin(torch.cat([se, agg], 1))))
 
 
@@ -45,18 +48,19 @@ class ArmResult:
     pred: np.ndarray
 
 
-def train_arm(encoder_factory: Callable[[], nn.Module], aggregator, *, nbr, labels,
-              train_idx, val_idx, test_idx, num_classes: int = 4, device: str = "cpu",
+def train_arm(encoder_factory: Callable[[], nn.Module], aggregator_factory: Callable[[], nn.Module], *,
+              nbr, labels, train_idx, val_idx, test_idx, num_classes: int = 4, device: str = "cpu",
               epochs: int = 40, patience: int = 5, seed: int = 0, batch: int = 256,
-              lr: float = 3e-4) -> ArmResult:
+              lr: float = 3e-4, edge_attr=None) -> ArmResult:
     """Train one arm with early stopping on val macro-F1, evaluate on test. Reproduces
     phase_stage2_proper's loop (Adam, cosine T_max=epochs, weighted CE with
-    class_weights max_ratio=10.0)."""
+    class_weights max_ratio=10.0). aggregator_factory is called fresh per invocation."""
     sys.path.insert(0, "scripts")
     from breast_pooled_train import class_weights
 
     torch.manual_seed(seed)
     encoder = encoder_factory()
+    aggregator = aggregator_factory()
     model = GraphArmModel(encoder, aggregator, node_dim=encoder.out_dim, num_classes=num_classes).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
@@ -68,7 +72,8 @@ def train_arm(encoder_factory: Callable[[], nn.Module], aggregator, *, nbr, labe
         nb = nbr[rows]
         valid = torch.from_numpy((nb >= 0).astype(np.float32)).to(device)
         safe = np.where(nb >= 0, nb, rows[:, None])
-        logits = model(rows, safe, valid)
+        ea = torch.from_numpy(edge_attr[rows]).float().to(device) if edge_attr is not None else None
+        logits = model(rows, safe, valid, ea)
         if train:
             y = torch.from_numpy(labels[rows]).long().to(device)
             loss = lossf(logits, y)
@@ -111,21 +116,22 @@ def train_arm(encoder_factory: Callable[[], nn.Module], aggregator, *, nbr, labe
                      per_class, float(best_val), tpred)
 
 
-def run_ablation(encoder_factory, aggregators: dict, splitter, *, nbr, labels,
-                 num_classes: int = 4, device: str = "cpu", **train_kw) -> dict:
-    """Loop folds x arms; per fold record each arm's metrics, the graph-nograph delta,
-    and per-fold McNemar; then pool predictions across folds for a pooled macro, pooled
-    per-class, and pooled McNemar. Requires arm tags 'nograph' and 'graph' for the delta."""
+def run_ablation(encoder_factory, aggregator_factories: dict, splitter, *, nbr, labels,
+                 num_classes: int = 4, device: str = "cpu", compare_pairs=None, **train_kw) -> dict:
+    """Loop folds x arms (each arm an aggregator FACTORY -> fresh module per fold). For each
+    (baseline, candidate) in compare_pairs (default [("nograph","graph")]) record per-fold and
+    pooled delta_macro + McNemar. train_kw (incl. edge_attr=...) is forwarded to train_arm."""
     from dapidl.graph.probe_eval import mcnemar_test
+    pairs = compare_pairs if compare_pairs is not None else [("nograph", "graph")]
 
     out: dict = {"folds": {}, "pooled": {}}
-    pooled_pred = {tag: [] for tag in aggregators}
+    pooled_pred = {tag: [] for tag in aggregator_factories}
     pooled_truth: list[np.ndarray] = []
     for name, tr, va, te in splitter.folds():
         fold: dict = {}
         preds: dict = {}
-        for tag, agg in aggregators.items():
-            res = train_arm(encoder_factory, agg, nbr=nbr, labels=labels,
+        for tag, fac in aggregator_factories.items():
+            res = train_arm(encoder_factory, fac, nbr=nbr, labels=labels,
                             train_idx=tr, val_idx=va, test_idx=te,
                             num_classes=num_classes, device=device, **train_kw)
             fold[tag] = {"macro_f1": res.macro_f1, "per_class": res.per_class,
@@ -134,21 +140,28 @@ def run_ablation(encoder_factory, aggregators: dict, splitter, *, nbr, labels,
             pooled_pred[tag].append(res.pred)
         truth = labels[te]
         pooled_truth.append(truth)
-        if "graph" in preds and "nograph" in preds:
-            fold["delta_macro"] = round(fold["graph"]["macro_f1"] - fold["nograph"]["macro_f1"], 4)
-            fold["mcnemar_graph_vs_nograph"] = mcnemar_test(truth, preds["nograph"], preds["graph"])
+        for base, cand in pairs:
+            if base in preds and cand in preds:
+                fold[f"delta_{cand}_vs_{base}"] = round(fold[cand]["macro_f1"] - fold[base]["macro_f1"], 4)
+                fold[f"mcnemar_{cand}_vs_{base}"] = mcnemar_test(truth, preds[base], preds[cand])
+                if (base, cand) == ("nograph", "graph"):            # Stage-3 backward-compat alias
+                    fold["delta_macro"] = fold[f"delta_{cand}_vs_{base}"]
         out["folds"][name] = fold
 
-    if "graph" in aggregators and "nograph" in aggregators and pooled_truth:
+    if pooled_truth:
         T = np.concatenate(pooled_truth)
-        G = np.concatenate(pooled_pred["graph"])
-        N = np.concatenate(pooled_pred["nograph"])
-        _, _, f1g, _ = precision_recall_fscore_support(T, G, labels=list(range(num_classes)), zero_division=0)
-        out["pooled"] = {
-            "macro_graph": float(f1_score(T, G, average="macro", zero_division=0)),
-            "macro_nograph": float(f1_score(T, N, average="macro", zero_division=0)),
-            "per_class_graph": {CLASSES[c]: float(f1g[c]) for c in range(num_classes)},
-            "mcnemar_graph_vs_nograph": mcnemar_test(T, N, G),
-        }
-        out["pooled"]["delta_macro"] = round(out["pooled"]["macro_graph"] - out["pooled"]["macro_nograph"], 4)
+        for tag in aggregator_factories:
+            P = np.concatenate(pooled_pred[tag])
+            _, _, f1c, _ = precision_recall_fscore_support(T, P, labels=list(range(num_classes)), zero_division=0)
+            out["pooled"][f"macro_{tag}"] = float(f1_score(T, P, average="macro", zero_division=0))
+            out["pooled"][f"per_class_{tag}"] = {CLASSES[c]: float(f1c[c]) for c in range(num_classes)}
+        for base, cand in pairs:
+            if base in aggregator_factories and cand in aggregator_factories:
+                B = np.concatenate(pooled_pred[base])
+                C = np.concatenate(pooled_pred[cand])
+                out["pooled"][f"delta_{cand}_vs_{base}"] = round(
+                    out["pooled"][f"macro_{cand}"] - out["pooled"][f"macro_{base}"], 4)
+                out["pooled"][f"mcnemar_{cand}_vs_{base}"] = mcnemar_test(T, B, C)
+                if (base, cand) == ("nograph", "graph"):            # Stage-3 backward-compat alias
+                    out["pooled"]["delta_macro"] = out["pooled"][f"delta_{cand}_vs_{base}"]
     return out
