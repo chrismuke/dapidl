@@ -59,3 +59,24 @@ def coreset_subsample(emb, frac, rng):
         chosen.append(nxt)
         mind = np.minimum(mind, 1.0 - (x @ x[nxt]))
     return np.sort(np.array(chosen))
+
+
+def score_all_slides_loso(emb, rows, slides, coarse_idx, broken, grades, *,
+                          k, per_class_cap, rng, coreset_frac=1.0):
+    """For each slide, build the bank from all OTHER slides and score this slide's crops.
+
+    Leave-one-slide-out orchestration: scores all rows with per-slide exclusion from the memory bank.
+    """
+    slides = np.asarray(slides)
+    out = np.full(len(rows), np.nan, dtype=np.float64)
+    for s in np.unique(slides):
+        bank_idx = select_bank_indices(rows, slides, coarse_idx, broken, grades,
+                                        exclude_slide=s, per_class_cap=per_class_cap, rng=rng)
+        if len(bank_idx) == 0:
+            continue
+        bank_emb = emb[bank_idx]
+        if coreset_frac < 1.0:
+            bank_emb = bank_emb[coreset_subsample(bank_emb, coreset_frac, rng)]
+        q = np.flatnonzero(slides == s)
+        out[q] = knn_anomaly_score(emb[q], bank_emb, k=k)
+    return out

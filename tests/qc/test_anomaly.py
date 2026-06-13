@@ -1,6 +1,11 @@
 import numpy as np
 
-from dapidl.qc.anomaly import coreset_subsample, knn_anomaly_score, select_bank_indices
+from dapidl.qc.anomaly import (
+    coreset_subsample,
+    knn_anomaly_score,
+    score_all_slides_loso,
+    select_bank_indices,
+)
 
 
 def test_select_bank_excludes_slide_and_broken_caps_per_class():
@@ -47,3 +52,25 @@ def test_coreset_subsample_is_deterministic():
     b = coreset_subsample(emb, frac=0.5, rng=rng2)
     assert np.array_equal(a, b)
     assert len(a) == 10
+
+
+def test_score_all_slides_loso_masks_same_slide_and_scores_all_rows():
+    rng = np.random.default_rng(0)
+    embA = rng.normal(0, 0.01, size=(10, 6))
+    embB = rng.normal(0, 0.01, size=(10, 6))
+    emb = np.vstack([embA, embB]).astype(np.float32)
+    emb[3] += 5.0  # planted outlier in slide A
+    rows = np.arange(20)
+    slides = np.array(["A"] * 10 + ["B"] * 10)
+    coarse = np.zeros(20, dtype=int)
+    broken = np.zeros(20, dtype=bool)
+    grades = np.array(["Good"] * 20)
+
+    score = score_all_slides_loso(
+        emb, rows, slides, coarse, broken, grades, k=3, per_class_cap=100, rng=rng
+    )
+    assert score.shape == (20,)
+    assert np.isfinite(score).all()
+    # Planted outlier in slide A (row 3) should score higher than other rows in slide A
+    slide_a_scores = score[:10]
+    assert int(np.argmax(slide_a_scores)) == 3
