@@ -28,3 +28,34 @@ def select_bank_indices(rows, slides, coarse_idx, broken, grades, *,
             members = rng.choice(members, size=per_class_cap, replace=False)
         out.append(members)
     return np.sort(np.concatenate(out)) if out else np.empty(0, dtype=int)
+
+
+def _l2norm(x):
+    return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-12)
+
+
+def knn_anomaly_score(query, bank, k):
+    """Mean cosine distance of each query row to its k nearest bank rows. Higher = more anomalous."""
+    q = _l2norm(np.asarray(query, dtype=np.float64))
+    b = _l2norm(np.asarray(bank, dtype=np.float64))
+    k = min(k, b.shape[0])
+    sims = q @ b.T                      # cosine similarity [Q, B]
+    part = np.partition(sims, -k, axis=1)[:, -k:]
+    return (1.0 - part).mean(axis=1)
+
+
+def coreset_subsample(emb, frac, rng):
+    """Greedy k-center coreset subsample of rows of `emb`. frac>=1 returns all indices."""
+    n = emb.shape[0]
+    m = n if frac >= 1.0 else max(1, int(round(n * frac)))
+    if m >= n:
+        return np.arange(n)
+    x = _l2norm(np.asarray(emb, dtype=np.float64))
+    start = int(rng.integers(n))
+    chosen = [start]
+    mind = 1.0 - (x @ x[start])
+    for _ in range(m - 1):
+        nxt = int(np.argmax(mind))
+        chosen.append(nxt)
+        mind = np.minimum(mind, 1.0 - (x @ x[nxt]))
+    return np.sort(np.array(chosen))
