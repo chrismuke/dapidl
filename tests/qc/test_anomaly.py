@@ -1,6 +1,6 @@
 import numpy as np
 
-from dapidl.qc.anomaly import select_bank_indices, knn_anomaly_score, coreset_subsample
+from dapidl.qc.anomaly import coreset_subsample, knn_anomaly_score, select_bank_indices
 
 
 def test_select_bank_excludes_slide_and_broken_caps_per_class():
