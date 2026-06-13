@@ -45,6 +45,7 @@ CONFIG = """<View>
     <View style="flex:32%; padding-left:14px">
       <Header value="Grader grade: $assigned_group"/>
       <Header value="$slide  ·  $cell_class  ·  row $row_idx" size="6"/>
+      <Header value="anomaly pct: $anomaly_pct" size="6"/>
       <Text name="hint" value="Toggle the nucleus layer with the eye icon. Leave all unchecked if the grade looks right."/>
       <Choices name="flag" toName="img" choice="multiple">
         <Choice value="Wrong grade" hotkey="1"/>
@@ -76,14 +77,17 @@ def poly_region(rid: int, pts: list, label: str) -> dict:
     }
 
 
-def build_task(r: dict) -> dict:
+def build_task(r: dict, sample_dir: Path) -> dict:
     ri = int(r["row_idx"])
-    uri = "data:image/png;base64," + base64.b64encode((OUT / f"{ri}.png").read_bytes()).decode()
+    uri = "data:image/png;base64," + base64.b64encode((sample_dir / f"{ri}.png").read_bytes()).decode()
     res = []
     if r["nuc_points"]:
         res.append(poly_region(ri, json.loads(r["nuc_points"]), "nucleus"))
-    task = {"data": {"image": uri, "row_idx": ri, "slide": r["slide"],
-                     "cell_class": r["cell_class"], "assigned_group": r["assigned_group"]}}
+    ap_val = r.get("anomaly_pct")
+    data = {"image": uri, "row_idx": ri, "slide": r["slide"],
+            "cell_class": r["cell_class"], "assigned_group": r["assigned_group"],
+            "anomaly_pct": "" if ap_val is None or ap_val != ap_val else round(float(ap_val), 1)}
+    task = {"data": data}
     if res:
         task["predictions"] = [{"model_version": "qc_seg_v3", "result": res}]
     return task
@@ -106,14 +110,17 @@ def main() -> None:
     ap.add_argument("--no-import", action="store_true", help="skip importing tasks")
     ap.add_argument("--limit", type=int, default=0, help="only push N tasks (0=all)")
     ap.add_argument("--start", type=int, default=0, help="skip the first N manifest rows")
+    ap.add_argument("--sample-dir", type=Path, default=OUT, help="dir with PNGs + manifest.parquet")
+    ap.add_argument("--title", type=str, default=PROJECT_TITLE)
     a = ap.parse_args()
+    sample_dir = a.sample_dir
 
     if a.create:
         r = requests.post(f"{B}/api/projects", headers=H, json={
-            "title": PROJECT_TITLE, "label_config": CONFIG, "description": DESCRIPTION})
+            "title": a.title, "label_config": CONFIG, "description": DESCRIPTION})
         r.raise_for_status()
         pid = r.json()["id"]
-        print(f"[push] created project {pid}: '{PROJECT_TITLE}'  -> {B}/projects/{pid}/data", flush=True)
+        print(f"[push] created project {pid}: '{a.title}'  -> {B}/projects/{pid}/data", flush=True)
     else:
         pid = a.project_id
         if not pid:
@@ -132,14 +139,14 @@ def main() -> None:
         print("[push] --no-import: done.", flush=True)
         return
 
-    man = pl.read_parquet(OUT / "manifest.parquet")
+    man = pl.read_parquet(sample_dir / "manifest.parquet")
     rows = man
     if a.start:
         rows = rows.slice(a.start, None)
     if a.limit:
         rows = rows.head(a.limit)
 
-    tasks = [build_task(r) for r in rows.iter_rows(named=True)]
+    tasks = [build_task(r, sample_dir) for r in rows.iter_rows(named=True)]
     print(f"[push] importing {len(tasks)} tasks to project {pid} (batch={BATCH})", flush=True)
     done = 0
     for i in range(0, len(tasks), BATCH):
