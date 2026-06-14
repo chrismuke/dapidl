@@ -119,3 +119,12 @@ Thumbs.db
 # uv
 .python-version
 uv.lock
+
+# Experiment outputs (large, regenerated locally — never commit)
+pipeline_output/
+
+# Backup files
+*.bak
+
+# Local Claude hooks (.claude/settings.json is tracked intentionally)
+.claude/hooks/
