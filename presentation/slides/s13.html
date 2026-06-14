@@ -1,0 +1,38 @@
+<!DOCTYPE html><html><head><style>
+html{background:#ffffff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#ffffff;}
+.wrap{margin:40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:28pt;margin:0 0 18pt 0;font-weight:bold;}
+h2{color:#003B4F;font-size:20pt;margin:0 0 12pt 0;}
+p,li{color:#333333;font-size:14pt;line-height:1.5;}
+ul{margin:6pt 0;padding-left:24pt;}
+li{margin-bottom:8pt;}
+.two-col{display:flex;gap:30pt;flex:1;}
+.col{flex:1;}
+.accent{color:#0089A7;font-weight:bold;}
+.small{font-size:11pt;color:#666;}
+.highlight{background:#E8F4FD;border-left:4pt solid #00526B;padding:8pt 12pt;margin:10pt 0;}
+</style></head><body><div class="wrap">
+<h1>Transfer Learning: Why It Works</h1>
+<div class="two-col">
+      <div class="col">
+        <h2>Pre-training (ImageNet)</h2>
+        <ul>
+          <li>Trained on 14M+ labeled images</li>
+          <li>Learns universal visual features: edges, curves, gradients, textures</li>
+          <li>These features are domain-agnostic</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h2>Fine-tuning (DAPI)</h2>
+        <ul>
+          <li>The same edges and textures appear in nuclei</li>
+          <li>Only needs to learn domain-specific patterns</li>
+          <li>Faster convergence, better generalization</li>
+        </ul>
+      </div>
+    </div>
+    <div class="highlight">
+      <p>A model that can recognize edges of a wolf already knows how to recognize edges of a cell. We skip expensive base training and only fine-tune the classification head.</p>
+    </div>
+</div></body></html>

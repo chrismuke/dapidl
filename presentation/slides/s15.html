@@ -1,0 +1,26 @@
+<!DOCTYPE html><html><head><style>
+html{background:#fff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#fff;}
+.wrap{margin:30pt 40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:26pt;margin:0 0 10pt 0;}
+.content{display:flex;gap:20pt;flex:1;align-items:center;}
+.img-col{flex:0 0 280pt;}
+.text-col{flex:1;}
+p{font-size:13pt;color:#333;margin:6pt 0;}
+.accent{color:#0089A7;font-weight:bold;}
+</style></head><body><div class="wrap">
+<h1>Training Loop &amp; Validation Strategy</h1>
+<div class="content">
+  <div class="img-col">
+    <img src="/Users/chrism/git/dapidl/presentation/figures/training_curve.png" style="width:270pt;height:auto;">
+  </div>
+  <div class="text-col">
+    <p><b>Curriculum Phase Transitions:</b></p>
+    <p>When switching from broad to medium, the new classification head unfreezes. This causes a <span class="accent">temporary accuracy dip</span> and loss spike as the model adapts to finer categories.</p>
+    <p>The same dip recurs at the medium→fine transition. Each time, the model recovers and surpasses its prior level.</p>
+    <p><b>Why the final plateau is lower:</b></p>
+    <p>Fine-grained cell subtypes (CD4+ vs CD8+) are harder to distinguish from DAPI morphology alone. The model converges at a lower ceiling — this is a biological, not a technical, limit.</p>
+    <p style="font-size:10pt;color:#666;">Early stopping (patience=15), AdamW, cosine annealing, MixUp (0.2), DALI GPU loading.</p>
+  </div>
+</div>
+</div></body></html>

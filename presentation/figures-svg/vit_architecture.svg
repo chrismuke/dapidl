@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="230" viewBox="0 0 880 230">
+
+  <defs>
+    <marker id="arr2" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#00526B"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: Arial, sans-serif; }
+    .title { font-size: 18px; font-weight: bold; fill: #00526B; }
+    .label { font-size: 11px; fill: #333; }
+    .sublabel { font-size: 9px; fill: #666; }
+    .dim { font-size: 9px; fill: #999; font-style: italic; }
+    .arrow { stroke: #00526B; stroke-width: 2; fill: none; }
+  </style>
+  <text x="440" y="24" text-anchor="middle" class="title">Vision Transformer (ViT) Architecture</text>
+  <rect x="15" y="75" width="60" height="60" rx="4" fill="#E8F4FD" stroke="#5DADE2" stroke-width="1.5"/>
+  <line x1="35" y1="75" x2="35" y2="135" stroke="#5DADE2" stroke-width="0.8"/>
+  <line x1="55" y1="75" x2="55" y2="135" stroke="#5DADE2" stroke-width="0.8"/>
+  <line x1="15" y1="95" x2="75" y2="95" stroke="#5DADE2" stroke-width="0.8"/>
+  <line x1="15" y1="115" x2="75" y2="115" stroke="#5DADE2" stroke-width="0.8"/>
+  <text x="45" y="108" text-anchor="middle" class="label" font-weight="bold">DAPI</text>
+  <text x="45" y="155" text-anchor="middle" class="dim">128x128</text>
+  <line x1="80" y1="105" x2="100" y2="105" class="arrow" marker-end="url(#arr2)"/>
+  <rect x="105" y="60" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <rect x="127" y="60" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <rect x="149" y="60" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <rect x="105" y="82" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <rect x="127" y="82" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <rect x="149" y="82" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <rect x="105" y="104" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <rect x="127" y="104" width="18" height="18" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <text x="149" y="119" font-size="14" fill="#2E86C1" font-weight="bold">...</text>
+  <text x="138" y="42" text-anchor="middle" class="label" font-weight="bold">Split into</text>
+  <text x="138" y="53" text-anchor="middle" class="label" font-weight="bold">Patches</text>
+  <text x="138" y="140" text-anchor="middle" class="dim">16x16 px each</text>
+  <text x="138" y="155" text-anchor="middle" class="dim">N = 64 patches</text>
+  <line x1="172" y1="90" x2="192" y2="90" class="arrow" marker-end="url(#arr2)"/>
+  <rect x="197" y="55" width="65" height="40" rx="5" fill="#F9E79F" stroke="#F1C40F" stroke-width="1.5"/>
+  <text x="229" y="73" text-anchor="middle" font-size="9" fill="#7D6608" font-weight="bold">Linear</text>
+  <text x="229" y="85" text-anchor="middle" font-size="9" fill="#7D6608" font-weight="bold">Projection</text>
+  <rect x="197" y="105" width="65" height="30" rx="5" fill="#FAD7A0" stroke="#E67E22" stroke-width="1.5"/>
+  <text x="229" y="124" text-anchor="middle" font-size="9" fill="#784212" font-weight="bold">+ Pos Embed</text>
+  <rect x="197" y="145" width="65" height="22" rx="4" fill="#D5F5E3" stroke="#27AE60" stroke-width="1.5"/>
+  <text x="229" y="160" text-anchor="middle" font-size="9" fill="#1E8449" font-weight="bold">[CLS] token</text>
+  <text x="229" y="185" text-anchor="middle" class="dim">768-dim vectors</text>
+  <line x1="267" y1="105" x2="290" y2="105" class="arrow" marker-end="url(#arr2)"/>
+  <rect x="295" y="38" width="180" height="145" rx="8" fill="#F4ECF7" stroke="#8E44AD" stroke-width="2"/>
+  <text x="385" y="58" text-anchor="middle" font-size="11" fill="#6C3483" font-weight="bold">Transformer Encoder Block (x12)</text>
+  <rect x="310" y="68" width="150" height="32" rx="5" fill="#D2B4DE" stroke="#8E44AD" stroke-width="1"/>
+  <text x="385" y="88" text-anchor="middle" font-size="10" fill="#4A235A" font-weight="bold">Multi-Head Self-Attention</text>
+  <rect x="340" y="106" width="90" height="20" rx="3" fill="#EBDEF0" stroke="#8E44AD" stroke-width="0.8"/>
+  <text x="385" y="120" text-anchor="middle" font-size="8" fill="#6C3483">Add &amp; LayerNorm</text>
+  <rect x="310" y="132" width="150" height="28" rx="5" fill="#D2B4DE" stroke="#8E44AD" stroke-width="1"/>
+  <text x="385" y="150" text-anchor="middle" font-size="10" fill="#4A235A" font-weight="bold">Feed-Forward MLP</text>
+  <rect x="340" y="165" width="90" height="16" rx="3" fill="#EBDEF0" stroke="#8E44AD" stroke-width="0.8"/>
+  <text x="385" y="177" text-anchor="middle" font-size="8" fill="#6C3483">Add &amp; LayerNorm</text>
+  <path d="M305,84 L298,84 L298,116 L340,116" stroke="#8E44AD" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+  <path d="M305,146 L298,146 L298,173 L340,173" stroke="#8E44AD" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+  <line x1="480" y1="105" x2="505" y2="105" class="arrow" marker-end="url(#arr2)"/>
+  <rect x="510" y="80" width="60" height="50" rx="5" fill="#D5F5E3" stroke="#27AE60" stroke-width="1.5"/>
+  <text x="540" y="100" text-anchor="middle" font-size="9" fill="#1E8449" font-weight="bold">[CLS]</text>
+  <text x="540" y="115" text-anchor="middle" font-size="9" fill="#1E8449" font-weight="bold">Output</text>
+  <text x="540" y="150" text-anchor="middle" class="dim">768-dim</text>
+  <line x1="575" y1="105" x2="600" y2="105" class="arrow" marker-end="url(#arr2)"/>
+  <rect x="605" y="90" width="35" height="30" rx="4" fill="#F5B7B1" stroke="#E74C3C" stroke-width="1"/>
+  <text x="622" y="109" text-anchor="middle" font-size="9" fill="#922B21" font-weight="bold">Drop</text>
+  <line x1="645" y1="105" x2="660" y2="105" class="arrow" marker-end="url(#arr2)"/>
+  <rect x="665" y="50" width="75" height="28" rx="5" fill="#AF7AC5"/>
+  <text x="702" y="68" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Coarse (3)</text>
+  <rect x="665" y="88" width="75" height="28" rx="5" fill="#AF7AC5"/>
+  <text x="702" y="106" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Medium (15)</text>
+  <rect x="665" y="126" width="75" height="28" rx="5" fill="#AF7AC5"/>
+  <text x="702" y="144" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Fine (50)</text>
+  <line x1="660" y1="105" x2="665" y2="64" stroke="#7D3C98" stroke-width="1.5"/>
+  <line x1="660" y1="105" x2="665" y2="102" stroke="#7D3C98" stroke-width="1.5"/>
+  <line x1="660" y1="105" x2="665" y2="140" stroke="#7D3C98" stroke-width="1.5"/>
+  <line x1="740" y1="64" x2="770" y2="64" class="arrow" marker-end="url(#arr2)"/>
+  <line x1="740" y1="102" x2="770" y2="102" class="arrow" marker-end="url(#arr2)"/>
+  <line x1="740" y1="140" x2="770" y2="140" class="arrow" marker-end="url(#arr2)"/>
+  <text x="780" y="67" class="label">Broad</text>
+  <text x="780" y="105" class="label">Medium</text>
+  <text x="780" y="143" class="label">Fine</text>
+  <rect x="105" y="200" width="14" height="14" rx="2" fill="#AED6F1" stroke="#2E86C1" stroke-width="1"/>
+  <text x="125" y="212" class="sublabel">Image Patches</text>
+  <rect x="220" y="200" width="14" height="14" rx="2" fill="#F9E79F" stroke="#F1C40F" stroke-width="1"/>
+  <text x="240" y="212" class="sublabel">Embedding</text>
+  <rect x="320" y="200" width="14" height="14" rx="2" fill="#D2B4DE" stroke="#8E44AD" stroke-width="1"/>
+  <text x="340" y="212" class="sublabel">Transformer Layers</text>
+  <rect x="460" y="200" width="14" height="14" rx="2" fill="#D5F5E3" stroke="#27AE60" stroke-width="1"/>
+  <text x="480" y="212" class="sublabel">[CLS] Token</text>
+  <rect x="560" y="200" width="14" height="14" rx="2" fill="#AF7AC5"/>
+  <text x="580" y="212" class="sublabel">Classification Heads</text>
+
+</svg>

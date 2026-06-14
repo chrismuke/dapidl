@@ -1,0 +1,27 @@
+<!DOCTYPE html><html><head><style>
+html{background:#ffffff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#ffffff;}
+.wrap{margin:40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:28pt;margin:0 0 18pt 0;font-weight:bold;}
+h2{color:#003B4F;font-size:20pt;margin:0 0 12pt 0;}
+p,li{color:#333333;font-size:14pt;line-height:1.5;}
+ul{margin:6pt 0;padding-left:24pt;}
+li{margin-bottom:8pt;}
+.two-col{display:flex;gap:30pt;flex:1;}
+.col{flex:1;}
+.accent{color:#0089A7;font-weight:bold;}
+.small{font-size:11pt;color:#666;}
+.highlight{background:#E8F4FD;border-left:4pt solid #00526B;padding:8pt 12pt;margin:10pt 0;}
+</style></head><body><div class="wrap">
+<h1>How Backbones Work</h1>
+<ul>
+      <li><b>Input:</b> Single-nucleus DAPI image (128x128 px, 1 channel)</li>
+      <li><b>Channel Adaptation:</b> Replicate to 3 channels for pretrained RGB networks</li>
+      <li><b>Backbone:</b> EfficientNetV2-S extracts a 1792-dim feature vector</li>
+      <li><b>Classification heads:</b> Three heads for Broad (3), Medium (~15), Fine (~50) classes</li>
+    </ul>
+    <div class="highlight">
+      <p><b>Transfer learning:</b> Networks pretrained on ImageNet already recognize edges, textures, and shapes. These low-level features transfer directly to nuclear morphology.</p>
+    </div>
+    <p class="small">Available backbones: EfficientNetV2-S (default, 20M params), ResNet-18/34, ConvNeXt-Tiny/Small, ViT-Base/Large, Phikon-v2 (pathology), UNI (pathology). LoRA fine-tuning supported via PEFT.</p>
+</div></body></html>

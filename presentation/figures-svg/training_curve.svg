@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="570" height="320" viewBox="0 0 570 320">
+
+    <style>text{font-family:Arial,sans-serif}</style>
+    <!-- Axes -->
+    <line x1="60" y1="25" x2="60" y2="280" stroke="#003B4F" stroke-width="2"/>
+    <line x1="60" y1="280" x2="530" y2="280" stroke="#003B4F" stroke-width="2"/>
+    <text x="30" y="155" font-size="12" fill="#003B4F" transform="rotate(-90,30,155)">Performance</text>
+    <text x="295" y="310" text-anchor="middle" font-size="12" fill="#003B4F">Epochs</text>
+    <!-- Y-axis labels -->
+    <text x="55" y="280" text-anchor="end" font-size="9" fill="#999">0</text>
+    <text x="55" y="218" text-anchor="end" font-size="9" fill="#999">0.2</text>
+    <text x="55" y="155" text-anchor="end" font-size="9" fill="#999">0.5</text>
+    <text x="55" y="93" text-anchor="end" font-size="9" fill="#999">0.8</text>
+    <text x="55" y="35" text-anchor="end" font-size="9" fill="#999">1.0</text>
+    <!-- Gridlines -->
+    <line x1="60" y1="218" x2="520" y2="218" stroke="#eee" stroke-width="0.5"/>
+    <line x1="60" y1="155" x2="520" y2="155" stroke="#eee" stroke-width="0.5"/>
+    <line x1="60" y1="93" x2="520" y2="93" stroke="#eee" stroke-width="0.5"/>
+    <!-- Phase bars at top -->
+    <rect x="60" y="8" width="150" height="14" fill="#CC0000" rx="3"/>
+    <text x="135" y="19" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Broad (3 classes)</text>
+    <rect x="210" y="8" width="140" height="14" fill="#E8A838" rx="3"/>
+    <text x="280" y="19" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Medium (~15)</text>
+    <rect x="350" y="8" width="140" height="14" fill="#2ECC40" rx="3"/>
+    <text x="420" y="19" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Fine (~50)</text>
+    <!-- Phase transition lines -->
+    <line x1="210" y1="25" x2="210" y2="280" stroke="#CC0000" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.4"/>
+    <line x1="350" y1="25" x2="350" y2="280" stroke="#E8A838" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.4"/>
+    <!-- ═══ VALIDATION ACCURACY (green) ═══ -->
+    <!-- Broad phase: rapid rise to ~0.88 -->
+    <path d="M65,260 Q90,230 120,130 Q150,85 180,72 Q195,68 208,65" fill="none" stroke="#2ECC40" stroke-width="3"/>
+    <!-- Transition dip: drops when medium head activates -->
+    <path d="M208,65 Q215,110 220,120" fill="none" stroke="#2ECC40" stroke-width="3"/>
+    <!-- Medium phase: recovers and climbs -->
+    <path d="M220,120 Q240,100 270,82 Q300,68 330,60 Q340,58 348,56" fill="none" stroke="#2ECC40" stroke-width="3"/>
+    <!-- Transition dip: drops when fine head activates -->
+    <path d="M348,56 Q355,95 360,105" fill="none" stroke="#2ECC40" stroke-width="3"/>
+    <!-- Fine phase: slower recovery, plateaus lower -->
+    <path d="M360,105 Q380,85 410,72 Q440,62 470,56 Q490,53 510,52" fill="none" stroke="#2ECC40" stroke-width="3"/>
+    <!-- ═══ TRAINING LOSS (blue) ═══ -->
+    <!-- Broad phase: drops fast -->
+    <path d="M65,40 Q90,60 120,140 Q150,185 180,210 Q195,218 208,220" fill="none" stroke="#0066CC" stroke-width="3"/>
+    <!-- Transition spike: loss jumps when new head unfreezes -->
+    <path d="M208,220 Q215,170 220,160" fill="none" stroke="#0066CC" stroke-width="3"/>
+    <!-- Medium phase: drops again -->
+    <path d="M220,160 Q240,190 270,215 Q300,235 330,245 Q340,248 348,250" fill="none" stroke="#0066CC" stroke-width="3"/>
+    <!-- Transition spike -->
+    <path d="M348,250 Q355,200 360,190" fill="none" stroke="#0066CC" stroke-width="3"/>
+    <!-- Fine phase: settles higher than before -->
+    <path d="M360,190 Q380,215 410,235 Q440,248 470,255 Q490,258 510,260" fill="none" stroke="#0066CC" stroke-width="3"/>
+    <!-- Curve labels -->
+    <text x="515" y="50" font-size="10" fill="#2ECC40" font-weight="bold">Val F1</text>
+    <text x="515" y="264" font-size="10" fill="#0066CC" font-weight="bold">Train Loss</text>
+    <!-- Transition annotations -->
+    <text x="212" y="145" font-size="8" fill="#CC0000" font-weight="bold">dip</text>
+    <path d="M215,135 L215,124" stroke="#CC0000" stroke-width="1" marker-end="url(#arr)"/>
+    <text x="352" y="130" font-size="8" fill="#E8A838" font-weight="bold">dip</text>
+    <path d="M355,120 L355,109" stroke="#E8A838" stroke-width="1" marker-end="url(#arr)"/>
+    <!-- Early stopping marker -->
+    <rect x="490" y="25" width="30" height="255" fill="rgba(204,0,0,0.06)"/>
+    <text x="505" y="155" font-size="8" fill="#CC0000" transform="rotate(-90,505,155)" font-weight="bold">Early Stop</text>
+  
+</svg>

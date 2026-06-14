@@ -1,0 +1,31 @@
+<!DOCTYPE html><html><head><style>
+html{background:#fff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#fff;}
+.wrap{margin:30pt 40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:26pt;margin:0 0 12pt 0;}
+p{font-size:13pt;color:#333;margin:4pt 0;}
+.placeholder{width:320pt;height:180pt;background:#F0F4F8;margin:0 auto;}
+.two-col{display:flex;gap:20pt;flex:1;}
+.col{flex:1;}
+h2{color:#003B4F;font-size:18pt;margin:0 0 8pt 0;}
+.metric{margin-bottom:6pt;}
+.val{color:#0089A7;font-size:20pt;font-weight:bold;}
+.label{font-size:11pt;color:#666;}
+</style></head><body><div class="wrap">
+<h1>Results: Performance Metrics</h1>
+<div class="two-col">
+  <div class="col">
+    <h2>Broad Classification (3 classes)</h2>
+    <div class="metric"><p><span class="val">0.90</span></p><p class="label">Macro F1 (Consensus Labels)</p></div>
+    <div class="metric"><p><span class="val">89%</span></p><p class="label">Overall Accuracy</p></div>
+    <div class="metric"><p><span class="val">0.82</span></p><p class="label">Macro F1 (Ground Truth Labels)</p></div>
+  </div>
+  <div class="col">
+    <h2>Fine-Grained (17 classes)</h2>
+    <div class="metric"><p><span class="val">0.41</span></p><p class="label">Macro F1 (best EfficientNetV2-S)</p></div>
+    <div class="metric"><p><span class="val">67%</span></p><p class="label">Overall Accuracy</p></div>
+    <p style="font-size:12pt;color:#666;margin-top:8pt;"><b>Per-class highlights:</b> Epithelial Luminal 0.92, T-Cell 0.80, B-Cell 0.77. Stromal subtypes remain challenging (Fibroblast 0.36).</p>
+  </div>
+</div>
+<p style="font-size:10pt;color:#999;margin-top:6pt;">Xenium breast cancer dataset, 167,780 cells. EfficientNetV2-S backbone, 128px patches, consensus annotation.</p>
+</div></body></html>

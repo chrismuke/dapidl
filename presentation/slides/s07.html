@@ -1,0 +1,29 @@
+<!DOCTYPE html><html><head><style>
+html{background:#fff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#fff;}
+.wrap{margin:30pt 40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:28pt;margin:0 0 10pt 0;}
+.content{display:flex;gap:20pt;flex:1;align-items:flex-start;}
+.img-col{flex:0 0 260pt;}
+.text-col{flex:1;}
+p{font-size:12pt;color:#333;margin:4pt 0;}
+.step{margin-bottom:6pt;}
+.step-num{color:#00526B;font-weight:bold;font-size:13pt;}
+</style></head><body><div class="wrap">
+<h1>DAPIDL Pipeline</h1>
+<div class="content">
+  <div class="img-col">
+    <img src="/Users/chrism/git/dapidl/presentation/figures/pipeline_flow.png" style="width:250pt;height:auto;">
+  </div>
+  <div class="text-col">
+    <div class="step"><p><span class="step-num">1. Input:</span> Raw spatial transcriptomics data (Xenium, MERSCOPE, STHELAR)</p></div>
+    <div class="step"><p><span class="step-num">2. Annotate:</span> 11 methods vote on each cell's type using gene expression</p></div>
+    <div class="step"><p><span class="step-num">3. Standardize:</span> Map labels to Cell Ontology for cross-dataset consistency</p></div>
+    <div class="step"><p><span class="step-num">4. Filter:</span> Remove low-confidence cells (marker enrichment + spatial coherence)</p></div>
+    <div class="step"><p><span class="step-num">5. Extract:</span> Cut nucleus-centered DAPI patches, save as LMDB</p></div>
+    <div class="step"><p><span class="step-num">6. Train:</span> CNN/ViT learns to predict cell type from DAPI morphology</p></div>
+    <div class="step"><p><span class="step-num">7. Output:</span> Deployable model predicts on any DAPI image</p></div>
+    <p style="margin-top:10pt;font-size:11pt;color:#666;">Fully modular, configurable, and orchestrated via ClearML pipelines.</p>
+  </div>
+</div>
+</div></body></html>

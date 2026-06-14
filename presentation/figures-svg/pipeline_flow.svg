@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="480" viewBox="0 0 500 480">
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#00526B"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: Arial, sans-serif; fill: white; font-weight: bold; }
+    .label { fill: #003B4F; font-size: 11px; font-weight: normal; }
+    .stage { fill: #003B4F; font-size: 12px; font-weight: bold; }
+  </style>
+  <rect x="20" y="15" width="120" height="40" rx="6" fill="#00526B"/>
+  <text x="80" y="40" text-anchor="middle" font-size="13">XENIUM</text>
+  <rect x="160" y="15" width="120" height="40" rx="6" fill="#00526B"/>
+  <text x="220" y="40" text-anchor="middle" font-size="13">MERSCOPE</text>
+  <rect x="300" y="15" width="120" height="40" rx="6" fill="#00526B"/>
+  <text x="360" y="40" text-anchor="middle" font-size="13">STHELAR</text>
+  <line x1="80" y1="55" x2="220" y2="85" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="220" y1="55" x2="220" y2="85" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="360" y1="55" x2="220" y2="85" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="110" y="90" width="220" height="50" rx="8" fill="#E8A838"/>
+  <text x="220" y="112" text-anchor="middle" fill="#003B4F" font-size="14">ANNOTATE</text>
+  <text x="220" y="130" text-anchor="middle" fill="#003B4F" font-size="10" font-weight="normal">11 Methods → Consensus</text>
+  <line x1="220" y1="140" x2="220" y2="160" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="110" y="165" width="220" height="40" rx="8" fill="#F0C75E"/>
+  <text x="220" y="190" text-anchor="middle" fill="#003B4F" font-size="13">STANDARDIZE (Cell Ontology)</text>
+  <line x1="220" y1="205" x2="220" y2="225" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="110" y="230" width="220" height="40" rx="8" fill="#7BC8A4"/>
+  <text x="220" y="255" text-anchor="middle" fill="#003B4F" font-size="13">CONFIDENCE FILTERING</text>
+  <line x1="220" y1="270" x2="220" y2="290" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="110" y="295" width="220" height="40" rx="8" fill="#5DADE2"/>
+  <text x="220" y="320" text-anchor="middle" fill="white" font-size="13">EXTRACT (LMDB Patches)</text>
+  <line x1="220" y1="335" x2="220" y2="355" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="110" y="360" width="220" height="40" rx="8" fill="#A569BD"/>
+  <text x="220" y="385" text-anchor="middle" fill="white" font-size="14">TRAIN (CNN / ViT)</text>
+  <line x1="220" y1="400" x2="220" y2="420" stroke="#00526B" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="130" y="425" width="180" height="40" rx="8" fill="#00526B"/>
+  <text x="220" y="450" text-anchor="middle" fill="white" font-size="14">OUTPUT: MODEL</text>
+  <text x="370" y="115" class="stage">Training Data</text>
+  <text x="370" y="135" class="label">Generation</text>
+  <text x="370" y="190" class="label">Label harmonization</text>
+  <text x="370" y="255" class="label">Quality control</text>
+  <text x="370" y="320" class="label">GPU-optimized format</text>
+  <text x="370" y="385" class="stage">Model Training</text>
+  <text x="370" y="450" class="stage">Deployment</text>
+
+</svg>

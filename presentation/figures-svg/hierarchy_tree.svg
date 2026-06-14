@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="185" viewBox="0 0 850 185">
+
+    <style>
+      text{font-family:Arial,sans-serif}
+      .c{stroke:#aaa;stroke-width:1;fill:none}
+      .lv{font-weight:bold}
+    </style>
+    <!-- ══ BROAD (y=20, h=30) ══ -->
+    <text x="8" y="40" font-size="13" class="lv" fill="#CC0000">Broad</text>
+    <rect x="72" y="18" width="88" height="30" rx="6" fill="#5B9F3F"/>
+    <text x="116" y="38" text-anchor="middle" font-size="11" fill="white" font-weight="bold">Epithelial</text>
+    <rect x="188" y="18" width="200" height="30" rx="6" fill="#00526B"/>
+    <text x="288" y="38" text-anchor="middle" font-size="11" fill="white" font-weight="bold">Immune</text>
+    <rect x="416" y="18" width="80" height="30" rx="6" fill="#7D6B57"/>
+    <text x="456" y="38" text-anchor="middle" font-size="11" fill="white" font-weight="bold">Stromal</text>
+    <rect x="524" y="18" width="95" height="30" rx="6" fill="#2E86C1"/>
+    <text x="571" y="38" text-anchor="middle" font-size="11" fill="white" font-weight="bold">Endothelial</text>
+    <rect x="647" y="18" width="90" height="30" rx="6" fill="#922B21"/>
+    <text x="692" y="38" text-anchor="middle" font-size="11" fill="white" font-weight="bold">Neoplastic</text>
+    <!-- ══ BROAD→MEDIUM connectors ══ -->
+    <path d="M100,48 L100,65 L80,75" class="c"/>
+    <path d="M132,48 L132,65 L155,75" class="c"/>
+    <path d="M230,48 L230,65 L225,75" class="c"/>
+    <path d="M265,48 L265,65 L290,75" class="c"/>
+    <path d="M300,48 L300,65 L353,75" class="c"/>
+    <path d="M320,48 L320,65 L406,75" class="c"/>
+    <path d="M345,48 L345,65 L462,75" class="c"/>
+    <path d="M365,48 L365,65 L510,75" class="c"/>
+    <path d="M440,48 L440,65 L560,75" class="c"/>
+    <path d="M472,48 L472,65 L622,75" class="c"/>
+    <path d="M550,48 L550,65 L670,75" class="c"/>
+    <path d="M592,48 L592,65 L735,75" class="c"/>
+    <path d="M692,48 L692,65 L792,75" class="c"/>
+    <!-- ══ MEDIUM (y=77, h=26) ══ -->
+    <text x="8" y="96" font-size="13" class="lv" fill="#E8A838">Medium</text>
+    <rect x="58" y="77" width="55" height="26" rx="5" fill="#FFF3CD" stroke="#E8A838" stroke-width="1"/>
+    <text x="85" y="94" text-anchor="middle" font-size="9" fill="#003B4F">Luminal</text>
+    <rect x="120" y="77" width="78" height="26" rx="5" fill="#FFF3CD" stroke="#E8A838" stroke-width="1"/>
+    <text x="159" y="94" text-anchor="middle" font-size="9" fill="#003B4F">Myoepithelial</text>
+    <rect x="206" y="77" width="48" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="230" y="94" text-anchor="middle" font-size="9" fill="#003B4F">T cell</text>
+    <rect x="262" y="77" width="48" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="286" y="94" text-anchor="middle" font-size="9" fill="#003B4F">B cell</text>
+    <rect x="318" y="77" width="60" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="348" y="94" text-anchor="middle" font-size="9" fill="#003B4F">NK cell</text>
+    <rect x="386" y="77" width="50" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="411" y="94" text-anchor="middle" font-size="8" fill="#003B4F">Macrophage</text>
+    <rect x="444" y="77" width="42" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="465" y="94" text-anchor="middle" font-size="9" fill="#003B4F">DC</text>
+    <rect x="494" y="77" width="42" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="515" y="94" text-anchor="middle" font-size="8" fill="#003B4F">Monocyte</text>
+    <rect x="544" y="77" width="42" height="26" rx="5" fill="#F5E6D3" stroke="#7D6B57" stroke-width="1"/>
+    <text x="565" y="94" text-anchor="middle" font-size="8" fill="#003B4F">Fibroblast</text>
+    <rect x="594" y="77" width="50" height="26" rx="5" fill="#F5E6D3" stroke="#7D6B57" stroke-width="1"/>
+    <text x="619" y="94" text-anchor="middle" font-size="9" fill="#003B4F">Pericyte</text>
+    <rect x="652" y="77" width="48" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="676" y="94" text-anchor="middle" font-size="8" fill="#003B4F">Vascular</text>
+    <rect x="708" y="77" width="56" height="26" rx="5" fill="#D6EAF8" stroke="#2E86C1" stroke-width="1"/>
+    <text x="736" y="94" text-anchor="middle" font-size="8" fill="#003B4F">Lymphatic</text>
+    <rect x="772" y="77" width="58" height="26" rx="5" fill="#F5B7B1" stroke="#922B21" stroke-width="1"/>
+    <text x="801" y="94" text-anchor="middle" font-size="8" fill="#003B4F">Malignant</text>
+    <!-- ══ MEDIUM→FINE connectors (only for T, B, Macro, DC, Fibro) ══ -->
+    <!-- T cell fan -->
+    <path d="M222,103 L222,118 L112,130" class="c"/>
+    <path d="M230,103 L230,118 L172,130" class="c"/>
+    <path d="M237,103 L237,118 L232,130" class="c"/>
+    <path d="M237,103 L237,118 L292,130" class="c"/>
+    <path d="M237,103 L237,118 L352,130" class="c"/>
+    <!-- B cell fan -->
+    <path d="M280,103 L280,118 L402,130" class="c"/>
+    <path d="M286,103 L286,118 L452,130" class="c"/>
+    <path d="M292,103 L292,118 L502,130" class="c"/>
+    <!-- Macrophage fan -->
+    <path d="M405,103 L405,118 L548,130" class="c"/>
+    <path d="M417,103 L417,118 L580,130" class="c"/>
+    <!-- DC fan -->
+    <path d="M458,103 L458,118 L618,130" class="c"/>
+    <path d="M472,103 L472,118 L658,130" class="c"/>
+    <path d="M472,103 L472,118 L698,130" class="c"/>
+    <!-- Fibroblast -->
+    <path d="M565,103 L565,118 L748,130" class="c"/>
+    <path d="M565,103 L565,118 L808,130" class="c"/>
+    <!-- ══ FINE (y=132, h=22) ══ -->
+    <text x="8" y="148" font-size="13" class="lv" fill="#2ECC40">Fine</text>
+    <rect x="82" y="132" width="60" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="112" y="147" text-anchor="middle" font-size="8" fill="#003B4F">CD4+ helper</text>
+    <rect x="148" y="132" width="48" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="172" y="147" text-anchor="middle" font-size="8" fill="#003B4F">Treg</text>
+    <rect x="202" y="132" width="60" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="232" y="147" text-anchor="middle" font-size="8" fill="#003B4F">CD8+ cyto</text>
+    <rect x="268" y="132" width="48" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="292" y="147" text-anchor="middle" font-size="7" fill="#003B4F">CD8+ exh</text>
+    <rect x="322" y="132" width="60" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="352" y="147" text-anchor="middle" font-size="8" fill="#003B4F">γδ T cell</text>
+    <rect x="388" y="132" width="38" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="407" y="147" text-anchor="middle" font-size="7" fill="#003B4F">Naive B</text>
+    <rect x="432" y="132" width="46" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="455" y="147" text-anchor="middle" font-size="7" fill="#003B4F">Memory B</text>
+    <rect x="484" y="132" width="42" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="505" y="147" text-anchor="middle" font-size="8" fill="#003B4F">Plasma</text>
+    <rect x="532" y="132" width="28" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="546" y="147" text-anchor="middle" font-size="8" fill="#003B4F">M1</text>
+    <rect x="566" y="132" width="28" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="580" y="147" text-anchor="middle" font-size="8" fill="#003B4F">M2</text>
+    <rect x="600" y="132" width="38" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="619" y="147" text-anchor="middle" font-size="8" fill="#003B4F">cDC1</text>
+    <rect x="644" y="132" width="38" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="663" y="147" text-anchor="middle" font-size="8" fill="#003B4F">cDC2</text>
+    <rect x="688" y="132" width="28" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="702" y="147" text-anchor="middle" font-size="8" fill="#003B4F">pDC</text>
+    <rect x="722" y="132" width="52" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="748" y="147" text-anchor="middle" font-size="7" fill="#003B4F">Myofibro</text>
+    <rect x="780" y="132" width="52" height="22" rx="4" fill="#D5F5E3" stroke="#82B366" stroke-width="1"/>
+    <text x="806" y="147" text-anchor="middle" font-size="8" fill="#003B4F">CAF</text>
+    <!-- ══ Class counts ══ -->
+    <text x="110" y="173" font-size="9" fill="#CC0000" font-weight="bold">5 classes</text>
+    <text x="350" y="173" font-size="9" fill="#E8A838" font-weight="bold">~15 classes</text>
+    <text x="580" y="173" font-size="9" fill="#2ECC40" font-weight="bold">~50 classes (Cell Ontology)</text>
+  
+</svg>

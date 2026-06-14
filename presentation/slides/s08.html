@@ -1,0 +1,30 @@
+<!DOCTYPE html><html><head><style>
+html{background:#fff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#fff;}
+.wrap{margin:30pt 40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:26pt;margin:0 0 10pt 0;}
+.content{display:flex;gap:20pt;flex:1;}
+.img-col{flex:0 0 260pt;display:flex;align-items:center;}
+.text-col{flex:1;}
+p{font-size:13pt;color:#333;margin:5pt 0;}
+ul{padding-left:18pt;margin:4pt 0;}
+li{font-size:12pt;color:#333;margin-bottom:4pt;}
+.accent{color:#0089A7;font-weight:bold;}
+</style></head><body><div class="wrap">
+<h1>Automatic Annotation via Algorithmic Consensus</h1>
+<div class="content">
+  <div class="img-col">
+    <img src="/Users/chrism/git/dapidl/presentation/figures/ensemble_funnel.png" style="width:250pt;height:auto;">
+  </div>
+  <div class="text-col">
+    <p><b>What they use:</b></p>
+    <ul>
+      <li>Gene expression transcripts</li>
+      <li>Cell marker databases (CellMarker 2.0, PanglaoDB)</li>
+      <li>Reference atlases (Tabula Sapiens, Human Cell Atlas)</li>
+    </ul>
+    <p><span class="accent">Democratized ground truth:</span> We rely on majority vote of 11 distinct algorithms to generate training labels without manual annotation.</p>
+    <p style="font-size:11pt;color:#666;margin-top:8pt;">Methods: CellTypist, SingleR, ScType, SCINA, PopV, Azimuth, ScANVI, ScArches, Clustifyr, Garnett, ML classifiers</p>
+  </div>
+</div>
+</div></body></html>

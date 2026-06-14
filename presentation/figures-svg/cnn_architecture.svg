@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="225" viewBox="0 0 880 225">
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#00526B"/>
+    </marker>
+    <linearGradient id="convGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#5DADE2"/>
+      <stop offset="100%" style="stop-color:#2E86C1"/>
+    </linearGradient>
+    <linearGradient id="poolGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#58D68D"/>
+      <stop offset="100%" style="stop-color:#28B463"/>
+    </linearGradient>
+    <linearGradient id="fcGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#AF7AC5"/>
+      <stop offset="100%" style="stop-color:#7D3C98"/>
+    </linearGradient>
+  </defs>
+  <style>
+    text { font-family: Arial, sans-serif; }
+    .title { font-size: 18px; font-weight: bold; fill: #00526B; }
+    .label { font-size: 11px; fill: #333; }
+    .sublabel { font-size: 9px; fill: #666; }
+    .dim { font-size: 9px; fill: #999; font-style: italic; }
+    .arrow { stroke: #00526B; stroke-width: 2; fill: none; }
+  </style>
+  <text x="400" y="24" text-anchor="middle" class="title">Convolutional Neural Network (CNN) Architecture</text>
+  <rect x="15" y="70" width="55" height="55" rx="4" fill="#E8F4FD" stroke="#5DADE2" stroke-width="1.5"/>
+  <rect x="20" y="75" width="55" height="55" rx="4" fill="#D4EFFC" stroke="#5DADE2" stroke-width="1.5"/>
+  <rect x="25" y="80" width="55" height="55" rx="4" fill="#BEE6F9" stroke="#5DADE2" stroke-width="1.5"/>
+  <text x="52" y="115" text-anchor="middle" class="label" font-weight="bold">Input</text>
+  <text x="52" y="155" text-anchor="middle" class="dim">128x128x3</text>
+  <line x1="85" y1="107" x2="110" y2="107" class="arrow" marker-end="url(#arr)"/>
+  <rect x="115" y="55" width="50" height="100" rx="5" fill="url(#convGrad)"/>
+  <text x="140" y="100" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Conv</text>
+  <text x="140" y="113" text-anchor="middle" font-size="8" fill="#D6EAF8">3x3</text>
+  <text x="140" y="170" text-anchor="middle" class="dim">64 filters</text>
+  <rect x="170" y="75" width="25" height="60" rx="3" fill="url(#poolGrad)"/>
+  <text x="182" y="110" text-anchor="middle" font-size="7" fill="white" font-weight="bold">Pool</text>
+  <line x1="200" y1="107" x2="215" y2="107" class="arrow" marker-end="url(#arr)"/>
+  <rect x="220" y="60" width="50" height="90" rx="5" fill="url(#convGrad)"/>
+  <text x="245" y="100" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Conv</text>
+  <text x="245" y="113" text-anchor="middle" font-size="8" fill="#D6EAF8">3x3</text>
+  <text x="245" y="170" text-anchor="middle" class="dim">128 filters</text>
+  <rect x="275" y="75" width="25" height="60" rx="3" fill="url(#poolGrad)"/>
+  <text x="287" y="110" text-anchor="middle" font-size="7" fill="white" font-weight="bold">Pool</text>
+  <line x1="305" y1="107" x2="320" y2="107" class="arrow" marker-end="url(#arr)"/>
+  <rect x="325" y="65" width="50" height="80" rx="5" fill="url(#convGrad)"/>
+  <text x="350" y="100" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Conv</text>
+  <text x="350" y="113" text-anchor="middle" font-size="8" fill="#D6EAF8">3x3</text>
+  <text x="350" y="170" text-anchor="middle" class="dim">256 filters</text>
+  <rect x="380" y="70" width="50" height="70" rx="5" fill="url(#convGrad)" opacity="0.85"/>
+  <text x="405" y="100" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Conv</text>
+  <text x="405" y="113" text-anchor="middle" font-size="8" fill="#D6EAF8">3x3</text>
+  <text x="405" y="170" text-anchor="middle" class="dim">512 filters</text>
+  <line x1="435" y1="107" x2="450" y2="107" class="arrow" marker-end="url(#arr)"/>
+  <rect x="455" y="82" width="55" height="46" rx="5" fill="url(#poolGrad)"/>
+  <text x="482" y="102" text-anchor="middle" font-size="9" fill="white" font-weight="bold">Global</text>
+  <text x="482" y="115" text-anchor="middle" font-size="9" fill="white" font-weight="bold">Avg Pool</text>
+  <text x="482" y="145" text-anchor="middle" class="dim">1792-dim</text>
+  <line x1="515" y1="107" x2="535" y2="107" class="arrow" marker-end="url(#arr)"/>
+  <rect x="540" y="87" width="40" height="36" rx="4" fill="#F5B7B1" stroke="#E74C3C" stroke-width="1"/>
+  <text x="560" y="109" text-anchor="middle" font-size="9" fill="#922B21" font-weight="bold">Drop</text>
+  <text x="560" y="140" text-anchor="middle" class="dim">p=0.3</text>
+  <line x1="585" y1="107" x2="600" y2="107" class="arrow" marker-end="url(#arr)"/>
+  <rect x="605" y="45" width="75" height="30" rx="5" fill="url(#fcGrad)"/>
+  <text x="642" y="65" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Coarse (3)</text>
+  <rect x="605" y="85" width="75" height="30" rx="5" fill="url(#fcGrad)"/>
+  <text x="642" y="105" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Medium (15)</text>
+  <rect x="605" y="125" width="75" height="30" rx="5" fill="url(#fcGrad)"/>
+  <text x="642" y="145" text-anchor="middle" font-size="10" fill="white" font-weight="bold">Fine (50)</text>
+  <line x1="600" y1="107" x2="605" y2="60" stroke="#7D3C98" stroke-width="1.5"/>
+  <line x1="600" y1="107" x2="605" y2="100" stroke="#7D3C98" stroke-width="1.5"/>
+  <line x1="600" y1="107" x2="605" y2="140" stroke="#7D3C98" stroke-width="1.5"/>
+  <line x1="680" y1="60" x2="710" y2="60" class="arrow" marker-end="url(#arr)"/>
+  <line x1="680" y1="100" x2="710" y2="100" class="arrow" marker-end="url(#arr)"/>
+  <line x1="680" y1="140" x2="710" y2="140" class="arrow" marker-end="url(#arr)"/>
+  <text x="740" y="63" class="label">Epithelial / Immune / Stromal</text>
+  <text x="740" y="103" class="label">T-Cell, B-Cell, Luminal...</text>
+  <text x="740" y="143" class="label">CD4+, CD8+, M1...</text>
+  <rect x="115" y="195" width="14" height="14" rx="2" fill="url(#convGrad)"/>
+  <text x="135" y="207" class="sublabel">Convolution + BatchNorm + ReLU</text>
+  <rect x="280" y="195" width="14" height="14" rx="2" fill="url(#poolGrad)"/>
+  <text x="300" y="207" class="sublabel">Pooling</text>
+  <rect x="380" y="195" width="14" height="14" rx="2" fill="url(#fcGrad)"/>
+  <text x="400" y="207" class="sublabel">Fully Connected Head</text>
+  <rect x="510" y="195" width="14" height="14" rx="2" fill="#F5B7B1" stroke="#E74C3C" stroke-width="1"/>
+  <text x="530" y="207" class="sublabel">Dropout Regularization</text>
+  <line x1="115" y1="40" x2="435" y2="40" stroke="#00526B" stroke-width="1.5"/>
+  <line x1="115" y1="40" x2="115" y2="48" stroke="#00526B" stroke-width="1.5"/>
+  <line x1="435" y1="40" x2="435" y2="48" stroke="#00526B" stroke-width="1.5"/>
+  <text x="275" y="37" text-anchor="middle" class="sublabel" fill="#00526B" font-weight="bold">Feature Extraction (Backbone)</text>
+
+</svg>

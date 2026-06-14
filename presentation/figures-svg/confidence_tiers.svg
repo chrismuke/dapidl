@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="300" viewBox="0 0 460 300">
+
+  <style>text { font-family: Arial, sans-serif; }</style>
+  <text x="20" y="30" font-size="16" font-weight="bold" fill="#003B4F">Tier 1: High Confidence</text>
+  <rect x="20" y="40" width="420" height="35" rx="6" fill="#2ECC40"/>
+  <text x="30" y="63" font-size="13" fill="white" font-weight="bold">100% Algorithm Agreement</text>
+  <text x="20" y="110" font-size="16" font-weight="bold" fill="#003B4F">Tier 2: Medium Confidence</text>
+  <rect x="20" y="120" width="420" height="35" rx="6" fill="#FFF3CD"/>
+  <rect x="20" y="120" width="336" height="35" rx="6" fill="#FFD700"/>
+  <text x="30" y="143" font-size="13" fill="#003B4F" font-weight="bold">&gt;80% Agreement</text>
+  <text x="20" y="190" font-size="16" font-weight="bold" fill="#003B4F">Tier 3: Low Confidence</text>
+  <rect x="20" y="200" width="420" height="35" rx="6" fill="#FFE0CC"/>
+  <rect x="20" y="200" width="210" height="35" rx="6" fill="#FF851B"/>
+  <text x="30" y="223" font-size="13" fill="white" font-weight="bold">&gt;50% Agreement</text>
+  <text x="140" y="275" font-size="14" fill="#CC0000" font-weight="bold">Discarded (&lt;50% Agreement)</text>
+
+</svg>

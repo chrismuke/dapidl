@@ -1,0 +1,26 @@
+<!DOCTYPE html><html><head><style>
+html{background:#fff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#fff;}
+.wrap{margin:30pt 40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:26pt;margin:0 0 10pt 0;}
+.content{display:flex;gap:30pt;flex:1;align-items:center;}
+.img-col{flex:0 0 260pt;}
+.text-col{flex:1;}
+p{font-size:13pt;color:#333;margin:6pt 0;}
+.accent{color:#0089A7;font-weight:bold;}
+</style></head><body><div class="wrap">
+<h1>Quality Control via Confidence Tiers</h1>
+<div class="content">
+  <div class="img-col">
+    <img src="/Users/chrism/git/dapidl/presentation/figures/confidence_tiers.png" style="width:250pt;height:auto;">
+  </div>
+  <div class="text-col">
+    <p><b>Three-pass hierarchical filtering:</b></p>
+    <p><span class="accent">Tier 1:</span> All methods agree (100%). Highest training priority.</p>
+    <p><span class="accent">Tier 2:</span> >80% agreement. Good quality, included with lower weight.</p>
+    <p><span class="accent">Tier 3:</span> >50% agreement. Used cautiously for rare cell types.</p>
+    <p style="color:#CC0000;"><b>Discarded:</b> &lt;50% agreement. Ambiguous cells excluded to prevent confusing the model.</p>
+    <p style="font-size:11pt;color:#666;margin-top:8pt;">Additional quality signals: marker gene enrichment, spatial coherence (KNN), tissue-specific proportion plausibility.</p>
+  </div>
+</div>
+</div></body></html>

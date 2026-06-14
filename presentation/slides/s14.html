@@ -1,0 +1,37 @@
+<!DOCTYPE html><html><head><style>
+html{background:#ffffff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#ffffff;}
+.wrap{margin:40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:28pt;margin:0 0 18pt 0;font-weight:bold;}
+h2{color:#003B4F;font-size:20pt;margin:0 0 12pt 0;}
+p,li{color:#333333;font-size:14pt;line-height:1.5;}
+ul{margin:6pt 0;padding-left:24pt;}
+li{margin-bottom:8pt;}
+.two-col{display:flex;gap:30pt;flex:1;}
+.col{flex:1;}
+.accent{color:#0089A7;font-weight:bold;}
+.small{font-size:11pt;color:#666;}
+.highlight{background:#E8F4FD;border-left:4pt solid #00526B;padding:8pt 12pt;margin:10pt 0;}
+</style></head><body><div class="wrap">
+<h1>Curriculum Learning: Coarse to Fine</h1>
+<div class="two-col">
+      <div class="col">
+        <h2>Hierarchical Training Strategy</h2>
+        <ul>
+          <li><span class="accent">Phase 1 (Broad):</span> Epithelial vs. Immune vs. Stromal</li>
+          <li><span class="accent">Phase 2 (Medium):</span> T-Cell, B-Cell, Macrophage, Luminal, Fibroblast...</li>
+          <li><span class="accent">Phase 3 (Fine):</span> CD4+ T, CD8+ T, M1 Macrophage...</li>
+        </ul>
+        <p style="font-size:12pt;color:#666;margin-top:10pt;">Each phase progressively activates finer classification heads while maintaining coarse accuracy.</p>
+      </div>
+      <div class="col">
+        <h2>Confidence-Based Fallback</h2>
+        <ul>
+          <li>At inference: try fine prediction first</li>
+          <li>If confidence &lt; threshold, fall back to medium</li>
+          <li>If still uncertain, report at broad level</li>
+          <li>Result: <b>every cell gets a reliable label</b></li>
+        </ul>
+      </div>
+    </div>
+</div></body></html>

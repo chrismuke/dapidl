@@ -1,0 +1,35 @@
+<!DOCTYPE html><html><head><style>
+html{background:#ffffff;}
+body{width:720pt;height:405pt;margin:0;padding:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;background:#ffffff;}
+.wrap{margin:40pt;flex:1;display:flex;flex-direction:column;}
+h1{color:#00526B;font-size:28pt;margin:0 0 18pt 0;font-weight:bold;}
+h2{color:#003B4F;font-size:20pt;margin:0 0 12pt 0;}
+p,li{color:#333333;font-size:14pt;line-height:1.5;}
+ul{margin:6pt 0;padding-left:24pt;}
+li{margin-bottom:8pt;}
+.two-col{display:flex;gap:30pt;flex:1;}
+.col{flex:1;}
+.accent{color:#0089A7;font-weight:bold;}
+.small{font-size:11pt;color:#666;}
+.highlight{background:#E8F4FD;border-left:4pt solid #00526B;padding:8pt 12pt;margin:10pt 0;}
+</style></head><body><div class="wrap">
+<h1>Patch Size Comparison</h1>
+<div class="two-col">
+      <div class="col">
+        <h2>Nucleus-Centered Patches</h2>
+        <ul>
+          <li><b>32x32:</b> Only nucleus interior. Misses surrounding context.</li>
+          <li><b>64x64:</b> Nucleus + immediate neighborhood.</li>
+          <li><b>128x128:</b> Good balance of nucleus detail + local tissue context.</li>
+          <li><b>256x256:</b> Includes multiple neighbors. <span class="accent">Best F1 (+15% over 128)</span></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h2>Key Finding</h2>
+        <p><span class="accent">Larger patches = better performance.</span></p>
+        <p>Local tissue context (neighboring cells, tissue architecture) provides critical classification cues beyond nuclear morphology.</p>
+        <p>Trade-off: larger patches need more GPU memory and slower training.</p>
+        <p style="font-size:11pt;color:#666;margin-top:8pt;">Physical-space normalization ensures consistent scale across platforms (target: 0.2125 um/px).</p>
+      </div>
+    </div>
+</div></body></html>
