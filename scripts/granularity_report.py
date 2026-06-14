@@ -8,7 +8,7 @@ Scenarios:
                  · all STHELAR skin · all STHELAR (all 16 tissues)
 
 Outputs:
-    docs/granularity_audit_2026_05.md           — markdown report (all 13 × 3 tables)
+    docs/reports/granularity_audit_2026_05.md   — markdown report (all 13 × 3 tables)
     pipeline_output/figures_v2/fig_granularity_audit_*.png  — composition figures
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ from dapidl.ontology.training_tiers import COARSE_NAMES, MEDIUM_NAMES, FINE_NAME
 
 ROOT = Path("/mnt/work/git/dapidl")
 PARQUET = ROOT / "pipeline_output" / "granularity_audit" / "per_slide_counts.parquet"
-DOC_OUT = ROOT / "docs" / "granularity_audit_2026_05.md"
+DOC_OUT = ROOT / "docs" / "reports" / "granularity_audit_2026_05.md"
 FIG_DIR = ROOT / "pipeline_output" / "figures_v2"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 

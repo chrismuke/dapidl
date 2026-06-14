@@ -197,7 +197,7 @@ uv run dapidl clearml-pipeline run -t breast /path/to/data xenium 1 --local --va
 ### Key Files:
 - `validation/cross_modal.py`: Core validation functions
 - `pipeline/steps/cross_validation.py`: ClearML pipeline step
-- `docs/CROSS_MODAL_VALIDATION.md`: Full research documentation
+- `docs/reference/CROSS_MODAL_VALIDATION.md`: Full research documentation
 
 ## Cross-Platform Compatibility (Xenium ↔ MERSCOPE)
 
