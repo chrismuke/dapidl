@@ -561,6 +561,12 @@ GT_STHELAR: dict[str, str] = {
     "Ovarian cancer specific EMT cell": "CL:0000066",
     # "Proliferation unknown" — intentionally LEFT UNMAPPED (truly ambiguous,
     # could be any compartment; ~96K cells, see report)
+
+    # --- Breast / stromal / mixed STHELAR labels (June 2026 patch) ---
+    "CAF": "CL:0000057",                                  # cancer-associated fibroblast
+    "Plasma": "CL:0000786",                               # plasma cell
+    "Endothelial_Pericyte_Smooth_muscle": "CL:0000669",   # pericyte (dominant component)
+    "Mammary_basal_cell_(=myoepithelial)": "CL:0000185",  # myoepithelial
 }
 
 # Common pathology terms

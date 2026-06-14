@@ -32,6 +32,7 @@ from loguru import logger
 from dapidl.data.lazy_mosaic import LazyMosaic, normalize_crop, open_xenium_mosaic
 from dapidl.data.sthelar import SthelarDataReader
 from dapidl.data.xenium import XeniumDataReader
+from dapidl.ontology.training_tiers import derive_labels
 from dapidl.qc.io import FORMAT_KEY, FORMAT_U64KEY_SQUARE
 
 DERIVED = Path("/mnt/work/datasets/derived")
@@ -89,18 +90,18 @@ def _normalize(image: np.ndarray) -> tuple[np.ndarray, dict]:
 
 
 def _stratified_pick(
-    candidates: list[tuple[int, int, str]], cap: int, rng: np.random.Generator
-) -> list[tuple[int, int, str]]:
-    """Equal-per-class cap. Candidate = (source_idx, coarse_idx, cell_id_str)."""
-    by_cls: dict[int, list[tuple[int, str]]] = defaultdict(list)
-    for src_idx, cls, cid in candidates:
-        by_cls[cls].append((src_idx, cid))
+    candidates: list[tuple[int, int, str, str]], cap: int, rng: np.random.Generator
+) -> list[tuple[int, int, str, str]]:
+    """Equal-per-class cap. Candidate = (source_idx, coarse_idx, cell_id_str, raw_label)."""
+    by_cls: dict[int, list[tuple[int, str, str]]] = defaultdict(list)
+    for src_idx, cls, cid, raw in candidates:
+        by_cls[cls].append((src_idx, cid, raw))
     per = max(1, cap // max(1, len(by_cls)))
-    picked: list[tuple[int, int, str]] = []
+    picked: list[tuple[int, int, str, str]] = []
     for cls, items in by_cls.items():
         n = min(per, len(items))
         sel = rng.choice(len(items), size=n, replace=False)
-        picked.extend([(items[i][0], cls, items[i][1]) for i in sel])
+        picked.extend([(items[i][0], cls, items[i][1], items[i][2]) for i in sel])
     rng.shuffle(picked)
     return picked
 
@@ -123,15 +124,15 @@ def extract_xenium(
     centroids = reader.get_nucleus_centroids_pixels()
     cell_ids = reader.get_cell_ids()
 
-    candidates: list[tuple[int, int, str]] = []
+    candidates: list[tuple[int, int, str, str]] = []
     for i, cid in enumerate(cell_ids):
         fine = gt.get(str(cid))
         if fine is None:
             continue
-        coarse = JANESICK17_TO_COARSE.get(fine)
-        if coarse is None:
+        coarse_name, _ = derive_labels(fine, f"xenium_{rep_name}")
+        if coarse_name not in COARSE_TO_IDX:   # Unknown / Neural -> drop (not a breast coarse class)
             continue
-        candidates.append((i, COARSE_TO_IDX[coarse], str(cid)))
+        candidates.append((i, COARSE_TO_IDX[coarse_name], str(cid), str(fine)))
     logger.info(f"{rep_name}: {len(candidates)} labelled cells")
     picked = _stratified_pick(candidates, per_source, rng) if per_source > 0 else candidates
 
@@ -144,7 +145,7 @@ def extract_xenium(
         norm = {"p_low": p_low, "p_high": p_high}
         txn = env.begin(write=True)
         try:
-            for src_i, coarse_idx, cid in picked:
+            for src_i, coarse_idx, cid, raw in picked:
                 cx, cy = int(round(centroids[src_i, 0])), int(round(centroids[src_i, 1]))
                 y0, y1 = cy - half, cy + half
                 x0, x1 = cx - half, cx + half
@@ -158,7 +159,8 @@ def extract_xenium(
                 _write_patch(txn, idx, normalize_crop(crop, p_low, p_high), coarse_idx)
                 all_labels.append(coarse_idx)
                 registry.append({"row_idx": idx, "slide": slide, "cell_id": cid,
-                                 "coarse_idx": coarse_idx})
+                                 "coarse_idx": coarse_idx, "x0": int(x0), "y0": int(y0),
+                                 "pixel_size": 0.2125, "raw_label": raw})
                 idx += 1
                 n_written += 1
                 if n_written % LMDB_TXN_CHUNK == 0:
@@ -183,18 +185,25 @@ def extract_sthelar(
     slide = f"sthelar_{slide_name}"
     reader = SthelarDataReader(slide_zarr)
     nuc = reader.nucleus_df
-    if "label1" not in nuc.columns:
-        logger.warning(f"{slide}: no label1, skipping")
+    # Prefer ct_tangram (Tangram-based CL-anchored labels); fall back to label1
+    if "ct_tangram" in nuc.columns:
+        raw_col = "ct_tangram"
+    elif "label1" in nuc.columns:
+        logger.warning(f"{slide}: ct_tangram missing, falling back to label1")
+        raw_col = "label1"
+    else:
+        logger.warning(f"{slide}: no ct_tangram or label1, skipping")
         return idx_start, {}
 
-    nuc = nuc.with_columns(
-        pl.col("label1").replace_strict(STHELAR_LABEL1_TO_COARSE, default=None).alias("coarse")
-    ).filter(pl.col("coarse").is_not_null())
-
-    candidates: list[tuple[int, int, str]] = []
+    slide_key = slide_name  # e.g. "breast_s0"
+    candidates: list[tuple[int, int, str, str]] = []
     for row in nuc.iter_rows(named=True):
-        candidates.append((-1, COARSE_TO_IDX[row["coarse"]], str(row["cell_id"])))
-    logger.info(f"{slide}: {len(candidates)} labelled cells")
+        raw = str(row[raw_col])
+        coarse_name, _ = derive_labels(raw, f"sthelar_{slide_key}")
+        if coarse_name not in COARSE_TO_IDX:   # Unknown / Neural -> drop
+            continue
+        candidates.append((-1, COARSE_TO_IDX[coarse_name], str(row["cell_id"]), raw))
+    logger.info(f"{slide}: {len(candidates)} labelled cells (raw_col={raw_col})")
     picked = _stratified_pick(candidates, per_source, rng) if per_source > 0 else candidates
 
     # centroid_map: cell_id -> (x_px, y_px)
@@ -211,7 +220,7 @@ def extract_sthelar(
     idx = idx_start
     txn = env.begin(write=True)
     try:
-        for _, coarse_idx, cid in picked:
+        for _, coarse_idx, cid, raw in picked:
             if cid not in cmap:
                 n_miss += 1
                 continue
@@ -229,7 +238,8 @@ def extract_sthelar(
             _write_patch(txn, idx, normalize_crop(crop, p_low, p_high), coarse_idx)
             all_labels.append(coarse_idx)
             registry.append({"row_idx": idx, "slide": slide, "cell_id": cid,
-                             "coarse_idx": coarse_idx})
+                             "coarse_idx": coarse_idx, "x0": int(x0), "y0": int(y0),
+                             "pixel_size": 0.2125, "raw_label": raw})
             idx += 1
             n_written += 1
             if n_written % LMDB_TXN_CHUNK == 0:

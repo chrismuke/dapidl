@@ -94,6 +94,13 @@ CL_TO_COARSE_NAME = {t.cl_id: t.name for t in COARSE}
 CL_TO_MEDIUM_NAME = {t.cl_id: t.name for t in MEDIUM}
 CL_TO_FINE_NAME   = {t.cl_id: t.name for t in FINE}
 
+# Pragmatic CL→MEDIUM anchors for types that exist in the ontology but whose
+# ancestry walk doesn't naturally land on a MEDIUM-12 entry.
+# setdefault: never overrides a real MEDIUM entry.
+CL_TO_MEDIUM_NAME.setdefault("CL:0000185", "Epithelial_Basal")   # myoepithelial cell
+CL_TO_MEDIUM_NAME.setdefault("CL:0002325", "Epithelial_Luminal")  # mammary luminal epithelial
+CL_TO_MEDIUM_NAME.setdefault("CL:0000786", "B_Cell")              # plasma cell → B_Cell tier
+
 
 # Janesick pathology label → DAPIDL pseudo-CL ID (no real CL match)
 JANESICK_PATHOLOGY = {
@@ -147,6 +154,16 @@ def derive_tier_label(raw_label: str, tier: str, mapper=None) -> str:
         return _walk_to_target(cl_id, CL_TO_FINE_NAME)
 
     raise ValueError(f"unknown tier: {tier!r}")
+
+
+def derive_labels(raw_name: str, source: str) -> tuple[str, str]:
+    """Single CL-grounded (coarse, medium) derivation. source in {xenium_rep1, xenium_rep2,
+    sthelar_breast_s0/s1/s3/s6}; STHELAR raw = ct_tangram, Xenium raw = Janesick-17.
+    Unmappable -> ('Unknown', 'Unknown'), never silently mis-binned."""
+    from dapidl.ontology.cl_mapper import get_mapper
+    mapper = get_mapper()
+    return (derive_tier_label(raw_name, "coarse", mapper),
+            derive_tier_label(raw_name, "medium", mapper))
 
 
 def _walk_to_target(cl_id: str, target_set: dict[str, str]) -> str:
