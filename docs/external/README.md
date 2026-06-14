@@ -15,4 +15,4 @@ auditor) can tell at a glance what we wrote from what we received. This is the s
   diff-friendly and directly readable.
 - Do not edit the body of an external document. If you need to annotate it, add a
   sibling `*-notes.md` rather than altering the original.
-- If volume grows, subfolder by topic inside here (e.g. `external/segmentation/`).
+- Subfolder by topic as volume grows. Literature / paper PDFs live in `external/papers/`.
